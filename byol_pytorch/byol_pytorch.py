@@ -71,8 +71,6 @@ def update_moving_average(ema_updater, ma_model, current_model):
 
 # MLP class for projector and predictor
 
-DEFAULT_PROJ_SIZE = 256
-
 class MLP(nn.Module):
     def __init__(self, dim, projection_size, hidden_size = 4096):
         super().__init__()
