@@ -39,6 +39,9 @@ for _ in range(100):
     loss.backward()
     opt.step()
     learner.update_moving_average() # update moving average of target encoder
+
+# save your improved network
+torch.save(resnet.state_dict(), './improved-net.pt')
 ```
 
 That's pretty much it. After much training, the residual network should now perform better on its supervised downstream tasks.
