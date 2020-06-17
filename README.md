@@ -1,4 +1,8 @@
+<img src="./diagram.png" width="700px"></img>
+
 ## Bootstrap Your Own Latent (BYOL), in Pytorch
+
+[![PyPI version](https://badge.fury.io/py/byol-pytorch.svg)](https://badge.fury.io/py/byol-pytorch)
 
 Practical implementation of an <a href="https://arxiv.org/abs/2006.07733">astoundingly simple method</a> for self-supervised learning that achieves a new state of the art (surpassing SimCLR) without contrastive learning and having to designate negative pairs.
 
@@ -44,7 +48,7 @@ for _ in range(100):
 torch.save(resnet.state_dict(), './improved-net.pt')
 ```
 
-That's pretty much it. After much training, the residual network should now perform better on its supervised downstream tasks.
+That's pretty much it. After much training, the residual network should now perform better on its downstream supervised tasks.
 
 ## Advanced
 
@@ -56,23 +60,25 @@ learner = BYOL(
     image_size = 256,
     hidden_layer = 'avgpool',
     projection_size = 256,           # the projection size
-    projection_hidden_size = 4096,	 # the hidden dimension of the MLP for both the projection and prediction
+    projection_hidden_size = 4096,   # the hidden dimension of the MLP for both the projection and prediction
     moving_average_decay = 0.99      # the moving average decay factor for the target encoder, already set at what paper recommends
 )
 ```
 
-By default, this library will use the augmentations from the SimCLR paper, which is also used in the BYOL paper. However, if you would like to specify your own augmentations, you can simply pass in an `augment_fn` in the constructor. Augmentations must work in the tensor space. If you decide to use torchvision augmentations, make sure the function converts first to PIL `.toPILImage()` and then back to tensors `.ToTensor()`
+By default, this library will use the augmentations from the SimCLR paper (which is also used in the BYOL paper). However, if you would like to specify your own augmentation pipeline, you can simply pass in your own custom augmentation function with the `augment_fn` keyword.
+
+Augmentations must work in the tensor space. `kornia` library is highly recommended for this. If you decide to use torchvision augmentations, make sure the tensor is first converted to PIL `.toPILImage()`, and then back to tensors `.ToTensor()`
 
 ```python
-custom_augment_fn = nn.Sequential(
+augment_fn = nn.Sequential(
     kornia.augmentations.RandomHorizontalFlip()
 )
 
-learner = ContrastiveLearner(
+learner = BYOL(
     resnet,
     image_size = 256,
     hidden_layer = -2,
-    augment_fn = custom_augment_fn
+    augment_fn = augment_fn
 )
 ```
 
