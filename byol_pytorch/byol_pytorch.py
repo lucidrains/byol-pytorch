@@ -176,7 +176,7 @@ class BYOL(nn.Module):
 
     def update_moving_average(self):
         assert self.target_encoder is not None, 'target encoder has not been created yet'
-        self.target_encoder = update_moving_average(self.target_ema_updater, self.target_encoder, self.online_encoder)
+        update_moving_average(self.target_ema_updater, self.target_encoder, self.online_encoder)
 
     def forward(self, x):
         b, c, h, w, device = *x.shape, x.device
