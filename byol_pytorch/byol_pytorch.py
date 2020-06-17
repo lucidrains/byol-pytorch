@@ -122,7 +122,7 @@ class NetWrapper(nn.Module):
         projector = MLP(dim, self.projection_size, self.projection_hidden_size)
         return projector.to(hidden)
 
-    def forward(self, x):
+    def get_representation(self, x):
         if self.layer == -1:
             return self.net(x)
 
@@ -130,9 +130,12 @@ class NetWrapper(nn.Module):
         hidden = self.hidden
         self.hidden = None
         assert hidden is not None, f'hidden layer {self.layer} never emitted an output'
+        return hidden
 
-        projector = self._get_projector(hidden)
-        projection = projector(hidden)
+    def forward(self, x):
+        representation = self.get_representation(x)
+        projector = self._get_projector(representation)
+        projection = projector(representation)
         return projection
 
 # main class
