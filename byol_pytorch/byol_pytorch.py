@@ -11,8 +11,6 @@ from kornia import filters
 
 # helper functions
 
-def identity(x): return x
-
 def default(val, def_val):
     return def_val if val is None else val
 
@@ -179,8 +177,6 @@ class BYOL(nn.Module):
         update_moving_average(self.target_ema_updater, self.target_encoder, self.online_encoder)
 
     def forward(self, x):
-        b, c, h, w, device = *x.shape, x.device
-
         image_one, image_two = self.augment(x), self.augment(x)
 
         online_proj_one = self.online_encoder(image_one)
