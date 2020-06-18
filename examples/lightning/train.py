@@ -50,6 +50,9 @@ class SelfSupervisedLearner(pl.LightningModule):
     def configure_optimizers(self):
         return torch.optim.Adam(self.parameters(), lr=LR)
 
+    def on_before_zero_grad(self, _):
+        self.learner.update_moving_average()
+
 # image dataset class
 
 class ImagesDataset(Dataset):
@@ -82,8 +85,8 @@ if __name__ == '__main__':
         resnet,
         image_size = IMAGE_SIZE,
         hidden_layer = 'avgpool',
-        projection_size = 128,
-        projection_hidden_size = 2048,
+        projection_size = 256,
+        projection_hidden_size = 4096,
         moving_average_decay = 0.99
     )
 
