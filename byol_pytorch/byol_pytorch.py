@@ -108,13 +108,13 @@ class NetWrapper(nn.Module):
             return children[self.layer]
         return None
 
-    def _register_hook(self):
-        def hook(_, __, output):
-            self.hidden = flatten(output)
+    def _hook(self, _, __, output):
+        self.hidden = flatten(output)
 
+    def _register_hook(self):
         layer = self._find_layer()
         assert layer is not None, f'hidden layer ({self.layer}) not found'
-        handle = layer.register_forward_hook(hook)
+        handle = layer.register_forward_hook(self._hook)
 
     @singleton('projector')
     def _get_projector(self, hidden):
