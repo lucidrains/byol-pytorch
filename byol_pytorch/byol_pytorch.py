@@ -7,7 +7,7 @@ from torch import nn
 import torch.nn.functional as F
 
 from kornia import augmentation as augs
-from kornia import filters
+from kornia import filters, color
 
 # helper functions
 
@@ -151,7 +151,8 @@ class BYOL(nn.Module):
             augs.RandomGrayscale(p=0.2),
             augs.RandomHorizontalFlip(),
             RandomApply(filters.GaussianBlur2d((3, 3), (1.5, 1.5)), p=0.1),
-            augs.RandomResizedCrop((image_size, image_size))
+            augs.RandomResizedCrop((image_size, image_size)),
+            color.Normalize(mean=torch.tensor([0.485, 0.456, 0.406]), std=torch.tensor([0.229, 0.224, 0.225]))
         )
 
         self.augment = default(augment_fn, DEFAULT_AUG)
