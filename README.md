@@ -6,7 +6,7 @@
 
 Practical implementation of an <a href="https://arxiv.org/abs/2006.07733">astoundingly simple method</a> for self-supervised learning that achieves a new state of the art (surpassing SimCLR) without contrastive learning and having to designate negative pairs.
 
-This repository offers a module that one can easily wrap any neural network that accepts an image to immediately start benefitting from unlabelled data.
+This repository offers a module that one can easily wrap any image-based neural network (residual network, discriminator, policy network) to immediately start benefitting from unlabelled image data.
 
 ## Install
 
