@@ -97,7 +97,7 @@ class NetWrapper(nn.Module):
         self.projection_hidden_size = projection_hidden_size
 
         self.hidden = None
-        self._register_hook()
+        self.hook_registered = False
 
     def _find_layer(self):
         if type(self.layer) == str:
@@ -115,6 +115,7 @@ class NetWrapper(nn.Module):
         layer = self._find_layer()
         assert layer is not None, f'hidden layer ({self.layer}) not found'
         handle = layer.register_forward_hook(self._hook)
+        self.hook_registered = True
 
     @singleton('projector')
     def _get_projector(self, hidden):
@@ -123,6 +124,9 @@ class NetWrapper(nn.Module):
         return projector.to(hidden)
 
     def get_representation(self, x):
+        if not self.hook_registered:
+            self._register_hook()
+
         if self.layer == -1:
             return self.net(x)
 
@@ -169,7 +173,6 @@ class BYOL(nn.Module):
     @singleton('target_encoder')
     def _get_target_encoder(self):
         target_encoder = copy.deepcopy(self.online_encoder)
-        target_encoder._register_hook()
         return target_encoder
 
     def reset_moving_average(self):
