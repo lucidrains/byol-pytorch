@@ -145,10 +145,12 @@ class NetWrapper(nn.Module):
 # main class
 
 class BYOL(nn.Module):
-    def __init__(self, net, image_size, hidden_layer = -2, projection_size = 256, projection_hidden_size = 4096, augment_fn = None, moving_average_decay = 0.99):
+    def __init__(self, net, image_size, hidden_layer = -2, projection_size = 256, projection_hidden_size = 4096, augment_fn = None, moving_average_decay = 0.99,
+                normalization_mean=[0.485, 0.456, 0.406], normalization_std=[0.229, 0.224, 0.225]):
         super().__init__()
 
         # default SimCLR augmentation
+        # Default normalization parameters are set to imagenet's mean and std
 
         DEFAULT_AUG = nn.Sequential(
             RandomApply(augs.ColorJitter(0.8, 0.8, 0.8, 0.2), p=0.8),
@@ -156,7 +158,7 @@ class BYOL(nn.Module):
             augs.RandomHorizontalFlip(),
             RandomApply(filters.GaussianBlur2d((3, 3), (1.5, 1.5)), p=0.1),
             augs.RandomResizedCrop((image_size, image_size)),
-            color.Normalize(mean=torch.tensor([0.485, 0.456, 0.406]), std=torch.tensor([0.229, 0.224, 0.225]))
+            color.Normalize(mean=torch.tensor(normalization_mean), std=torch.tensor(normalization_std))
         )
 
         self.augment = default(augment_fn, DEFAULT_AUG)
