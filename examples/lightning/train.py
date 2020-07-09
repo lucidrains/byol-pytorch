@@ -1,3 +1,4 @@
+import os
 import argparse
 import multiprocessing
 from pathlib import Path
@@ -30,7 +31,7 @@ EPOCHS     = 1000
 LR         = 3e-4
 NUM_GPUS   = 2
 IMAGE_SIZE = 256
-IMAGE_EXTS = ['jpg', 'png']
+IMAGE_EXTS = ['.jpg', '.png', '.jpeg']
 NUM_WORKERS = multiprocessing.cpu_count()
 
 # pytorch lightning module
@@ -59,7 +60,14 @@ class ImagesDataset(Dataset):
     def __init__(self, folder, image_size):
         super().__init__()
         self.folder = folder
-        self.paths = [p for ext in IMAGE_EXTS for p in Path(f'{folder}').glob(f'**/*.{ext}')]
+        self.paths = []
+
+        for path in Path(f'{folder}').glob('**/*'):
+            _, ext = os.path.splitext(path)
+            if ext.lower() in IMAGE_EXTS:
+                self.paths.append(path)
+
+        print(f'{len(self.paths)} images found')
 
         self.transform = transforms.Compose([
             transforms.Resize(image_size),
