@@ -54,7 +54,10 @@ class SelfSupervisedLearner(pl.LightningModule):
     def on_before_zero_grad(self, _):
         self.learner.update_moving_average()
 
-# image dataset class
+# images dataset
+
+def expand_greyscale(t):
+    return t.expand(3, -1, -1)
 
 class ImagesDataset(Dataset):
     def __init__(self, folder, image_size):
@@ -72,7 +75,8 @@ class ImagesDataset(Dataset):
         self.transform = transforms.Compose([
             transforms.Resize(image_size),
             transforms.CenterCrop(image_size),
-            transforms.ToTensor()
+            transforms.ToTensor(),
+            transforms.Lambda(expand_greyscale)
         ])
 
     def __len__(self):
@@ -81,6 +85,7 @@ class ImagesDataset(Dataset):
     def __getitem__(self, index):
         path = self.paths[index]
         img = Image.open(path)
+        img = img.convert('RGB')
         return self.transform(img)
 
 # main
