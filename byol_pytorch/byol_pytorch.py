@@ -124,11 +124,11 @@ class NetWrapper(nn.Module):
         return projector.to(hidden)
 
     def get_representation(self, x):
-        if not self.hook_registered:
-            self._register_hook()
-
         if self.layer == -1:
             return self.net(x)
+
+        if not self.hook_registered:
+            self._register_hook()
 
         _ = self.net(x)
         hidden = self.hidden
