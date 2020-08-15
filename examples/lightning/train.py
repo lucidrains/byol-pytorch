@@ -92,7 +92,7 @@ class ImagesDataset(Dataset):
 
 if __name__ == '__main__':
     ds = ImagesDataset(args.image_folder, IMAGE_SIZE)
-    train_loader = DataLoader(ds, batch_size=BATCH_SIZE, num_workers=NUM_WORKERS)
+    train_loader = DataLoader(ds, batch_size=BATCH_SIZE, num_workers=NUM_WORKERS, shuffle=True)
 
     model = SelfSupervisedLearner(
         resnet,
