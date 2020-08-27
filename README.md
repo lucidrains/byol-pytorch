@@ -8,6 +8,8 @@ Practical implementation of an <a href="https://arxiv.org/abs/2006.07733">astoun
 
 This repository offers a module that one can easily wrap any image-based neural network (residual network, discriminator, policy network) to immediately start benefitting from unlabelled image data.
 
+Update: There is now <a href="https://untitled-ai.github.io/understanding-self-supervised-contrastive-learning.html">new evidence</a> that batch normalization is key to making this technique work well
+
 ## Install
 
 ```bash
