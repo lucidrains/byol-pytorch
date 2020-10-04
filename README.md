@@ -10,6 +10,8 @@ This repository offers a module that one can easily wrap any image-based neural 
 
 Update: There is now <a href="https://untitled-ai.github.io/understanding-self-supervised-contrastive-learning.html">new evidence</a> that batch normalization is key to making this technique work well
 
+<a href="https://www.youtube.com/watch?v=YPfUiOMYOEE">Yannic Kilcher's excellent explanation</a>
+
 ## Install
 
 ```bash
