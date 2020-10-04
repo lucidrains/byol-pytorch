@@ -103,5 +103,10 @@ if __name__ == '__main__':
         moving_average_decay = 0.99
     )
 
-    trainer = pl.Trainer(gpus=NUM_GPUS, max_epochs=EPOCHS)
+    trainer = pl.Trainer(
+        gpus = NUM_GPUS,
+        max_epochs = EPOCHS,
+        accumulate_grad_batches = 1
+    )
+
     trainer.fit(model, train_loader)
