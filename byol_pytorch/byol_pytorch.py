@@ -8,7 +8,7 @@ import torch.nn.functional as F
 
 from kornia import augmentation as augs
 from kornia import filters, color
-
+from PIL import Image
 # helper functions
 
 def default(val, def_val):
@@ -145,7 +145,7 @@ class NetWrapper(nn.Module):
 # main class
 
 class BYOL(nn.Module):
-    def __init__(self, net, image_size, hidden_layer = -2, projection_size = 256, projection_hidden_size = 4096, augment_fn = None, moving_average_decay = 0.99):
+    def __init__(self, net, image_size, hidden_layer = -2, projection_size = 256, projection_hidden_size = 4096, augment_fn = None, moving_average_decay = 0.99, device=torch.device('cpu')):
         super().__init__()
 
         # default SimCLR augmentation
@@ -156,19 +156,19 @@ class BYOL(nn.Module):
             augs.RandomHorizontalFlip(),
             RandomApply(filters.GaussianBlur2d((3, 3), (1.5, 1.5)), p=0.1),
             augs.RandomResizedCrop((image_size, image_size)),
-            augs.Normalize(mean=torch.tensor([0.485, 0.456, 0.406]), std=torch.tensor([0.229, 0.224, 0.225]))
+            # augs.Normalize(mean=torch.tensor([0.485, 0.456, 0.406]), std=torch.tensor([0.229, 0.224, 0.225]))
         )
 
         self.augment = default(augment_fn, DEFAULT_AUG)
 
-        self.online_encoder = NetWrapper(net, projection_size, projection_hidden_size, layer=hidden_layer)
+        self.online_encoder = NetWrapper(net, projection_size, projection_hidden_size, layer=hidden_layer).to(device)
         self.target_encoder = None
         self.target_ema_updater = EMA(moving_average_decay)
 
-        self.online_predictor = MLP(projection_size, projection_size, projection_hidden_size)
+        self.online_predictor = MLP(projection_size, projection_size, projection_hidden_size).to(device)
 
         # send a mock image tensor to instantiate singleton parameters
-        self.forward(torch.randn(2, 3, image_size, image_size))
+        self.forward(torch.randn(2, 3, image_size, image_size).to(device))
 
     @singleton('target_encoder')
     def _get_target_encoder(self):
