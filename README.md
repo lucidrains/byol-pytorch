@@ -75,7 +75,7 @@ Augmentations must work in the tensor space. `kornia` library is highly recommen
 
 ```python
 augment_fn = nn.Sequential(
-    kornia.augmentations.RandomHorizontalFlip()
+    kornia.augmentation.RandomHorizontalFlip()
 )
 
 learner = BYOL(
@@ -83,6 +83,27 @@ learner = BYOL(
     image_size = 256,
     hidden_layer = -2,
     augment_fn = augment_fn
+)
+```
+
+In the paper, they seem to assure that one of the augmentations have a higher gaussian blur probability than the other. You can also adjust this to your heart's delight.
+
+```python
+augment_fn = nn.Sequential(
+    kornia.augmentation.RandomHorizontalFlip()
+)
+
+augment_fn2 = nn.Sequential(
+    kornia.augmentation.RandomHorizontalFlip(),
+    kornia.filters.GaussianBlur2d((3, 3), (1.5, 1.5))
+)
+
+learner = BYOL(
+    resnet,
+    image_size = 256,
+    hidden_layer = -2,
+    augment_fn = augment_fn,
+    augment_fn2 = augment_fn2,
 )
 ```
 

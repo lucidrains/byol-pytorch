@@ -145,7 +145,7 @@ class NetWrapper(nn.Module):
 # main class
 
 class BYOL(nn.Module):
-    def __init__(self, net, image_size, hidden_layer = -2, projection_size = 256, projection_hidden_size = 4096, augment_fn = None, moving_average_decay = 0.99):
+    def __init__(self, net, image_size, hidden_layer = -2, projection_size = 256, projection_hidden_size = 4096, augment_fn = None, augment_fn2 = None, moving_average_decay = 0.99):
         super().__init__()
 
         # default SimCLR augmentation
@@ -159,7 +159,8 @@ class BYOL(nn.Module):
             augs.Normalize(mean=torch.tensor([0.485, 0.456, 0.406]), std=torch.tensor([0.229, 0.224, 0.225]))
         )
 
-        self.augment = default(augment_fn, DEFAULT_AUG)
+        self.augment1 = default(augment_fn, DEFAULT_AUG)
+        self.augment2 = default(augment_fn2, self.augment1)
 
         self.online_encoder = NetWrapper(net, projection_size, projection_hidden_size, layer=hidden_layer)
         self.target_encoder = None
@@ -184,7 +185,7 @@ class BYOL(nn.Module):
         update_moving_average(self.target_ema_updater, self.target_encoder, self.online_encoder)
 
     def forward(self, x):
-        image_one, image_two = self.augment(x), self.augment(x)
+        image_one, image_two = self.augment1(x), self.augment2(x)
 
         online_proj_one = self.online_encoder(image_one)
         online_proj_two = self.online_encoder(image_two)
