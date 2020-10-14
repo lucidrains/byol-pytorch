@@ -31,6 +31,9 @@ def singleton(cache_key):
         return wrapper
     return inner_fn
 
+def get_module_device(module):
+    return next(module.parameters()).device
+
 # loss fn
 
 def loss_fn(x, y):
@@ -168,8 +171,12 @@ class BYOL(nn.Module):
 
         self.online_predictor = MLP(projection_size, projection_size, projection_hidden_size)
 
+        # get device of network and make wrapper same device
+        device = get_module_device(net)
+        self.to(device)
+
         # send a mock image tensor to instantiate singleton parameters
-        self.forward(torch.randn(2, 3, image_size, image_size))
+        self.forward(torch.randn(2, 3, image_size, image_size, device=device))
 
     @singleton('target_encoder')
     def _get_target_encoder(self):
