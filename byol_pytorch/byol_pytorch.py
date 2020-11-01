@@ -34,6 +34,10 @@ def singleton(cache_key):
 def get_module_device(module):
     return next(module.parameters()).device
 
+def set_requires_grad(model, val):
+    for p in model.parameters():
+        p.requires_grad = val
+
 # loss fn
 
 def loss_fn(x, y):
@@ -181,6 +185,7 @@ class BYOL(nn.Module):
     @singleton('target_encoder')
     def _get_target_encoder(self):
         target_encoder = copy.deepcopy(self.online_encoder)
+        set_requires_grad(target_encoder, False)
         return target_encoder
 
     def reset_moving_average(self):
