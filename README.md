@@ -155,3 +155,14 @@ learner = BYOL(
     primaryClass = {cs.LG}
 }
 ```
+
+```bibtex
+@misc{chen2020exploring,
+    title={Exploring Simple Siamese Representation Learning}, 
+    author={Xinlei Chen and Kaiming He},
+    year={2020},
+    eprint={2011.10566},
+    archivePrefix={arXiv},
+    primaryClass={cs.CV}
+}
+```
