@@ -12,8 +12,6 @@ Update 1: There is now <a href="https://untitled-ai.github.io/understanding-self
 
 Update 2: A <a href="https://arxiv.org/abs/2010.10241">new paper</a> has successfully replaced batch norm with group norm + weight standardization, refuting that batch statistics are needed for BYOL to work
 
-Update 3: It <a href="https://arxiv.org/abs/2011.10566">turns out</a> even the momentum encoder is not necessary. You can have fully functioning self-supervised learning without negative pairs nor the exponential moving average of the target encoder. I'll update BYOL later with a flag that will allow you to turn off the EMA and break feature parity with 'SimSiam'.
-
 <a href="https://www.youtube.com/watch?v=YPfUiOMYOEE">Yannic Kilcher's excellent explanation</a>
 
 ## Install
@@ -60,7 +58,7 @@ That's pretty much it. After much training, the residual network should now perf
 
 ## BYOL → SimSiam
 
-A <a href="https://arxiv.org/abs/2011.10566">new paper</a> from Kaiming He suggests that BYOL does not even need the exponential moving average updates of the target encoder (momentum). I've decided to build in this option so that you can easily use that variant for training. You will no longer need to invoke `update_moving_average` if you choose this route.
+A <a href="https://arxiv.org/abs/2011.10566">new paper</a> from Kaiming He suggests that BYOL does not even need the target encoder to be an exponential moving average of the online encoder. I've decided to build in this option so that you can easily use that variant for training, simply by setting the `use_momentum` flag to `False`. You will no longer need to invoke `update_moving_average` if you go this route as shown in the example below.
 
 ```python
 import torch
