@@ -152,7 +152,18 @@ class NetWrapper(nn.Module):
 # main class
 
 class BYOL(nn.Module):
-    def __init__(self, net, image_size, hidden_layer = -2, projection_size = 256, projection_hidden_size = 4096, augment_fn = None, augment_fn2 = None, moving_average_decay = 0.99):
+    def __init__(
+        self,
+        net,
+        image_size,
+        hidden_layer = -2,
+        projection_size = 256,
+        projection_hidden_size = 4096,
+        augment_fn = None,
+        augment_fn2 = None,
+        moving_average_decay = 0.99,
+        use_momentum = True
+    ):
         super().__init__()
 
         # default SimCLR augmentation
@@ -170,6 +181,8 @@ class BYOL(nn.Module):
         self.augment2 = default(augment_fn2, self.augment1)
 
         self.online_encoder = NetWrapper(net, projection_size, projection_hidden_size, layer=hidden_layer)
+
+        self.use_momentum = use_momentum
         self.target_encoder = None
         self.target_ema_updater = EMA(moving_average_decay)
 
@@ -193,6 +206,7 @@ class BYOL(nn.Module):
         self.target_encoder = None
 
     def update_moving_average(self):
+        assert self.use_momentum, 'you do not need to update the moving average, since you have turned off momentum for the target encoder'
         assert self.target_encoder is not None, 'target encoder has not been created yet'
         update_moving_average(self.target_ema_updater, self.target_encoder, self.online_encoder)
 
@@ -206,9 +220,9 @@ class BYOL(nn.Module):
         online_pred_two = self.online_predictor(online_proj_two)
 
         with torch.no_grad():
-            target_encoder = self._get_target_encoder()
-            target_proj_one = target_encoder(image_one)
-            target_proj_two = target_encoder(image_two)
+            target_encoder = self._get_target_encoder() if self.use_momentum else self.online_encoder
+            target_proj_one = target_encoder(image_one).detach()
+            target_proj_two = target_encoder(image_two).detach()
 
         loss_one = loss_fn(online_pred_one, target_proj_two.detach())
         loss_two = loss_fn(online_pred_two, target_proj_one.detach())

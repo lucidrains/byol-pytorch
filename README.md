@@ -58,6 +58,40 @@ torch.save(resnet.state_dict(), './improved-net.pt')
 
 That's pretty much it. After much training, the residual network should now perform better on its downstream supervised tasks.
 
+## BYOL → SimSiam
+
+A <a href="https://arxiv.org/abs/2011.10566">new paper</a> from Kaiming He suggests that BYOL does not even need the exponential moving average updates of the target encoder (momentum). I've decided to build in this option so that you can easily use that variant for training. You will no longer need to invoke `update_moving_average` if you choose this route.
+
+```python
+import torch
+from byol_pytorch import BYOL
+from torchvision import models
+
+resnet = models.resnet50(pretrained=True)
+
+learner = BYOL(
+    resnet,
+    image_size = 256,
+    hidden_layer = 'avgpool',
+    use_momentum = False       # turn off momentum in the target encoder
+)
+
+opt = torch.optim.Adam(learner.parameters(), lr=3e-4)
+
+def sample_unlabelled_images():
+    return torch.randn(20, 3, 256, 256)
+
+for _ in range(100):
+    images = sample_unlabelled_images()
+    loss = learner(images)
+    opt.zero_grad()
+    loss.backward()
+    opt.step()
+
+# save your improved network
+torch.save(resnet.state_dict(), './improved-net.pt')
+```
+
 ## Advanced
 
 While the hyperparameters have already been set to what the paper has found optimal, you can change them with extra keyword arguments to the base wrapper class.
