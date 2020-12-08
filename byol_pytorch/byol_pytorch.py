@@ -6,8 +6,7 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 
-from kornia import augmentation as augs
-from kornia import filters, color
+from torchvision import transforms as T
 
 # helper functions
 
@@ -168,13 +167,23 @@ class BYOL(nn.Module):
 
         # default SimCLR augmentation
 
-        DEFAULT_AUG = nn.Sequential(
-            RandomApply(augs.ColorJitter(0.8, 0.8, 0.8, 0.2), p=0.8),
-            augs.RandomGrayscale(p=0.2),
-            augs.RandomHorizontalFlip(),
-            RandomApply(filters.GaussianBlur2d((3, 3), (1.5, 1.5)), p=0.1),
-            augs.RandomResizedCrop((image_size, image_size)),
-            augs.Normalize(mean=torch.tensor([0.485, 0.456, 0.406]), std=torch.tensor([0.229, 0.224, 0.225]))
+        DEFAULT_AUG = torch.nn.Sequential(
+            T.RandomApply(
+                torch.nn.ModuleList(
+                    [ T.ColorJitter(0.8, 0.8, 0.8, 0.2) ]
+                )
+            , p = 0.3),
+            T.RandomGrayscale(p=0.2),
+            T.RandomHorizontalFlip(),
+            T.RandomApply(
+                torch.nn.ModuleList(
+                    [ T.GaussianBlur((3, 3), (1.0, 2.0)) ]
+                )
+            , p = 0.2),
+            T.RandomResizedCrop((image_size, image_size)),
+            T.Normalize(
+                mean=torch.tensor([0.485, 0.456, 0.406]),
+                std=torch.tensor([0.229, 0.224, 0.225])),
         )
 
         self.augment1 = default(augment_fn, DEFAULT_AUG)
