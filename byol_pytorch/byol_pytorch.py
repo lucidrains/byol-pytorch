@@ -142,11 +142,15 @@ class NetWrapper(nn.Module):
         assert hidden is not None, f'hidden layer {self.layer} never emitted an output'
         return hidden
 
-    def forward(self, x):
+    def forward(self, x, return_embedding = False):
         representation = self.get_representation(x)
+
+        if return_embedding:
+            return representation
+
         projector = self._get_projector(representation)
         projection = projector(representation)
-        return projection
+        return projection, representation
 
 # main class
 
@@ -217,19 +221,24 @@ class BYOL(nn.Module):
         assert self.target_encoder is not None, 'target encoder has not been created yet'
         update_moving_average(self.target_ema_updater, self.target_encoder, self.online_encoder)
 
-    def forward(self, x):
+    def forward(self, x, return_embedding = False):
+        if return_embedding:
+            return self.online_encoder(x)
+
         image_one, image_two = self.augment1(x), self.augment2(x)
 
-        online_proj_one = self.online_encoder(image_one)
-        online_proj_two = self.online_encoder(image_two)
+        online_proj_one, _ = self.online_encoder(image_one)
+        online_proj_two, _ = self.online_encoder(image_two)
 
         online_pred_one = self.online_predictor(online_proj_one)
         online_pred_two = self.online_predictor(online_proj_two)
 
         with torch.no_grad():
             target_encoder = self._get_target_encoder() if self.use_momentum else self.online_encoder
-            target_proj_one = target_encoder(image_one).detach()
-            target_proj_two = target_encoder(image_two).detach()
+            target_proj_one, _ = target_encoder(image_one)
+            target_proj_two, _ = target_encoder(image_two)
+            target_proj_one.detach_()
+            target_proj_two.detach_()
 
         loss_one = loss_fn(online_pred_one, target_proj_two.detach())
         loss_two = loss_fn(online_pred_two, target_proj_one.detach())

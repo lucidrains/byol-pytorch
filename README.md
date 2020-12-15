@@ -143,6 +143,25 @@ learner = BYOL(
 )
 ```
 
+To fetch the embeddings or the projections, you simply have to pass in a `return_embeddings = True` flag to the `BYOL` learner instance
+
+```python
+import torch
+from byol_pytorch import BYOL
+from torchvision import models
+
+resnet = models.resnet50(pretrained=True)
+
+learner = BYOL(
+    resnet,
+    image_size = 256,
+    hidden_layer = 'avgpool'
+)
+
+imgs = torch.randn(2, 3, 256, 256)
+projection, embedding = learner(imgs, return_embedding = True)
+```
+
 ## Citation
 
 ```bibtex
