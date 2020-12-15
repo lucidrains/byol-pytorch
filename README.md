@@ -14,6 +14,8 @@ Update 2: A <a href="https://arxiv.org/abs/2010.10241">new paper</a> has success
 
 <a href="https://www.youtube.com/watch?v=YPfUiOMYOEE">Yannic Kilcher's excellent explanation</a>
 
+Now go save your organization from having to pay for labels :)
+
 ## Install
 
 ```bash
