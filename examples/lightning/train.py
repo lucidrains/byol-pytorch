@@ -52,7 +52,8 @@ class SelfSupervisedLearner(pl.LightningModule):
         return torch.optim.Adam(self.parameters(), lr=LR)
 
     def on_before_zero_grad(self, _):
-        self.learner.update_moving_average()
+        if self.learner.use_momentum:
+            self.learner.update_moving_average()
 
 # images dataset
 
