@@ -164,6 +164,12 @@ imgs = torch.randn(2, 3, 256, 256)
 projection, embedding = learner(imgs, return_embedding = True)
 ```
 
+## Alternatives
+
+If your downstream task involves segmentation, please look at the following repository, which extends BYOL to 'pixel'-level learning.
+
+https://github.com/lucidrains/pixel-level-contrastive-learning
+
 ## Citation
 
 ```bibtex
