@@ -109,8 +109,6 @@ learner = BYOL(
 
 By default, this library will use the augmentations from the SimCLR paper (which is also used in the BYOL paper). However, if you would like to specify your own augmentation pipeline, you can simply pass in your own custom augmentation function with the `augment_fn` keyword.
 
-Augmentations must work in the tensor space. `kornia` library is highly recommended for this. If you decide to use torchvision augmentations, make sure the tensor is first converted to PIL `.toPILImage()`, and then back to tensors `.ToTensor()`
-
 ```python
 augment_fn = nn.Sequential(
     kornia.augmentation.RandomHorizontalFlip()
