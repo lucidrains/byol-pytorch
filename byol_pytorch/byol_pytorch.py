@@ -168,6 +168,7 @@ class BYOL(nn.Module):
         use_momentum = True
     ):
         super().__init__()
+        self.net = net
 
         # default SimCLR augmentation
 
