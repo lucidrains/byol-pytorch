@@ -102,7 +102,7 @@ class NetWrapper(nn.Module):
         self.projection_size = projection_size
         self.projection_hidden_size = projection_hidden_size
 
-        self.hidden = None
+        self.hidden = {}
         self.hook_registered = False
 
     def _find_layer(self):
@@ -114,8 +114,9 @@ class NetWrapper(nn.Module):
             return children[self.layer]
         return None
 
-    def _hook(self, _, __, output):
-        self.hidden = flatten(output)
+    def _hook(self, _, input, output):
+        device = input[0].device
+        self.hidden[device] = flatten(output)
 
     def _register_hook(self):
         layer = self._find_layer()
@@ -136,9 +137,10 @@ class NetWrapper(nn.Module):
         if not self.hook_registered:
             self._register_hook()
 
+        self.hidden = {}
         _ = self.net(x)
-        hidden = self.hidden
-        self.hidden = None
+        hidden = self.hidden[x.device]
+
         assert hidden is not None, f'hidden layer {self.layer} never emitted an output'
         return hidden
 
