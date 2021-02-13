@@ -137,9 +137,10 @@ class NetWrapper(nn.Module):
         if not self.hook_registered:
             self._register_hook()
 
-        self.hidden = {}
+        self.hidden.clear()
         _ = self.net(x)
         hidden = self.hidden[x.device]
+        self.hidden.clear()
 
         assert hidden is not None, f'hidden layer {self.layer} never emitted an output'
         return hidden
