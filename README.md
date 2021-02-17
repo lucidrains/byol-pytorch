@@ -12,6 +12,8 @@ Update 1: There is now <a href="https://untitled-ai.github.io/understanding-self
 
 Update 2: A <a href="https://arxiv.org/abs/2010.10241">new paper</a> has successfully replaced batch norm with group norm + weight standardization, refuting that batch statistics are needed for BYOL to work
 
+Update 3: Finally, we have <a href="https://arxiv.org/abs/2102.06810">some analysis</a> for why this works
+
 <a href="https://www.youtube.com/watch?v=YPfUiOMYOEE">Yannic Kilcher's excellent explanation</a>
 
 Now go save your organization from having to pay for labels :)
