@@ -227,7 +227,7 @@ class BYOL(nn.Module):
 
     def forward(self, x, return_embedding = False):
         if return_embedding:
-            return self.online_encoder(x)
+            return self.online_encoder(x, True)
 
         image_one, image_two = self.augment1(x), self.augment2(x)
 
