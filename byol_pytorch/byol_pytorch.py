@@ -145,10 +145,10 @@ class NetWrapper(nn.Module):
         assert hidden is not None, f'hidden layer {self.layer} never emitted an output'
         return hidden
 
-    def forward(self, x, return_embedding = False):
+    def forward(self, x, return_projection = True):
         representation = self.get_representation(x)
 
-        if return_embedding:
+        if not return_projection:
             return representation
 
         projector = self._get_projector(representation)
@@ -225,9 +225,14 @@ class BYOL(nn.Module):
         assert self.target_encoder is not None, 'target encoder has not been created yet'
         update_moving_average(self.target_ema_updater, self.target_encoder, self.online_encoder)
 
-    def forward(self, x, return_embedding = False):
+    def forward(
+        self,
+        x,
+        return_embedding = False,
+        return_projection = True
+    ):
         if return_embedding:
-            return self.online_encoder(x, True)
+            return self.online_encoder(x, return_projection = return_projection)
 
         image_one, image_two = self.augment1(x), self.augment2(x)
 
