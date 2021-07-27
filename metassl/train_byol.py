@@ -24,34 +24,33 @@ print("CUDA", torch.cuda.is_available())
 
 
 def train_model(config, logger, checkpoint):
-    cfg = config
-    log = logger
-    ckp = checkpoint
-    log.print_config(cfg)
+    logger.print_config(config)
     
-    np.random.seed(cfg.train.seed)
-    torch.manual_seed(cfg.train.seed)
-    random.seed(cfg.train.seed)
+    np.random.seed(config.train.seed)
+    torch.manual_seed(config.train.seed)
+    random.seed(config.train.seed)
+    
     if torch.cuda.is_available():
-        torch.cuda.manual_seed(cfg.train.seed)
+        torch.cuda.manual_seed(config.train.seed)
     
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     
     train_loader, valid_loader = get_train_valid_loader(
-        data_dir=cfg.data.data_dir,
-        batch_size=cfg.train.batch_size,
-        random_seed=cfg.data.seed,
-        augment=cfg.data.augment,
-        dataset_name=cfg.data.dataset,
+        data_dir=config.data.data_dir,
+        batch_size=config.train.batch_size,
+        random_seed=config.data.seed,
+        augment=config.data.augment,
+        dataset_name=config.data.dataset,
         num_workers=1,
         pin_memory=False,
         download=False,
         )
+    
     test_loader = get_test_loader(
-        data_dir=cfg.data.data_dir,
-        batch_size=cfg.train.batch_size,
+        data_dir=config.data.data_dir,
+        batch_size=config.train.batch_size,
         shuffle=False,
-        dataset_name=cfg.data.dataset,
+        dataset_name=config.data.dataset,
         num_workers=1,
         pin_memory=False,
         download=False,
@@ -59,22 +58,22 @@ def train_model(config, logger, checkpoint):
     
     out_size = len(train_loader.dataset.classes)
     
-    log("device", device)
-    log("train dataset shape", train_loader.dataset.data.shape)
-    log("out_size", out_size)
+    logger("device", device)
+    logger("train dataset shape", train_loader.dataset.data.shape)
+    logger("out_size", out_size)
     
-    if cfg.model.model_type == "resnet18":
+    if config.model.model_type == "resnet18":
         model = resnet18(num_classes=out_size).to(device)
         # model = resnet20(num_classes=out_size).to(device)
-    elif cfg.model.model_type == "resnet50":
+    elif config.model.model_type == "resnet50":
         model = resnet50(num_classes=out_size).to(device)
         # model = resnet56(num_classes=out_size).to(device)
     
-    log.log("model_parameters", count_parameters(model.parameters()))
+    logger.log("model_parameters", count_parameters(model.parameters()))
     
     summary_dict = SummaryDict()
     
-    log("START initial validation")
+    logger("START initial validation")
     
     valid_loss, accuracy = test(model, device, valid_loader)
     summary_dict["step"] = 0
@@ -84,18 +83,18 @@ def train_model(config, logger, checkpoint):
     summary_dict["learning_rate"] = 0
     
     iter_per_epoch = len(train_loader)
-    max_steps = cfg.train.epochs * iter_per_epoch
-    log("iter_per_epoch", iter_per_epoch)
-    log("max_steps", max_steps)
+    max_steps = config.train.epochs * iter_per_epoch
+    logger("iter_per_epoch", iter_per_epoch)
+    logger("max_steps", max_steps)
     
-    optimizer = MyOptimizer(0, model.parameters(), max_steps, iter_per_epoch, **cfg.optim.get_dict)
+    optimizer = MyOptimizer(0, model.parameters(), max_steps, iter_per_epoch, **config.optim.get_dict)
     
     criterion = nn.CrossEntropyLoss().to(device)
     
-    for epoch in range(cfg.train.epochs):
+    for epoch in range(config.train.epochs):
         
-        log(f"START epoch {epoch}")
-        log.start_timer("train")
+        logger(f"START epoch {epoch}")
+        logger.start_timer("train")
         
         model.train()
         train_loss = []
@@ -109,15 +108,15 @@ def train_model(config, logger, checkpoint):
             optimizer.step(step, valid_loss)
             train_loss.append(loss.detach().cpu().numpy())
             
-            if step % 100 == 0:
+            if step % config.train.eval_freq == 0:
                 pred = output.argmax(dim=1, keepdim=True)  # get the index of the max log-probability
                 correct = pred.eq(target.view_as(pred)).sum().item()
                 print(
-                    f"Epoch {epoch:{5}} / {cfg.train.epochs:{5}}, Accuracy {100 * correct / cfg.train.batch_size:{2}.2f}%, Loss"
+                    f"Epoch {epoch:{5}} / {config.train.epochs:{5}}, Accuracy {100 * correct / config.train.batch_size:{2}.2f}%, Loss"
                     f" {loss.item():.5f}"
                     )
         
-        log.timer("train", epoch)
+        logger.timer("train", epoch)
         
         valid_loss, accuracy = test(model, device, valid_loader)
         summary_dict["step"] = epoch + 1
@@ -125,21 +124,21 @@ def train_model(config, logger, checkpoint):
         summary_dict["valid_loss"] = valid_loss
         summary_dict["valid_accuracy"] = accuracy
         summary_dict["learning_rate"] = optimizer._rate
-        log("train_loss", np.mean(train_loss), epoch)
-        log("valid_loss", valid_loss, epoch)
-        log("valid_accuracy", accuracy, epoch)
-        log("learning_rate", optimizer._rate, epoch)
+        logger("train_loss", np.mean(train_loss), epoch)
+        logger("valid_loss", valid_loss, epoch)
+        logger("valid_accuracy", accuracy, epoch)
+        logger("learning_rate", optimizer._rate, epoch)
         
-        summary_dict.save(ckp.dir / "summary_dict.npy")
+        summary_dict.save(checkpoint.dir / "summary_dict.npy")
     
     # TEST FINAL MODEL
     test_loss, test_accuracy = test(model, device, test_loader)
     summary_dict["test_loss"] = test_loss
     summary_dict["test_accuracy"] = test_accuracy
-    log("test_loss", test_loss, epoch)
-    log("test_accuracy", test_accuracy, epoch)
+    logger("test_loss", test_loss, epoch)
+    logger("test_accuracy", test_accuracy, epoch)
     
-    summary_dict.save(ckp.dir / "summary_dict.npy")
+    summary_dict.save(checkpoint.dir / "summary_dict.npy")
 
 
 def test(model, device, test_loader):
@@ -193,9 +192,9 @@ if __name__ == "__main__":
             "resume_optimizer": False,
             },
         "train":     {
-            # "eval_freq":        5,
+            "eval_freq":  100,
             "seed":       123,
-            "batch_size": 128,
+            "batch_size": 512,
             "epochs":     200,
             },
         "criterion": {
@@ -203,22 +202,20 @@ if __name__ == "__main__":
             
             },
         "model":     {
-            "model_type": "resnet18",  # resnet18, resnet50,
+            "model_type": "resnet50",  # resnet18, resnet50,
             "seed":       123,
             
             },
         "optim":     {
-            "optimizer":        "adam",  # adam adamW rmsprop adabelief sgd
-            "schedule":         "const",  # noam cosine cosineWarm plateau step exponential const (set lr_low==lr_high)
+            "optimizer":        "sgd",  # adam adamW rmsprop adabelief sgd
+            "schedule":         "cosine",  # noam cosine cosineWarm plateau step exponential const (set lr_low==lr_high)
             "warmup":           1000,  # 0 (turned off) or higher (e.g. 1000 ~ 5 epochs at batch size 256 on CIFAR100)
             "factor":           0.1,  # 1.0
             "lr_low":           0.1,
             "lr_high":          0.1,
             "clip_grad":        False,
             "weight_decay":     0.0001,
-            "scheduler_epochs": 80,
-            # after how many epochs should the scheduler execute a step, only used in step, cosine,
-            # cosineWarm
+            "scheduler_epochs": 80,  # after how many epochs should the scheduler execute a step, only used in step, cosine, cosineWarm
             },
         "data":      {
             "seed":     123,
