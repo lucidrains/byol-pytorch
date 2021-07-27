@@ -1,10 +1,15 @@
+import warnings
+
+warnings.filterwarnings('ignore')
 import os
 import pathlib
 import random
+import yaml
 
 import numpy as np
 import torch
 from torch import nn
+
 # original torchvision resnet implementation:
 from torchvision.models import resnet18, resnet50  # torchvision (for ImageNet)
 
@@ -33,7 +38,7 @@ def train_model(config, logger, checkpoint):
     if torch.cuda.is_available():
         torch.cuda.manual_seed(config.train.seed)
     
-    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
     train_loader, valid_loader = get_train_valid_loader(
         data_dir=config.data.data_dir,
@@ -66,6 +71,11 @@ def train_model(config, logger, checkpoint):
     elif config.model.model_type == "resnet50":
         model = resnet50(num_classes=out_size).to(device)
         # model = resnet56(num_classes=out_size).to(device)
+    
+    if torch.cuda.device_count() > 1 and config.expt.ddp:
+        logger.log("Using DDP with # GPUs", torch.cuda.device_count())
+        model = nn.DataParallel(model)
+        model.to(device)
     
     logger.log("model_parameters", count_parameters(model.parameters()))
     
@@ -160,7 +170,7 @@ def test(model, device, test_loader):
     return test_loss, accuracy
 
 
-def create_support_training(config, expt_dir):
+def begin_training(config, expt_dir):
     expt_dir = pathlib.Path(expt_dir)
     
     if config['expt']['resume_training']:
@@ -179,52 +189,10 @@ if __name__ == "__main__":
     
     user = os.environ.get('USER')
     
-    config = {
-        "expt":      {
-            "project_name":     "metassl",
-            "session_name":     "development",
-            "experiment_name":  "byol_1",
-            "job_name":         "local_run",
-            "save_model":       False,
-            "resume_training":  False,
-            "resume_optimizer": False,
-            },
-        "train":     {
-            "eval_freq":  1,
-            "seed":       123,
-            "batch_size": 16,
-            "epochs":     200,
-            },
-        "criterion": {
-            # "loss":             "cross_entropy",  # geco elbo cross_entropy label_smoothing bce sce bf1 sf1
-            
-            },
-        "model":     {
-            "model_type": "resnet50",  # resnet18, resnet50,
-            "seed":       123,
-            
-            },
-        "optim":     {
-            "optimizer":        "sgd",  # adam adamW rmsprop adabelief sgd
-            "schedule":         "cosine",  # noam cosine cosineWarm plateau step exponential const (set lr_low==lr_high)
-            "warmup":           1000,  # 0 (turned off) or higher (e.g. 1000 ~ 5 epochs at batch size 256 on CIFAR100)
-            "factor":           0.1,  # 1.0
-            "lr_low":           0.1,
-            "lr_high":          0.1,
-            "clip_grad":        False,
-            "weight_decay":     0.0001,
-            "scheduler_epochs": 80,  # after how many epochs should the scheduler execute a step, only used in step, cosine, cosineWarm
-            },
-        "data":      {
-            "seed":     123,
-            "data_dir": f'/home/{user}/workspace/data/metassl',
-            "dataset":  "ImageNet",  # CIFAR10, CIFAR100, ImageNet
-            },
-            
-        }
+    with open("metassl/default_config.yaml", "r") as f:
+        config = yaml.load(f)
     
     expt_dir = f"/home/{user}/workspace/experiments/metassl"
     config['data']['data_dir'] = f'/home/{user}/workspace/data/metassl'
     
-    print("TRAIN LOCAL")
-    create_support_training(config=config, expt_dir=expt_dir)
+    begin_training(config=config, expt_dir=expt_dir)
