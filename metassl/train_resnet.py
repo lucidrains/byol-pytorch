@@ -74,8 +74,7 @@ def train_model(config, logger, checkpoint):
     
     if torch.cuda.device_count() > 1 and config.expt.ddp:
         logger.log("Using DDP with # GPUs", torch.cuda.device_count())
-        model = nn.DataParallel(model)
-        model.to(device)
+        model = nn.DataParallel(model).to(device)
     
     logger.log("model_parameters", count_parameters(model.parameters()))
     

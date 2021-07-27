@@ -2,7 +2,7 @@
 
 JOB_NAME="b001"
 
-SESSION="metassl_1"
+SESSION="ddp_resnet50_imagenet"
 
 
 #PARTITION="ml_gpu-rtx2080"
@@ -13,7 +13,7 @@ PARTITION="alldlc_gpu-rtx2080"
 #PARTITION="mldlc_gpu-rtx2080"
 
 GPUS=8
-CPUS=2
+CPUS=64
 
 START=0
 
@@ -39,16 +39,17 @@ JOBS=`expr $JOBS - 1`
 for i in `seq $START $JOBS`;
 do
   LOG_FILE="/home/"$USER"/workspace/experiments/metassl/logs/""$JOB_NAME""_""$i"".out"
-  echo "DO.submit: start job $i - logfile at $LOG_FILE"
+  ERR_FILE="/home/"$USER"/workspace/experiments/metassl/logs/""$JOB_NAME""_""$i"".err"
+  echo "DO.submit: start job $i - logfile at $LOG_FILE - error file at $ERR_FILE"
 
   job_name="$JOB_NAME""_""$i"
 
   if [ $PARTITION == "bosch_gpu-rtx2080" ]; then
-    sbatch -p $PARTITION -c $CPUS -t 14-00:00 --gres=gpu:$GPUS --priority=10000 --bosch --job-name=$job_name -o $LOG_FILE $1 $WORKFOLDER/cluster/meta_worker.sh $i $job_name $SESSION
+    sbatch -p $PARTITION -c $CPUS -t 14-00:00 --gres=gpu:$GPUS --priority=10000 --bosch --job-name=$job_name -o $LOG_FILE -e $ERR_FILE $1 $WORKFOLDER/cluster/meta_worker.sh $i $job_name $SESSION
   elif [ $PARTITION == "alldlc_gpu-rtx2080" ]; then
-    sbatch -p $PARTITION -c $CPUS -t 1-00:00 --gres=gpu:$GPUS --priority=10000 --job-name=$job_name -o $LOG_FILE $1 $WORKFOLDER/cluster/meta_worker.sh $i $job_name $SESSION
+    sbatch -p $PARTITION -c $CPUS -t 1-00:00 --gres=gpu:$GPUS --priority=10000 --job-name=$job_name -o $LOG_FILE -e $ERR_FILE $1 $WORKFOLDER/cluster/meta_worker.sh $i $job_name $SESSION
   else
-    sbatch -p $PARTITION -c $CPUS -t 6-00:00 --gres=gpu:$GPUS --priority=10000 --job-name=$job_name -o $LOG_FILE $1 $WORKFOLDER/cluster/meta_worker.sh $i $job_name $SESSION
+    sbatch -p $PARTITION -c $CPUS -t 6-00:00 --gres=gpu:$GPUS --priority=10000 --job-name=$job_name -o $LOG_FILE -e $ERR_FILE $1 $WORKFOLDER/cluster/meta_worker.sh $i $job_name $SESSION
   fi
   sleep 1
 done
