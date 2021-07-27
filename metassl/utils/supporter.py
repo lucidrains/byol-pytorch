@@ -1,8 +1,8 @@
 import pathlib
-from boho.utils.handler.config import ConfigHandler
-from boho.utils.logger import Logger
-from boho.utils.handler.folder import FolderHandler
-from boho.utils.handler.checkpoint import CheckpointHandler
+from metassl.utils.handler.config import ConfigHandler
+from metassl.utils.logger import Logger
+from metassl.utils.handler.folder import FolderHandler
+from metassl.utils.handler.checkpoint import CheckpointHandler
 
 
 class Supporter():
