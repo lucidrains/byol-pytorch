@@ -1,6 +1,6 @@
 import pathlib
 
-from boho.utils.handler.base_handler import Handler
+from metassl.utils.handler.base_handler import Handler
 
 """
 Handle the location, new folders and experiments sub-folder structure.

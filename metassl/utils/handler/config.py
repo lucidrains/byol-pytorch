@@ -2,7 +2,7 @@ import os
 import yaml
 import pathlib
 
-from boho.utils.handler.base_handler import Handler
+from metassl.utils.handler.base_handler import Handler
 
 """
 reads a yml config or a dict and safes it into experiment folder

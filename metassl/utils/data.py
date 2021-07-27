@@ -2,13 +2,15 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torchvision.transforms as transforms
+from PIL import Image
 from torch.utils.data.sampler import SubsetRandomSampler
+import torchvision.datasets as datasets  # do not remove this
+from metassl.utils.imagenet import ImageNet
 
 
 def get_train_valid_loader(
     data_dir,
     batch_size,
-    augment,
     random_seed,
     valid_size=0.1,
     shuffle=True,
@@ -51,67 +53,88 @@ def get_train_valid_loader(
         exit()
     
     dataset = eval("datasets." + dataset_name)
-    print(f"using train/valid dataset: {dataset}")
+    print(f"using dataset: {dataset}")
     
     if dataset_name == "CIFAR10":
-        normalize = transforms.Normalize(
-            mean=[0.4914, 0.4822, 0.4465],
-            std=[0.2023, 0.1994, 0.2010],
-            )
-    elif dataset_name == "CIFAR100":
-        normalize = transforms.Normalize(
-            mean=(0.5071, 0.4865, 0.4409),
-            std=(0.2673, 0.2564, 0.2762)
-            )
-    elif dataset_name == "ImageNet":
-        normalize = transforms.Normalize(
-            mean=(0.485, 0.456, 0.406),
-            std=(0.229, 0.224, 0.225)
-            )
-    else:
-        # not supported
-        raise TypeError("Unsupported dataset specified.")
-    
-    # define transforms
-    valid_transform = transforms.Compose(
-        [
-            transforms.ToTensor(),
-            normalize,
-            ]
-        )
-    if augment:
         train_transform = transforms.Compose(
             [
                 transforms.RandomCrop(32, padding=4),
                 transforms.RandomHorizontalFlip(),
                 transforms.ToTensor(),
-                normalize,
+                transforms.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.2023, 0.1994, 0.2010])
+                ]
+            )
+        
+        valid_transform = transforms.Compose(
+            [
+                transforms.ToTensor(),
+                transforms.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.2023, 0.1994, 0.2010])
+                
+                ]
+            )
+    
+    elif dataset_name == "CIFAR100":
+        train_transform = transforms.Compose(
+            [
+                transforms.RandomCrop(32, padding=4),
+                transforms.RandomHorizontalFlip(),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=(0.5071, 0.4865, 0.4409), std=(0.2673, 0.2564, 0.2762))
+                ]
+            )
+        
+        valid_transform = transforms.Compose(
+            [
+                transforms.ToTensor(),
+                transforms.Normalize(mean=(0.5071, 0.4865, 0.4409), std=(0.2673, 0.2564, 0.2762))
+                ]
+            )
+    
+    elif dataset_name == "ImageNet":
+        train_transform = transforms.Compose(
+            [
+                transforms.RandomResizedCrop((224, 224), scale=(0.08, 1.0), interpolation=Image.BICUBIC),
+                transforms.RandomHorizontalFlip(),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+                ]
+            )
+        valid_transform = transforms.Compose(
+            [
+                transforms.Resize(256, interpolation=Image.BICUBIC),
+                transforms.CenterCrop((224, 224)),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
                 ]
             )
     else:
-        train_transform = transforms.Compose(
-            [
-                transforms.ToTensor(),
-                normalize,
-                ]
-            )
+        # not supported
+        raise ValueError('invalid dataset name=%s' % dataset)
     
     if dataset_name == "ImageNet":
         # hardcoded for now
         root = "/data/datasets/ImageNet/imagenet-pytorch"
+        # load the dataset
+        train_dataset = ImageNet(
+            root=root, split='train',
+            transform=train_transform, ignore_archive=True,
+            )
+        
+        valid_dataset = ImageNet(
+            root=root, split='train',
+            transform=valid_transform, ignore_archive=True,
+            )
     else:
-        root = data_dir
-    
-    # load the dataset
-    train_dataset = dataset(
-        root=root, train=True,
-        download=download, transform=train_transform,
-        )
-    
-    valid_dataset = dataset(
-        root=root, train=True,
-        download=download, transform=valid_transform,
-        )
+        # load the dataset
+        train_dataset = dataset(
+            root=data_dir, train=True,
+            download=download, transform=train_transform,
+            )
+        
+        valid_dataset = dataset(
+            root=data_dir, train=True,
+            download=download, transform=valid_transform,
+            )
     
     num_train = len(train_dataset)
     indices = list(range(num_train))
@@ -180,7 +203,6 @@ def get_test_loader(
         exit()
     
     dataset = eval("datasets." + dataset_name)
-    print(f"using test dataset: {dataset}")
     
     # normalize = transforms.Normalize(
     #    mean=[0.485, 0.456, 0.406],
@@ -188,39 +210,49 @@ def get_test_loader(
     # )
     
     if dataset_name == "CIFAR10":
-        normalize = transforms.Normalize(
-            mean=[0.4914, 0.4822, 0.4465],
-            std=[0.2023, 0.1994, 0.2010],
+        transform = transforms.Compose(
+            [
+                transforms.ToTensor(),
+                transforms.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.2023, 0.1994, 0.2010])
+                ]
             )
+    
     elif dataset_name == "CIFAR100":
-        normalize = transforms.Normalize(
-            mean=(0.5071, 0.4865, 0.4409),
-            std=(0.2673, 0.2564, 0.2762)
+        transform = transforms.Compose(
+            [
+                transforms.ToTensor(),
+                transforms.Normalize(mean=[0.5071, 0.4865, 0.4409], std=[0.2673, 0.2564, 0.2762])
+                ]
             )
+    
     elif dataset_name == "ImageNet":
-        normalize = transforms.Normalize(
-            mean=(0.485, 0.456, 0.406),
-            std=(0.229, 0.224, 0.225)
+        transform = transforms.Compose(
+            [
+                transforms.Resize(256, interpolation=Image.BICUBIC),
+                transforms.CenterCrop((224, 244)),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+                ]
+            )
+    
+    else:
+        # not supported
+        raise ValueError('invalid dataset name=%s' % dataset)
+    
+    if dataset_name == "ImageNet":
+        # hardcoded for now
+        root = "/data/datasets/ImageNet/imagenet-pytorch"
+        # load the dataset
+        dataset = ImageNet(
+            root=root, split="val",
+            transform=transform, ignore_archive=True,
             )
     else:
-        # use CIFAR-100 normalization
-        normalize = transforms.Normalize(
-            mean=(0.5071, 0.4865, 0.4409),
-            std=(0.2673, 0.2564, 0.2762)
+        # load the dataset
+        dataset = dataset(
+            root=data_dir, train=False,
+            download=download, transform=transform,
             )
-    
-    # define transform
-    transform = transforms.Compose(
-        [
-            transforms.ToTensor(),
-            normalize,
-            ]
-        )
-    
-    dataset = dataset(
-        root=data_dir, train=False,
-        download=download, transform=transform,
-        )
     
     data_loader = torch.utils.data.DataLoader(
         dataset, batch_size=batch_size, shuffle=shuffle,

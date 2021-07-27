@@ -8,7 +8,7 @@ from torch import nn
 # original torchvision resnet implementation:
 from torchvision.models import resnet18, resnet50  # torchvision (for ImageNet)
 
-from metassl.utils.image_utils import get_test_loader, get_train_valid_loader
+from metassl.utils.data import get_test_loader, get_train_valid_loader
 from metassl.utils.my_optimizer import MyOptimizer
 from metassl.utils.summary import SummaryDict
 from metassl.utils.supporter import Supporter
@@ -39,11 +39,10 @@ def train_model(config, logger, checkpoint):
         data_dir=config.data.data_dir,
         batch_size=config.train.batch_size,
         random_seed=config.data.seed,
-        augment=config.data.augment,
         dataset_name=config.data.dataset,
-        num_workers=1,
+        num_workers=50,
         pin_memory=False,
-        download=False,
+        download=True,
         )
     
     test_loader = get_test_loader(
@@ -51,15 +50,14 @@ def train_model(config, logger, checkpoint):
         batch_size=config.train.batch_size,
         shuffle=False,
         dataset_name=config.data.dataset,
-        num_workers=1,
+        num_workers=50,
         pin_memory=False,
-        download=False,
+        download=True,
         )
     
     out_size = len(train_loader.dataset.classes)
     
     logger("device", device)
-    logger("train dataset shape", train_loader.dataset.data.shape)
     logger("out_size", out_size)
     
     if config.model.model_type == "resnet18":
@@ -192,9 +190,9 @@ if __name__ == "__main__":
             "resume_optimizer": False,
             },
         "train":     {
-            "eval_freq":  100,
+            "eval_freq":  1,
             "seed":       123,
-            "batch_size": 512,
+            "batch_size": 16,
             "epochs":     200,
             },
         "criterion": {
@@ -221,7 +219,6 @@ if __name__ == "__main__":
             "seed":     123,
             "data_dir": f'/home/{user}/workspace/data/metassl',
             "dataset":  "ImageNet",  # CIFAR10, CIFAR100, ImageNet
-            "augment":  False,
             },
             
         }
