@@ -30,21 +30,23 @@ Simply plugin your neural network, specifying (1) the image dimensions as well a
 
 ```python
 import torch
-from byol_pytorch import BYOL
+from metassl.byol_pytorch import BYOL
 from torchvision import models
 
 resnet = models.resnet50(pretrained=True)
 
 learner = BYOL(
-    resnet,
-    image_size = 256,
-    hidden_layer = 'avgpool'
-)
+        resnet,
+        image_size=256,
+        hidden_layer='avgpool'
+        )
 
 opt = torch.optim.Adam(learner.parameters(), lr=3e-4)
 
+
 def sample_unlabelled_images():
     return torch.randn(20, 3, 256, 256)
+
 
 for _ in range(100):
     images = sample_unlabelled_images()
@@ -52,7 +54,7 @@ for _ in range(100):
     opt.zero_grad()
     loss.backward()
     opt.step()
-    learner.update_moving_average() # update moving average of target encoder
+    learner.update_moving_average()  # update moving average of target encoder
 
 # save your improved network
 torch.save(resnet.state_dict(), './improved-net.pt')
@@ -66,22 +68,24 @@ A <a href="https://arxiv.org/abs/2011.10566">new paper</a> from Kaiming He sugge
 
 ```python
 import torch
-from byol_pytorch import BYOL
+from metassl.byol_pytorch import BYOL
 from torchvision import models
 
 resnet = models.resnet50(pretrained=True)
 
 learner = BYOL(
-    resnet,
-    image_size = 256,
-    hidden_layer = 'avgpool',
-    use_momentum = False       # turn off momentum in the target encoder
-)
+        resnet,
+        image_size=256,
+        hidden_layer='avgpool',
+        use_momentum=False  # turn off momentum in the target encoder
+        )
 
 opt = torch.optim.Adam(learner.parameters(), lr=3e-4)
 
+
 def sample_unlabelled_images():
     return torch.randn(20, 3, 256, 256)
+
 
 for _ in range(100):
     images = sample_unlabelled_images()
@@ -149,19 +153,19 @@ To fetch the embeddings or the projections, you simply have to pass in a `return
 
 ```python
 import torch
-from byol_pytorch import BYOL
+from metassl.byol_pytorch import BYOL
 from torchvision import models
 
 resnet = models.resnet50(pretrained=True)
 
 learner = BYOL(
-    resnet,
-    image_size = 256,
-    hidden_layer = 'avgpool'
-)
+        resnet,
+        image_size=256,
+        hidden_layer='avgpool'
+        )
 
 imgs = torch.randn(2, 3, 256, 256)
-projection, embedding = learner(imgs, return_embedding = True)
+projection, embedding = learner(imgs, return_embedding=True)
 ```
 
 ## Alternatives
