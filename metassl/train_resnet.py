@@ -124,6 +124,15 @@ def train_model(config, logger, checkpoint):
                     f" {loss.item():.5f}"
                     )
         
+        if config.expt.save_model and epoch % 5 == 0:
+            checkpoint.save_training(
+                mode_state_dict=model.state_dict(),
+                optimizer_state_dict=optimizer.get_state_dict(),
+                epoch=epoch,
+                loss=train_loss,
+                number=epoch,
+                )
+        
         logger.timer("train", epoch)
         
         valid_loss, accuracy = test(model, device, valid_loader)

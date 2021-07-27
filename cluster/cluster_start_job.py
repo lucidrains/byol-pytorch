@@ -51,5 +51,5 @@ if __name__ == "__main__":
     print("config: ", config)
     print("start_cluster_training")
     
-    os.chdir(project_dir / "boho")
+    os.chdir(project_dir / "metassl")
     begin_training(config, expt_dir)

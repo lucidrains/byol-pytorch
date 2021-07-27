@@ -4,12 +4,12 @@ Remote Deployment
   -> create or select existing SSH config 
   -> Mappings -> set Deployment path (location of project on cluster)
 2) set Deployment in Python Interpreter
-- PyCharm Preferences -> go to Project: boho -> Python Interpreter ->  click on wheel -> add -> SSH interpreter 
+- PyCharm Preferences -> go to Project: metassl -> Python Interpreter ->  click on wheel -> add -> SSH interpreter 
   -> select previously created SSH config -> click next -> set remote python path (the one from your conda env) 
 3) when running .py file, choose the Deployment Python Interpreter
 
 
-/home/frankej/miniconda3/envs/boho/bin/python3
+/home/frankej/miniconda3/envs/metassl/bin/python3
 
 get IP address: ifconfig -a
 

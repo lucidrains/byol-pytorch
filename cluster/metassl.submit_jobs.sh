@@ -12,7 +12,7 @@ SESSION="metassl_1"
 PARTITION="alldlc_gpu-rtx2080"
 #PARTITION="mldlc_gpu-rtx2080"
 
-GPUS=1
+GPUS=8
 CPUS=2
 
 START=0
@@ -27,9 +27,9 @@ echo "create experiment configs"
 
 
 if [ $USER == "frankej" ]; then
-  JOBS=$(/home/frankej/miniconda3/bin/python $WORKFOLDER/metassl/cluster_create_configs_1.py --project_dir $WORKFOLDER --gpus $GPUS --sess $SESSION 2>&1)
+  JOBS=$(/home/frankej/miniconda3/bin/python $WORKFOLDER/metassl/cluster_create_ddp_resnet_base_training.py --project_dir $WORKFOLDER --gpus $GPUS --sess $SESSION 2>&1)
 elif [ $USER == "ferreira" ]; then
-  JOBS=$(/home/ferreira/.miniconda/envs/metassl/bin/python $WORKFOLDER/metassl/cluster_create_configs_1.py --project_dir $WORKFOLDER --gpus $GPUS --sess $SESSION 2>&1)
+  JOBS=$(/home/ferreira/.miniconda/envs/metassl/bin/python $WORKFOLDER/metassl/cluster_create_ddp_resnet_base_training.py --project_dir $WORKFOLDER --gpus $GPUS --sess $SESSION 2>&1)
 fi
 
 
@@ -44,7 +44,7 @@ do
   job_name="$JOB_NAME""_""$i"
 
   if [ $PARTITION == "bosch_gpu-rtx2080" ]; then
-    sbatch -p $PARTITION -c $CPUS -t 6-00:00 --gres=gpu:$GPUS --priority=10000 --bosch --job-name=$job_name -o $LOG_FILE $1 $WORKFOLDER/cluster/meta_worker.sh $i $job_name $SESSION
+    sbatch -p $PARTITION -c $CPUS -t 14-00:00 --gres=gpu:$GPUS --priority=10000 --bosch --job-name=$job_name -o $LOG_FILE $1 $WORKFOLDER/cluster/meta_worker.sh $i $job_name $SESSION
   elif [ $PARTITION == "alldlc_gpu-rtx2080" ]; then
     sbatch -p $PARTITION -c $CPUS -t 1-00:00 --gres=gpu:$GPUS --priority=10000 --job-name=$job_name -o $LOG_FILE $1 $WORKFOLDER/cluster/meta_worker.sh $i $job_name $SESSION
   else
