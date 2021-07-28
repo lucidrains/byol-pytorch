@@ -59,4 +59,4 @@ if __name__ == "__main__":
     print("start_cluster_training")
     
     os.chdir(project_dir / "metassl")
-    begin_training(config, expt_dir, data_dir)
+    begin_training(config, expt_dir)
