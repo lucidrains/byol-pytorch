@@ -53,6 +53,7 @@ if __name__ == "__main__":
         job_name = args.job_name
         
     config['expt']['job_name'] = job_name
+    config['expt']['session_name'] = session
     config['data']['data_dir'] = data_dir
     
     print("config: ", config)

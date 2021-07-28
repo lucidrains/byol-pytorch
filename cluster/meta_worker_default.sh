@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-echo "meta worker: start job-id $1 -name $2 -session 3"
+echo "meta worker: start default config job -job_name $4 -sess $5"
 if [ $USER == "frankej" ]; then
   source /home/frankej/miniconda3/etc/profile.d/conda.sh
   conda activate metassl
