@@ -31,8 +31,8 @@ elif [ $USER == "ferreira" ]; then
   source /home/ferreira/.miniconda/bin/activate metassl
 fi
 
-LOG_FILE="/home/"$USER"/workspace/experiments/metassl/logs/""$JOB_NAME".out"
-ERR_FILE="/home/"$USER"/workspace/experiments/metassl/logs/""$JOB_NAME".err"
+LOG_FILE="/home/"$USER"/workspace/experiments/metassl/logs/"$JOB_NAME".out"
+ERR_FILE="/home/"$USER"/workspace/experiments/metassl/logs/"$JOB_NAME".err"
 echo "DO.submit: start default config job $JOB_NAME - logfile at $LOG_FILE - error file at $ERR_FILE"
 
 if [ $PARTITION == "bosch_gpu-rtx2080" ]; then
