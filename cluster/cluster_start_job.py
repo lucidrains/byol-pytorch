@@ -21,7 +21,7 @@ if __name__ == "__main__":
     if args.project_dir == False:
         print("no arguments in start experiment")
         project_dir = pathlib.Path(f"/home/{os.environ['USER']}/workspace/metassl/")
-        expt_dir = pathlib.Path(f"/home/{os.environ['USER']}/workspace/experiments/tmp/")
+        expt_dir = pathlib.Path(f"/home/{os.environ['USER']}/workspace/experiments/metassl/")
         job_idx = 0
         job_name = "local_run"
         data_dir = f"/home/{os.environ['USER']}/workspace/data/metassl"

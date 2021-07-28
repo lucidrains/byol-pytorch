@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 
-JOB_NAME="b001"
-
-SESSION="ddp_resnet50_imagenet"
+JOB_NAME="j001"
+SESSION="resnet50_supervised_imagenet"
 
 
 #PARTITION="ml_gpu-rtx2080"
@@ -27,9 +26,9 @@ echo "create experiment configs"
 
 
 if [ $USER == "frankej" ]; then
-  JOBS=$(/home/frankej/miniconda3/bin/python $WORKFOLDER/cluster/cluster_create_ddp_resnet_base_training.py --project_dir $WORKFOLDER --gpus $GPUS --sess $SESSION 2>&1)
+  JOBS=$(/home/frankej/miniconda3/bin/python $WORKFOLDER/cluster/cluster_create_resnet_training.py --project_dir $WORKFOLDER --gpus $GPUS --sess $SESSION 2>&1)
 elif [ $USER == "ferreira" ]; then
-  JOBS=$(/home/ferreira/.miniconda/envs/metassl/bin/python $WORKFOLDER/cluster/cluster_create_ddp_resnet_base_training.py --project_dir $WORKFOLDER --gpus $GPUS --sess $SESSION 2>&1)
+  JOBS=$(/home/ferreira/.miniconda/envs/metassl/bin/python $WORKFOLDER/cluster/cluster_create_resnet_training.py --project_dir $WORKFOLDER --gpus $GPUS --sess $SESSION 2>&1)
 fi
 
 

@@ -109,6 +109,8 @@ def train_model(config, logger, checkpoint):
             data, target = data.to(device), target.to(device)
             output = model(data)
             
+            
+            
             optimizer.zero_grad()
             loss = criterion(output, target)
             loss.backward()
