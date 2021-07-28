@@ -47,6 +47,7 @@ if __name__ == "__main__":
     with open(config_file, 'r') as f:
         config = yaml.load(f, Loader=yaml.Loader)
     
+    print(args.job_name)
     if args.job_name == False:
         job_name = "default_config"
     else:
@@ -54,6 +55,7 @@ if __name__ == "__main__":
         
     config['expt']['job_name'] = job_name
     config['expt']['session_name'] = session
+    config['expt']['experiment_name'] = "default_config"
     config['data']['data_dir'] = data_dir
     
     print("config: ", config)
