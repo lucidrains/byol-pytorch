@@ -82,7 +82,10 @@ def train_model(config, logger, checkpoint):
     
     logger("START initial validation")
     
-    valid_loss, accuracy = test(model, device, valid_loader)
+    # valid_loss, accuracy = test(model, device, valid_loader)
+    valid_loss = 0 # todo: remove
+    accuracy = 0
+    
     summary_dict["step"] = 0
     summary_dict["valid_loss"] = valid_loss
     summary_dict["valid_accuracy"] = accuracy
@@ -100,10 +103,7 @@ def train_model(config, logger, checkpoint):
     
     epoch_resume = 0
     if config.expt.resume_training:
-        model_state_dict, optimizer_state_dict, epoch_resume, _ = checkpoint.load_newest_training()
-        model.load_state_dict(model_state_dict)
-        optimizer.load_state_dict(optimizer_state_dict)
-        logger(f"RESUMING training at epoch {epoch_resume}")
+        model, optimizer, epoch_resume, _ = checkpoint.load_newest_training(model, optimizer, logger)
     
     for epoch in range(epoch_resume, config.train.epochs):
         
@@ -130,14 +130,14 @@ def train_model(config, logger, checkpoint):
                     f" {loss.item():.5f}"
                     )
         
-        if config.expt.save_model and epoch % config.expt.save_model_freq == 0:
-            checkpoint.save_training(
-                model_state_dict=model.state_dict(),
-                optimizer_state_dict=optimizer.get_state_dict(),
-                epoch=epoch,
-                loss=train_loss,
-                number=epoch,
-                )
+            if config.expt.save_model and epoch % config.expt.save_model_freq == 0:
+                checkpoint.save_training(
+                    model_state_dict=model.state_dict(),
+                    optimizer_state_dict=optimizer.get_state_dict(),
+                    epoch=epoch,
+                    loss=train_loss,
+                    number=epoch,
+                    )
         
         logger.timer("train", epoch)
         

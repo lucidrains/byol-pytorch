@@ -26,15 +26,33 @@ class CheckpointHandler():
                 }, self.dir / f"training_{number}.tar"
             )
     
-    def load_newest_training(self):
-        f = self.get_newest_training()
-        return self.load_training(training_file_name=f)
+    def load_newest_training(self, model, optimizer, logger):
+        model_state_dict, optimizer_state_dict, epoch_resume, loss_resume = self.get_newest_training()
+        if not model_state_dict or not optimizer_state_dict:
+            # todo implement loading model without optimizer (update below functions load_model)
+            logger(f"RESUMING training failed: No model state or optimizer state could be loaded. Starting training from scratch.")
+            return model, optimizer, 0, None
+        
+        logger(f"RESUMING training at epoch {epoch_resume}")
+        model.load_state_dict(model_state_dict)
+        optimizer.load_state_dict(optimizer_state_dict)
+        return model, optimizer, epoch_resume, loss_resume
     
-    def load_training(self, number=0, training_file_name=None):
+    def get_newest_training(self):
+        f = self.find_newest_training()
+        return self.get_training(training_file_name=f)
+    
+    def get_training(self, number=0, training_file_name=None):
+        
         if training_file_name is not None:
-            checkpoint = torch.load(self.dir / training_file_name)
+            path = self.dir / training_file_name
         else:
-            checkpoint = torch.load(self.dir / f"training_{number}.tar")
+            path = self.dir / f"training_{number}.tar"
+        
+        if os.path.isfile(path):
+            checkpoint = torch.load(path)
+        else:
+            return None, None, None, None
         
         model_state_dict = checkpoint['model_state_dict']
         optimizer_state_dict = checkpoint['optimizer_state_dict']
@@ -106,6 +124,9 @@ class CheckpointHandler():
         s = re.findall("\d+$", f)
         return (int(s[0]) if s else -1, f)
     
-    def get_newest_training(self):
+    def find_newest_training(self):
         files = [f for f in os.listdir(self.dir) if f.endswith('.tar')]
+        if not files:
+            return None
+        
         return max(files, key=self.extract_number)
