@@ -65,7 +65,7 @@ class Handler():
 
 
 if __name__ == "__main__":
-    from boho.utils.handler.base_handler import Handler
+    from metassl.utils.handler.base_handler import Handler
 
     handler = Handler()
 

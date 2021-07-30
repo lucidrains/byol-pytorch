@@ -162,4 +162,24 @@ class MyOptimizer:
             "weight_decay":     self.weight_decay,
             "iter_per_epoch":   self.iter_per_epoch,
             "scheduler_epochs": self.scheduler_epochs,
+            "_step":            self._step,
+            "_rate":            self._rate,
             }
+    
+    def load_state_dict(self, state_dct):
+        self.optimizer.load_state_dict(state_dct["optimizer"])
+        self.scheduler.load_state_dict(state_dct["scheduler"])
+        self.model_params = [] if not state_dct["model_params"] else state_dct["model_params"]
+        self.scheduler_name = state_dct["scheduler_name"]
+        self.model_size = state_dct["model_size"]
+        self.max_steps = state_dct["max_steps"]
+        self.warmup = state_dct["warmup"]
+        self.factor = state_dct["factor"]
+        self.lr_low = state_dct["lr_low"]
+        self.lr_high = state_dct["lr_high"]
+        self.clip_grad = state_dct["clip_grad"]
+        self.weight_decay = state_dct["weight_decay"]
+        self.iter_per_epoch = state_dct["iter_per_epoch"]
+        self.scheduler_epochs = state_dct["scheduler_epochs"]
+        self._step = state_dct["_step"]
+        self._rate = state_dct["_rate"]

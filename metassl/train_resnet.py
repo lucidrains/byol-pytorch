@@ -72,7 +72,7 @@ def train_model(config, logger, checkpoint):
         model = resnet50(num_classes=out_size).to(device)
         # model = resnet56(num_classes=out_size).to(device)
     
-    if torch.cuda.device_count() > 1 and config.expt.ddp:
+    if torch.cuda.device_count() > 1 and config.expt.ddp == "DP":
         logger.log("Using DDP with # GPUs", torch.cuda.device_count())
         model = nn.DataParallel(model).to(device)
     
@@ -88,7 +88,7 @@ def train_model(config, logger, checkpoint):
     summary_dict["valid_accuracy"] = accuracy
     summary_dict["train_loss"] = 0
     summary_dict["learning_rate"] = 0
-    
+
     iter_per_epoch = len(train_loader)
     max_steps = config.train.epochs * iter_per_epoch
     logger("iter_per_epoch", iter_per_epoch)
@@ -98,7 +98,14 @@ def train_model(config, logger, checkpoint):
     
     criterion = nn.CrossEntropyLoss().to(device)
     
-    for epoch in range(config.train.epochs):
+    epoch_resume = 0
+    if config.expt.resume_training:
+        model_state_dict, optimizer_state_dict, epoch_resume, _ = checkpoint.load_newest_training()
+        model.load_state_dict(model_state_dict)
+        optimizer.load_state_dict(optimizer_state_dict)
+        logger(f"RESUMING training at epoch {epoch_resume}")
+    
+    for epoch in range(epoch_resume, config.train.epochs):
         
         logger(f"START epoch {epoch}")
         logger.start_timer("train")
@@ -108,8 +115,6 @@ def train_model(config, logger, checkpoint):
         for step, (data, target) in enumerate(train_loader):
             data, target = data.to(device), target.to(device)
             output = model(data)
-            
-            
             
             optimizer.zero_grad()
             loss = criterion(output, target)
@@ -125,9 +130,9 @@ def train_model(config, logger, checkpoint):
                     f" {loss.item():.5f}"
                     )
         
-        if config.expt.save_model and epoch % 5 == 0:
+        if config.expt.save_model and epoch % config.expt.save_model_freq == 0:
             checkpoint.save_training(
-                mode_state_dict=model.state_dict(),
+                model_state_dict=model.state_dict(),
                 optimizer_state_dict=optimizer.get_state_dict(),
                 epoch=epoch,
                 loss=train_loss,
@@ -188,11 +193,11 @@ def begin_training(config, expt_dir):
     else:
         reload_expt = False
     
-    sup = Supporter(experiments_dir=expt_dir, config_dict=config, count_expt=True, reload_expt=reload_expt)
-    config = sup.get_config()
-    logger = sup.get_logger()
+    supporter = Supporter(experiments_dir=expt_dir, config_dict=config, count_expt=True, reload_expt=reload_expt)
+    config = supporter.get_config()
+    logger = supporter.get_logger()
     
-    train_model(config=config, logger=logger, checkpoint=sup.ckp)
+    train_model(config=config, logger=logger, checkpoint=supporter.ckp)
 
 
 if __name__ == "__main__":
@@ -202,7 +207,7 @@ if __name__ == "__main__":
     with open("metassl/default_config.yaml", "r") as f:
         config = yaml.load(f)
     
-    expt_dir = f"/home/{user}/workspace/experiments/metassl"
+    expt_dir = f"/home/{user}/workspace/experiments"
     config['data']['data_dir'] = f'/home/{user}/workspace/data/metassl'
     
     begin_training(config=config, expt_dir=expt_dir)

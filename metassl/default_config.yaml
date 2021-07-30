@@ -3,13 +3,14 @@
 #######################################
 expt:
   project_name:     'metassl'
-  session_name:     'development'
-  experiment_name:  'default_config_1'
-  job_name:         'local'
+  session_name:     'resnet50_supervised_imagenet'
+  experiment_name:  'default_config'
+  job_name:         '001'
   save_model:       True                  # save the model to disc
-  resume_training:  False                 # resumes training if model with same config exists
-  resume_optimizer: False                 # resumes optimizer states if model with same config exists
-  ddp:              True,                 # use distributed data parallel
+  save_model_freq:  5                     # save model frequency in # of epochs
+  resume_training:  True                  # resumes training if model with same config exists
+#  resume_optimizer: False                 # resumes optimizer states if model with same config exists # TODO
+  ddp:              "DP"                  # use data parallel ("DP") or distributed data parallel ("DDP" - not implemented yet)
 
 
 #######################################

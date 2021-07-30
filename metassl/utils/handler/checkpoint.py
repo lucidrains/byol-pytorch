@@ -1,5 +1,6 @@
 import os
 import pathlib
+import re
 import time
 
 import numpy as np
@@ -15,23 +16,31 @@ class CheckpointHandler():
     def __init__(self, checkpoint_dir, ):
         self.dir = pathlib.Path(checkpoint_dir)
     
-    def save_training(self, mode_state_dict, optimizer_state_dict, epoch=None, loss=None, number=0):
+    def save_training(self, model_state_dict, optimizer_state_dict, epoch=None, loss=None, number=0):
         torch.save(
             {
                 'epoch':                epoch,
-                'model_state_dict':     mode_state_dict,
+                'model_state_dict':     model_state_dict,
                 'optimizer_state_dict': optimizer_state_dict,
                 'loss':                 loss,
                 }, self.dir / f"training_{number}.tar"
             )
     
-    def load_training(self, number=0):
-        checkpoint = torch.load(self.dir / f"training_{number}.tar")
-        mode_state_dict = checkpoint['model_state_dict']
+    def load_newest_training(self):
+        f = self.get_newest_training()
+        return self.load_training(training_file_name=f)
+    
+    def load_training(self, number=0, training_file_name=None):
+        if training_file_name is not None:
+            checkpoint = torch.load(self.dir / training_file_name)
+        else:
+            checkpoint = torch.load(self.dir / f"training_{number}.tar")
+        
+        model_state_dict = checkpoint['model_state_dict']
         optimizer_state_dict = checkpoint['optimizer_state_dict']
         epoch = checkpoint['epoch']
         loss = checkpoint['loss']
-        return mode_state_dict, optimizer_state_dict, epoch, loss
+        return model_state_dict, optimizer_state_dict, epoch, loss
     
     def save_model(self, model, number=0):
         torch.save(model, self.dir / f"model_{number}.pth")
@@ -91,3 +100,12 @@ class CheckpointHandler():
     
     def load_object(self, name="object_0"):
         return np.load(self.dir / f"{name}.npy", allow_pickle=True)
+    
+    @staticmethod
+    def extract_number(f):
+        s = re.findall("\d+$", f)
+        return (int(s[0]) if s else -1, f)
+    
+    def get_newest_training(self):
+        files = [f for f in os.listdir(self.dir) if f.endswith('.tar')]
+        return max(files, key=self.extract_number)
