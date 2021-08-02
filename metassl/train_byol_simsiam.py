@@ -20,6 +20,7 @@ from torch import nn
 # original torchvision resnet implementation:
 from torchvision.models import resnet18, resnet50  # torchvision (for ImageNet)
 
+from metassl.models.resnet import ResNet
 from metassl.utils.data import get_test_loader, get_train_valid_loader
 from metassl.utils.my_optimizer import MyOptimizer
 from metassl.utils.summary import SummaryDict
@@ -35,7 +36,7 @@ from metassl.utils.torch_utils import count_parameters
 print("CUDA", torch.cuda.is_available())
 
 
-def train_model(config, logger, checkpoint, local_world_size, local_rank):
+def train_model(config, logger, checkpoint, local_rank):
     logger.print_config(config)
     
     np.random.seed(config.train.seed)
@@ -49,7 +50,7 @@ def train_model(config, logger, checkpoint, local_world_size, local_rank):
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     if distributed:
-        device = torch.cuda.device(local_rank)
+        device = torch.device(local_rank)
         torch.cuda.set_device(device)
     
     train_loader, valid_loader = get_train_valid_loader(
@@ -79,11 +80,13 @@ def train_model(config, logger, checkpoint, local_world_size, local_rank):
     logger("out_size", out_size)
     
     if config.model.model_type == "resnet18":
-        model = resnet18(pretrained=True).to(device)
+        model = resnet18(pretrained=False).to(device)
         # model = resnet20(num_classes=out_size).to(device)
     elif config.model.model_type == "resnet50":
-        model = resnet50(pretrained=True).to(device)
+        model = ResNet(config.data.dataset, 50, out_size, bottleneck=True).to(device)
         # model = resnet56(num_classes=out_size).to(device)
+    
+    print(model)
     
     ### BYOL part ###
     model = BYOL(
@@ -93,9 +96,11 @@ def train_model(config, logger, checkpoint, local_world_size, local_rank):
         use_momentum=False  # turn off momentum in the target encoder
         )
     
+    
     model = DDP(
         model.to(device),
         device_ids=[local_rank],
+        find_unused_parameters=True,
         )
     
     logger.log("model_parameters", count_parameters(model.parameters()))
@@ -200,7 +205,7 @@ def test(model, device, test_loader):
     return test_loss, accuracy
 
 
-def begin_training(config, expt_dir, local_world_size, local_rank):
+def begin_training(config, expt_dir):
     expt_dir = pathlib.Path(expt_dir)
     
     if config['expt']['resume_training']:
@@ -216,7 +221,7 @@ def begin_training(config, expt_dir, local_world_size, local_rank):
     # These are the parameters used to initialize the process group
     env_dict = {
         key: os.environ[key]
-        for key in ("MASTER_ADDR", "MASTER_PORT", "RANK", "WORLD_SIZE")
+        for key in ("MASTER_ADDR", "MASTER_PORT", "RANK", "LOCAL_RANK", "WORLD_SIZE")
         }
     print(f"[{os.getpid()}] Initializing process group with: {env_dict}")
     dist.init_process_group(backend="nccl")
@@ -225,7 +230,7 @@ def begin_training(config, expt_dir, local_world_size, local_rank):
         + f"rank = {dist.get_rank()}, backend={dist.get_backend()}"
         )
     
-    train_model(config=config, logger=logger, checkpoint=supporter.ckp, local_world_size=local_world_size, local_rank=local_rank)
+    train_model(config=config, logger=logger, checkpoint=supporter.ckp, local_rank=int(env_dict["LOCAL_RANK"]))
     
     # Tear down the process group
     dist.destroy_process_group()
@@ -242,7 +247,6 @@ if __name__ == "__main__":
     
     parser = ArgumentParser()
     parser.add_argument("--local_rank", type=int, default=0)
-    parser.add_argument("--local_world_size", type=int, default=1)
     args = parser.parse_args()
     
-    begin_training(config=config, expt_dir=expt_dir, local_world_size=args.local_world_size, local_rank=args.local_rank)
+    begin_training(config=config, expt_dir=expt_dir)

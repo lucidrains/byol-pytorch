@@ -115,13 +115,16 @@ class NetWrapper(nn.Module):
         return None
 
     def _hook(self, _, input, output):
+        print("did hook")
         device = input[0].device
+        print(device)
         self.hidden[device] = flatten(output)
 
     def _register_hook(self):
         layer = self._find_layer()
         assert layer is not None, f'hidden layer ({self.layer}) not found'
         handle = layer.register_forward_hook(self._hook)
+        print('handle', handle)
         self.hook_registered = True
 
     @singleton('projector')
@@ -139,6 +142,9 @@ class NetWrapper(nn.Module):
 
         self.hidden.clear()
         _ = self.net(x)
+        print("--------------")
+        print(self.hidden.keys())
+        print(self.hidden)
         hidden = self.hidden[x.device]
         self.hidden.clear()
 

@@ -8,7 +8,7 @@ from torch.utils.data.distributed import DistributedSampler
 from torch.utils.data.sampler import SubsetRandomSampler
 
 from metassl.utils.imagenet import ImageNet
-from torch_utils import DistributedSampler
+from .torch_utils import DistributedSampler
 
 import torchvision.datasets as datasets  # do not remove this
 
