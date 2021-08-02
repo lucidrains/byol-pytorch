@@ -3,14 +3,13 @@
 #######################################
 expt:
   project_name:     'metassl'
-  session_name:     'resnet50_ssl_imagenet'
+  session_name:     'resnet50_metassl_imagenet'
   experiment_name:  'default_config'
   job_name:         '001'
   save_model:       True                  # save the model to disc
   save_model_freq:  5                     # save model frequency in # of epochs
-  resume_training:  True                  # resumes training if model with same config exists
+  resume_training:  False                  # resumes training if model with same config exists
 #  resume_optimizer: False                 # resumes optimizer states if model with same config exists # TODO
-  ddp:              "DP"                  # use data parallel ("DP") or distributed data parallel ("DDP" - not implemented yet)
 
 
 #######################################
@@ -19,7 +18,7 @@ expt:
 train:
   eval_freq:  100                         # every eval_freq iteration will the model be evaluated
   seed:       123                         # random seed of numpy and torch
-  batch_size: 512
+  batch_size: 32
   epochs:     100                         # epochs to train
   gpus:       8                           # number of GPUs to train on
 

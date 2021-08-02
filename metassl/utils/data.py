@@ -3,9 +3,14 @@ import numpy as np
 import torch
 import torchvision.transforms as transforms
 from PIL import Image
+from torch.utils.data import Subset
+from torch.utils.data.distributed import DistributedSampler
 from torch.utils.data.sampler import SubsetRandomSampler
-import torchvision.datasets as datasets  # do not remove this
+
 from metassl.utils.imagenet import ImageNet
+from torch_utils import DistributedSampler
+
+import torchvision.datasets as datasets  # do not remove this
 
 
 def get_train_valid_loader(
@@ -18,7 +23,8 @@ def get_train_valid_loader(
     num_workers=1,
     pin_memory=True,
     download=True,
-    dataset_name="CIFAR100"
+    dataset_name="CIFAR100",
+    distributed=False,
     ):
     """
     Utility function for loading and returning train and valid
@@ -150,9 +156,16 @@ def get_train_valid_loader(
         np.random.shuffle(indices)
     
     train_idx, valid_idx = indices[split:], indices[:split]
-    train_sampler = SubsetRandomSampler(train_idx)
+    
     valid_sampler = SubsetRandomSampler(valid_idx)
     
+    if distributed:
+        train_sampler = DistributedSampler(torch.tensor(train_idx))
+        # TODO: use distributed valid_sampler and average accuracies to make validation more efficient
+
+    else:
+        train_sampler = SubsetRandomSampler(train_idx)
+        
     train_loader = torch.utils.data.DataLoader(
         train_dataset, batch_size=batch_size, sampler=train_sampler,
         num_workers=num_workers, pin_memory=pin_memory,
@@ -183,7 +196,7 @@ def get_test_loader(
     num_workers=1,
     pin_memory=True,
     download=True,
-    dataset_name="CIFAR100"
+    dataset_name="CIFAR100",
     ):
     """
     Utility function for loading and returning a multi-process
@@ -208,11 +221,6 @@ def get_test_loader(
         exit()
     
     dataset = eval("datasets." + dataset_name)
-    
-    # normalize = transforms.Normalize(
-    #    mean=[0.485, 0.456, 0.406],
-    #    std=[0.229, 0.224, 0.225],
-    # )
     
     if dataset_name == "CIFAR10":
         transform = transforms.Compose(
@@ -246,6 +254,7 @@ def get_test_loader(
     
     if dataset_name == "ImageNet":
         # hardcoded for now
+        # TODO: move to imagenet.py
         root = "/data/datasets/ImageNet/imagenet-pytorch"
         # load the dataset
         dataset = ImageNet(

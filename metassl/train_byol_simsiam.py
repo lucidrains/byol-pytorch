@@ -6,6 +6,13 @@ import pathlib
 import random
 import yaml
 
+from byol_pytorch import BYOL
+
+from argparse import ArgumentParser
+
+import torch.distributed as dist
+from torch.nn.parallel import DistributedDataParallel as DDP
+
 import numpy as np
 import torch
 from torch import nn
@@ -28,17 +35,22 @@ from metassl.utils.torch_utils import count_parameters
 print("CUDA", torch.cuda.is_available())
 
 
-def train_model(config, logger, checkpoint):
+def train_model(config, logger, checkpoint, local_world_size, local_rank):
     logger.print_config(config)
     
     np.random.seed(config.train.seed)
     torch.manual_seed(config.train.seed)
     random.seed(config.train.seed)
     
+    distributed = config.train.gpus > 1
+    
     if torch.cuda.is_available():
         torch.cuda.manual_seed(config.train.seed)
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    if distributed:
+        device = torch.cuda.device(local_rank)
+        torch.cuda.set_device(device)
     
     train_loader, valid_loader = get_train_valid_loader(
         data_dir=config.data.data_dir,
@@ -48,6 +60,7 @@ def train_model(config, logger, checkpoint):
         num_workers=50,
         pin_memory=False,
         download=True,
+        distributed=distributed,
         )
     
     test_loader = get_test_loader(
@@ -66,15 +79,24 @@ def train_model(config, logger, checkpoint):
     logger("out_size", out_size)
     
     if config.model.model_type == "resnet18":
-        model = resnet18(num_classes=out_size).to(device)
+        model = resnet18(pretrained=True).to(device)
         # model = resnet20(num_classes=out_size).to(device)
     elif config.model.model_type == "resnet50":
-        model = resnet50(num_classes=out_size).to(device)
+        model = resnet50(pretrained=True).to(device)
         # model = resnet56(num_classes=out_size).to(device)
     
-    if torch.cuda.device_count() > 1 and config.expt.ddp == "DP":
-        logger.log("Using DDP with # GPUs", torch.cuda.device_count())
-        model = nn.DataParallel(model).to(device)
+    ### BYOL part ###
+    model = BYOL(
+        model,
+        image_size=256,
+        hidden_layer='avgpool',
+        use_momentum=False  # turn off momentum in the target encoder
+        )
+    
+    model = DDP(
+        model.to(device),
+        device_ids=[local_rank],
+        )
     
     logger.log("model_parameters", count_parameters(model.parameters()))
     
@@ -82,13 +104,13 @@ def train_model(config, logger, checkpoint):
     
     logger("START initial validation")
     
-    valid_loss, accuracy = test(model, device, valid_loader)
+    # valid_loss, accuracy = test(model, device, valid_loader)
     summary_dict["step"] = 0
-    summary_dict["valid_loss"] = valid_loss
-    summary_dict["valid_accuracy"] = accuracy
+    summary_dict["valid_loss"] = 0
+    summary_dict["valid_accuracy"] = 0
     summary_dict["train_loss"] = 0
     summary_dict["learning_rate"] = 0
-
+    
     iter_per_epoch = len(train_loader)
     max_steps = config.train.epochs * iter_per_epoch
     logger("iter_per_epoch", iter_per_epoch)
@@ -96,36 +118,32 @@ def train_model(config, logger, checkpoint):
     
     optimizer = MyOptimizer(0, model.parameters(), max_steps, iter_per_epoch, **config.optim.get_dict)
     
-    criterion = nn.CrossEntropyLoss().to(device)
+    # criterion = nn.CrossEntropyLoss().to(device)
     
     epoch_resume = 0
     if config.expt.resume_training:
         model, optimizer, epoch_resume, _ = checkpoint.load_newest_training(model, optimizer, logger)
     
     for epoch in range(epoch_resume, config.train.epochs):
+        train_loader.sampler.set_epoch(epoch)
         
         logger(f"START epoch {epoch}")
         logger.start_timer("train")
         
         model.train()
+        
         train_loss = []
         for step, (data, target) in enumerate(train_loader):
             data, target = data.to(device), target.to(device)
-            output = model(data)
             
+            loss = model(data)
             optimizer.zero_grad()
-            loss = criterion(output, target)
             loss.backward()
-            optimizer.step(step, valid_loss)
+            optimizer.step(step, 0)
             train_loss.append(loss.detach().cpu().numpy())
             
             if step % config.train.eval_freq == 0:
-                pred = output.argmax(dim=1, keepdim=True)  # get the index of the max log-probability
-                correct = pred.eq(target.view_as(pred)).sum().item()
-                print(
-                    f"Epoch {epoch:{5}} / {config.train.epochs:{5}}, Accuracy {100 * correct / config.train.batch_size:{2}.2f}%, Loss"
-                    f" {loss.item():.5f}"
-                    )
+                print(f"Epoch {epoch:{5}} / {config.train.epochs:{5}}, Loss {loss.item():.5f}")
         
         if config.expt.save_model and epoch % config.expt.save_model_freq == 0:
             checkpoint.save_training(
@@ -152,11 +170,11 @@ def train_model(config, logger, checkpoint):
         summary_dict.save(checkpoint.dir / "summary_dict.npy")
     
     # TEST FINAL MODEL
-    test_loss, test_accuracy = test(model, device, test_loader)
-    summary_dict["test_loss"] = test_loss
-    summary_dict["test_accuracy"] = test_accuracy
-    logger("test_loss", test_loss, epoch)
-    logger("test_accuracy", test_accuracy, epoch)
+    # test_loss, test_accuracy = test(model, device, test_loader)
+    # summary_dict["test_loss"] = test_loss
+    # summary_dict["test_accuracy"] = test_accuracy
+    # logger("test_loss", test_loss, epoch)
+    # logger("test_accuracy", test_accuracy, epoch)
     
     summary_dict.save(checkpoint.dir / "summary_dict.npy")
 
@@ -182,7 +200,7 @@ def test(model, device, test_loader):
     return test_loss, accuracy
 
 
-def begin_training(config, expt_dir):
+def begin_training(config, expt_dir, local_world_size, local_rank):
     expt_dir = pathlib.Path(expt_dir)
     
     if config['expt']['resume_training']:
@@ -194,17 +212,37 @@ def begin_training(config, expt_dir):
     config = supporter.get_config()
     logger = supporter.get_logger()
     
-    train_model(config=config, logger=logger, checkpoint=supporter.ckp)
+    ### --- DDP --- ###
+    # These are the parameters used to initialize the process group
+    env_dict = {
+        key: os.environ[key]
+        for key in ("MASTER_ADDR", "MASTER_PORT", "RANK", "WORLD_SIZE")
+        }
+    print(f"[{os.getpid()}] Initializing process group with: {env_dict}")
+    dist.init_process_group(backend="nccl")
+    print(
+        f"[{os.getpid()}] world_size = {dist.get_world_size()}, "
+        + f"rank = {dist.get_rank()}, backend={dist.get_backend()}"
+        )
+    
+    train_model(config=config, logger=logger, checkpoint=supporter.ckp, local_world_size=local_world_size, local_rank=local_rank)
+    
+    # Tear down the process group
+    dist.destroy_process_group()
 
 
 if __name__ == "__main__":
-    
     user = os.environ.get('USER')
     
-    with open("metassl/default_config.yaml", "r") as f:
+    with open("metassl/default_metassl_config.yaml", "r") as f:
         config = yaml.load(f)
     
     expt_dir = f"/home/{user}/workspace/experiments"
     config['data']['data_dir'] = f'/home/{user}/workspace/data/metassl'
     
-    begin_training(config=config, expt_dir=expt_dir)
+    parser = ArgumentParser()
+    parser.add_argument("--local_rank", type=int, default=0)
+    parser.add_argument("--local_world_size", type=int, default=1)
+    args = parser.parse_args()
+    
+    begin_training(config=config, expt_dir=expt_dir, local_world_size=args.local_world_size, local_rank=args.local_rank)

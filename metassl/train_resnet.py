@@ -43,7 +43,7 @@ def train_model(config, logger, checkpoint):
     train_loader, valid_loader = get_train_valid_loader(
         data_dir=config.data.data_dir,
         batch_size=config.train.batch_size,
-        random_seed=config.data.seed,
+        random_seed=123,
         dataset_name=config.data.dataset,
         num_workers=50,
         pin_memory=False,

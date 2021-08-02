@@ -10,7 +10,6 @@ expt:
   save_model_freq:  5                     # save model frequency in # of epochs
   resume_training:  True                  # resumes training if model with same config exists
 #  resume_optimizer: False                 # resumes optimizer states if model with same config exists # TODO
-  ddp:              "DP"                  # use data parallel ("DP") or distributed data parallel ("DDP" - not implemented yet)
 
 
 #######################################
