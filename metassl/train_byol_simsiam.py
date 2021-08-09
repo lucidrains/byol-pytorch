@@ -83,10 +83,16 @@ def train_model(config, logger, checkpoint, local_rank):
         model = resnet18(pretrained=False).to(device)
         # model = resnet20(num_classes=out_size).to(device)
     elif config.model.model_type == "resnet50":
-        model = ResNet(config.data.dataset, 50, out_size, bottleneck=True).to(device)
+        model = resnet50(num_classes=out_size).to(device)
+        # model = resnet50(num_classes=out_size)
+        # model = ResNet(config.data.dataset, 50, out_size, bottleneck=True).to(device)
+        # model = ResNet(config.data.dataset, 50, out_size, bottleneck=True)
         # model = resnet56(num_classes=out_size).to(device)
-    
-    print(model)
+    else:
+        raise ValueError(f'Model not valid: {config.model.model_type}')
+
+    if distributed:
+        model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
     
     ### BYOL part ###
     model = BYOL(
@@ -109,10 +115,10 @@ def train_model(config, logger, checkpoint, local_rank):
     
     logger("START initial validation")
     
-    # valid_loss, accuracy = test(model, device, valid_loader)
+    valid_loss, accuracy = test(config, model, device, train_loader, valid_loader, local_rank)
     summary_dict["step"] = 0
-    summary_dict["valid_loss"] = 0
-    summary_dict["valid_accuracy"] = 0
+    summary_dict["valid_loss"] = valid_loss
+    summary_dict["valid_accuracy"] = accuracy
     summary_dict["train_loss"] = 0
     summary_dict["learning_rate"] = 0
     
@@ -122,8 +128,6 @@ def train_model(config, logger, checkpoint, local_rank):
     logger("max_steps", max_steps)
     
     optimizer = MyOptimizer(0, model.parameters(), max_steps, iter_per_epoch, **config.optim.get_dict)
-    
-    # criterion = nn.CrossEntropyLoss().to(device)
     
     epoch_resume = 0
     if config.expt.resume_training:
@@ -144,7 +148,7 @@ def train_model(config, logger, checkpoint, local_rank):
             loss = model(data)
             optimizer.zero_grad()
             loss.backward()
-            optimizer.step(step, 0)
+            optimizer.step()
             train_loss.append(loss.detach().cpu().numpy())
             
             if step % config.train.eval_freq == 0:
@@ -184,8 +188,49 @@ def train_model(config, logger, checkpoint, local_rank):
     summary_dict.save(checkpoint.dir / "summary_dict.npy")
 
 
-def test(model, device, test_loader):
-    model.eval()
+def test(config, byol_model: BYOL, device, train_loader, test_loader, local_rank):
+    byol_model.eval()
+    model = byol_model.module.net
+    model.fc = DDP(model.fc, device_ids=[local_rank], find_unused_parameters=True,)
+    require_grads = []
+    for p in model.parameters():
+        require_grads.append(p.requires_grad)
+        p.requires_grad_(False)
+    
+    for p in model.fc.parameters():
+        p.requires_grad_(True)
+
+    iter_per_epoch = len(train_loader)
+    max_steps = config.finetuning.epochs * iter_per_epoch
+    finetuning_optimizer = MyOptimizer(0, model.fc.parameters(), max_steps, iter_per_epoch, **config.finetuning.optim.dict)
+
+    criterion = nn.CrossEntropyLoss().to(device)
+
+    for epoch in range(1, config.finetuning.epochs):
+        train_loader.sampler.set_epoch(epoch)
+    
+        #logger(f"START epoch {epoch}")
+        #logger.start_timer("train")
+    
+    
+        train_loss = []
+        for step, (data, target) in enumerate(train_loader):
+            data = data.to(device)
+            target = target.to(device)
+            y = model(data)
+            l = criterion(y,target)
+            finetuning_optimizer.zero_grad()
+            l.backward()
+            finetuning_optimizer.step()
+            train_loss.append(l.item())
+            print('finetune train loss',l)
+            
+    for p, rg in zip(model.parameters(), require_grads):
+        p.requires_grad_(rg)
+    
+    
+    
+    
     test_loss = 0
     correct = 0
     total = 0
