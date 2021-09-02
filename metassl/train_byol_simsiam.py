@@ -75,8 +75,11 @@ def train_model(config, logger, checkpoint, local_rank):
     
     out_size = len(train_loader.dataset.classes)
 
-    if not distributed or distributed and local_rank == 0:
+    if not distributed:
         logger("device", device)
+        logger("out_size", out_size)
+    elif distributed and local_rank == 0:
+        logger("distributed mode; world size", torch.distributed.get_world_size(group=None))
         logger("out_size", out_size)
     
     if config.model.model_type == "resnet18":
@@ -119,8 +122,7 @@ def train_model(config, logger, checkpoint, local_rank):
     
     # valid_loss, accuracy = test_linear_classification(config, model, device, train_loader, valid_loader, local_rank)
     if not distributed or distributed and local_rank == 0:
-        accuracy = test_knn(model, device, train_loader, valid_loader, out_size)
-        logger("knn test acc: ", accuracy)
+        accuracy = test_knn(model.module, device, train_loader, valid_loader, out_size, logger)
         summary_dict["step"] = 0
         summary_dict["valid_accuracy"] = accuracy
         summary_dict["train_loss"] = 0
@@ -177,7 +179,7 @@ def train_model(config, logger, checkpoint, local_rank):
         
         if not distributed or distributed and local_rank == 0:
             # valid_loss, accuracy = test_linear_classification(model, device, valid_loader)
-            accuracy = test_knn(model, device, train_loader, valid_loader, out_size)
+            accuracy = test_knn(model.module, device, train_loader, valid_loader, out_size, logger)
             summary_dict["step"] = epoch + 1
             summary_dict["train_loss"] = np.mean(train_loss)
             # summary_dict["valid_loss"] = valid_loss
@@ -201,52 +203,56 @@ def train_model(config, logger, checkpoint, local_rank):
 
 
 def test_knn(
-    byol_model: BYOL,
+    model,
     device,
     train_loader,
-    test_loader,
+    valid_loader,
     n_classes,
-    knn_n_neighbours=32,
+    logger,
+    knn_n_neighbours=256,
     knn_reweighting_factor=0.1,
-    knn_n_batches=1,
+    knn_n_batches=1000,
     knn_normalize_features=True,
     ):
-    byol_model.eval()
+    
+    model.eval()
     
     # get train features for fitting knn
     train_features = []
     train_labels = []
     for step, (data, target) in enumerate(train_loader):
         data = data.to(device)
-        _, embedding = byol_model(data, return_embedding=True)
+        _, embedding = model(data, return_embedding=True)
         if knn_normalize_features:
             embedding = F.normalize(embedding, dim=1)
+        embedding = embedding.detach().cpu()
         train_features.append(embedding)
         
-        target = target.to(device)
+        target = target.detach().cpu()
         train_labels.append(target)
         
         if step == knn_n_batches:
             break
     
     train_features = torch.cat(train_features, dim=0).t().contiguous()
-    print("train_features", train_features.size())
+    logger("shape of knn train features", train_features.size())
     train_labels = torch.cat(train_labels, dim=0).t().contiguous()
     
     # knn predict
     test_features = []
     test_labels = []
-    for step, (data, target) in enumerate(test_loader):
+    for step, (data, target) in enumerate(valid_loader):
         data = data.to(device)
-        _, embedding = byol_model(data, return_embedding=True)
+        _, embedding = model(data, return_embedding=True)
         if knn_normalize_features:
             embedding = F.normalize(embedding, dim=1)
+        embedding = embedding.detach().cpu()
         test_features.append(embedding)
         
-        target = target.to(device)
+        target = target.detach().cpu()
         test_labels.append(target)
         
-        if step == 0:
+        if step == knn_n_batches:
             break
     
     test_features = torch.cat(test_features, dim=0)
@@ -263,8 +269,8 @@ def test_knn(
     correct = pred_labels.eq(test_labels.view_as(pred_labels)).sum().item()
     
     accuracy = 100. * correct / test_labels.size(0)
-    print("number of knn test samples correct", correct)
-    print("knn test accuracy", accuracy)
+    logger("# of knn valid samples correct", correct)
+    logger("knn valid accuracy", accuracy)
     return accuracy
 
 
