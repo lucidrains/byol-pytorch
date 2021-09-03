@@ -174,10 +174,9 @@ def train_model(config, logger, checkpoint, local_rank):
                 loss=train_loss,
                 number=epoch,
                 )
-        
-        logger.timer("train", epoch)
-        
+
         if not distributed or distributed and local_rank == 0:
+            logger.timer("train", epoch)
             # valid_loss, accuracy = test_linear_classification(model, device, valid_loader)
             accuracy = test_knn(model.module, device, train_loader, valid_loader, out_size, logger)
             summary_dict["step"] = epoch + 1
@@ -209,9 +208,9 @@ def test_knn(
     valid_loader,
     n_classes,
     logger,
-    knn_n_neighbours=256,
+    knn_n_neighbours=128,
     knn_reweighting_factor=0.1,
-    knn_n_batches=1000,
+    knn_n_batches=512,
     knn_normalize_features=True,
     ):
     

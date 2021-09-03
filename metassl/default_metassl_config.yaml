@@ -56,7 +56,7 @@ optim:
   weight_decay:     0.0001
 
   lr_low:           0.0                   # the minimum LR (eta_min) for schedulers 'cosine', 'cosineWarm' and 'plateau'
-  lr_high:          0.1                   # the default LR for all schedulers, in case of const LR schedule: set lr_high=lr_low
+  lr_high:          0.05                  # the default LR for all schedulers, in case of const LR schedule: set lr_high=lr_low
   clip_grad:        False                 # gradient cliping, options: 0.1 ... 100, False
   scheduler_epochs: 100                   # T_max or T_0 in 'cosine' and 'cosineWarm' scheduler, in case of 'step' scheduler this denotes when scheduler should step
 
