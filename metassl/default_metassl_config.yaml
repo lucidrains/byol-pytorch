@@ -8,19 +8,26 @@ expt:
   job_name:         '001'
   save_model:       True                  # save the model to disc
   save_model_freq:  5                     # save model frequency in # of epochs
-  resume_training:  False                  # resumes training if model with same config exists
-#  resume_optimizer: False                 # resumes optimizer states if model with same config exists # TODO
-
+  resume:           False                 # resumes training if model with same config exists
+  print_freq:       10                    # print frequency
+  gpu: 8                                  # GPU ID to train on
+  multiprocessing_distributed:  True                          # Use multi-processing distributed training to launch N processes per node, which has N GPUs.
+                                                              # This is the fastest way to use PyTorch for either single node or multi node data parallel training'
+  dist_backend:                 'nccl'                        # distributed backend
+  dist_url:                     'tcp://localhost:10001'       # url used to set up distributed training
+  workers:                      32                            # number of data loading workers
+  rank:                         0                             # node rank for distributed training
+  world_size:                    1                             # number of nodes for distributed training
+  eval_freq:                    10                            # every eval_freq iteration will the model be evaluated
+  seed:                         123                           # random seed of numpy and torch
 
 #######################################
 ###     Training Configuration      ###
 #######################################
 train:
-  eval_freq:  10                         # every eval_freq iteration will the model be evaluated
-  seed:       123                         # random seed of numpy and torch
-  batch_size: 32
+  batch_size: 256                         # in distributed setting this is the total batch size, i.e. batch size = individual bs / number of GPUs
   epochs:     100                         # epochs to train
-  gpus:       8                           # number of GPUs to train on
+  start_epoch: 0                          # start training at epoch n
 
 finetuning:
   epochs: 10
@@ -54,6 +61,7 @@ optim:
   warmup:           1000                  # 0 (turned off) or higher (e.g. 1000 ~ 5 epochs at batch size 256 on CIFAR100)
   factor:           1.0                   # noam factor
   weight_decay:     0.0001
+  momentum:         0.9                   # momentum of SGD solver
 
   lr_low:           0.0                   # the minimum LR (eta_min) for schedulers 'cosine', 'cosineWarm' and 'plateau'
   lr_high:          0.05                  # the default LR for all schedulers, in case of const LR schedule: set lr_high=lr_low
@@ -69,5 +77,14 @@ data:
   seed:     123
   dataset:  'ImageNet'                    # supported datasets: CIFAR10, CIFAR100, ImageNet
   data_dir: '/home/ferreira/workspace/data/metassl'
+
+#######################################
+###       SimSiam Specific          ###
+#######################################
+simsiam:
+  dim: 2048                                  # feature dimension (default: 2048)
+  pred_dim: 512                              # hidden dimension of the predictor (default: 512)
+  fix_pred_lr:   True                         # Fix learning rate for the predictor
+
 
 

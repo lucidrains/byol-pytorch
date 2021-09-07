@@ -221,7 +221,7 @@ def test_knn(
     train_labels = []
     for step, (data, target) in enumerate(train_loader):
         data = data.to(device)
-        _, embedding = model(data, return_embedding=True)
+        _, embedding = model(data, return_embedding=False)
         if knn_normalize_features:
             embedding = F.normalize(embedding, dim=1)
         embedding = embedding.detach().cpu()
@@ -242,7 +242,7 @@ def test_knn(
     test_labels = []
     for step, (data, target) in enumerate(valid_loader):
         data = data.to(device)
-        _, embedding = model(data, return_embedding=True)
+        _, embedding = model(data, return_embedding=False)
         if knn_normalize_features:
             embedding = F.normalize(embedding, dim=1)
         embedding = embedding.detach().cpu()

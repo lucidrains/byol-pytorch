@@ -11,6 +11,7 @@ from metassl.utils.imagenet import ImageNet
 from .torch_utils import DistributedSampler
 
 import torchvision.datasets as datasets  # do not remove this
+from .simsiam import GaussianBlur, TwoCropsTransform
 
 
 def get_train_valid_loader(
@@ -23,8 +24,9 @@ def get_train_valid_loader(
     num_workers=1,
     pin_memory=True,
     download=True,
-    dataset_name="CIFAR100",
+    dataset_name="ImageNet",
     distributed=False,
+    drop_last=True,
     ):
     """
     Utility function for loading and returning train and valid
@@ -97,27 +99,35 @@ def get_train_valid_loader(
             )
     
     elif dataset_name == "ImageNet":
-        train_transform = transforms.Compose(
-            [
-                transforms.RandomResizedCrop((224, 224), scale=(0.08, 1.0), interpolation=Image.BICUBIC),
-                transforms.RandomHorizontalFlip(),
-                transforms.ColorJitter(
-                    brightness=0.4,
-                    contrast=0.4,
-                    saturation=0.4,
-                    ),
-                transforms.ToTensor(),
-                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-                ]
+        normalize = transforms.Normalize(
+            mean=[0.485, 0.456, 0.406],
+            std=[0.229, 0.224, 0.225]
             )
-        valid_transform = transforms.Compose(
+    
+        # MoCo v2's aug: similar to SimCLR https://arxiv.org/abs/2002.05709
+        train_transform = TwoCropsTransform(transforms.Compose([
+            transforms.RandomResizedCrop(224, scale=(0.2, 1.)),
+            transforms.RandomApply(
+                [
+                    transforms.ColorJitter(0.4, 0.4, 0.4, 0.1)  # not strengthened
+                    ], p=0.8
+                ),
+            transforms.RandomGrayscale(p=0.2),
+            transforms.RandomApply([GaussianBlur([.1, 2.])], p=0.5),
+            transforms.RandomHorizontalFlip(),
+            transforms.ToTensor(),
+            normalize
+            ]))
+        
+        valid_transform = TwoCropsTransform(transforms.Compose(
             [
+                
                 transforms.Resize(256, interpolation=Image.BICUBIC),
                 transforms.CenterCrop((224, 224)),
                 transforms.ToTensor(),
                 transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
                 ]
-            )
+            ))
     else:
         # not supported
         raise ValueError('invalid dataset name=%s' % dataset)
@@ -162,17 +172,16 @@ def get_train_valid_loader(
     if distributed:
         train_sampler = DistributedSampler(torch.tensor(train_idx))
         # TODO: use distributed valid_sampler and average accuracies to make validation more efficient
-
     else:
         train_sampler = SubsetRandomSampler(train_idx)
         
     train_loader = torch.utils.data.DataLoader(
         train_dataset, batch_size=batch_size, sampler=train_sampler,
-        num_workers=num_workers, pin_memory=pin_memory,
+        num_workers=num_workers, pin_memory=pin_memory, drop_last=drop_last,
         )
     valid_loader = torch.utils.data.DataLoader(
         valid_dataset, batch_size=batch_size, sampler=valid_sampler,
-        num_workers=num_workers, pin_memory=pin_memory,
+        num_workers=num_workers, pin_memory=pin_memory, drop_last=drop_last,
         )
     
     # visualize some images
@@ -186,7 +195,7 @@ def get_train_valid_loader(
         X = images.numpy().transpose([0, 2, 3, 1])
         plot_images(X, labels)
     
-    return (train_loader, valid_loader)
+    return train_loader, valid_loader, train_sampler, valid_sampler
 
 
 def get_test_loader(
@@ -197,6 +206,7 @@ def get_test_loader(
     pin_memory=True,
     download=True,
     dataset_name="CIFAR100",
+    drop_last=True,
     ):
     """
     Utility function for loading and returning a multi-process
@@ -271,6 +281,7 @@ def get_test_loader(
     data_loader = torch.utils.data.DataLoader(
         dataset, batch_size=batch_size, shuffle=shuffle,
         num_workers=num_workers, pin_memory=pin_memory,
+        drop_last=drop_last,
         )
     
     return data_loader
