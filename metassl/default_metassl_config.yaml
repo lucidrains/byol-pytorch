@@ -10,14 +10,14 @@ expt:
   save_model_freq:  5                     # save model frequency in # of epochs
   resume:           False                 # resumes training if model with same config exists
   print_freq:       10                    # print frequency
-  gpu: 8                                  # GPU ID to train on
+  gpu:              8                     # GPU ID to train on (if not distributed)
   multiprocessing_distributed:  True                          # Use multi-processing distributed training to launch N processes per node, which has N GPUs.
                                                               # This is the fastest way to use PyTorch for either single node or multi node data parallel training'
   dist_backend:                 'nccl'                        # distributed backend
   dist_url:                     'tcp://localhost:10001'       # url used to set up distributed training
   workers:                      32                            # number of data loading workers
   rank:                         0                             # node rank for distributed training
-  world_size:                    1                             # number of nodes for distributed training
+  world_size:                   1                             # number of nodes for distributed training
   eval_freq:                    10                            # every eval_freq iteration will the model be evaluated
   seed:                         123                           # random seed of numpy and torch
 
@@ -69,7 +69,6 @@ optim:
   scheduler_epochs: 100                   # T_max or T_0 in 'cosine' and 'cosineWarm' scheduler, in case of 'step' scheduler this denotes when scheduler should step
 
 
-
 #######################################
 ###       Data Configuration        ###
 #######################################
@@ -77,6 +76,7 @@ data:
   seed:     123
   dataset:  'ImageNet'                    # supported datasets: CIFAR10, CIFAR100, ImageNet
   data_dir: '/home/ferreira/workspace/data/metassl'
+
 
 #######################################
 ###       SimSiam Specific          ###

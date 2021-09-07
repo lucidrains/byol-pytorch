@@ -5,16 +5,16 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
-import argparse
+# code taken from https://github.com/facebookresearch/simsiam
+
 import builtins
 import math
 import os
+import pathlib
 import random
 import shutil
 import time
 import warnings
-import yaml
-import pathlib
 
 import torch
 import torch.backends.cudnn as cudnn
@@ -26,114 +26,18 @@ import torch.optim
 import torch.utils.data
 import torch.utils.data.distributed
 import torchvision.models as models
-from metassl.utils.supporter import Supporter
+import yaml
 
 from metassl.utils.data import get_train_valid_loader
+from metassl.utils.supporter import Supporter
 from utils.simsiam import SimSiam
+from utils.meters import AverageMeter, ProgressMeter
 
 model_names = sorted(
     name for name in models.__dict__
     if name.islower() and not name.startswith("__")
     and callable(models.__dict__[name])
     )
-
-# parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
-# parser.add_argument(
-#     'data', metavar='DIR',
-#     help='path to dataset'
-#     )
-# parser.add_argument(
-#     '-a', '--arch', metavar='ARCH', default='resnet50',
-#     choices=model_names,
-#     help='model architecture: ' +
-#          ' | '.join(model_names) +
-#          ' (default: resnet50)'
-#     )
-# parser.add_argument(
-#     '-j', '--workers', default=32, type=int, metavar='N',
-#     help='number of data loading workers (default: 32)'
-#     )
-# parser.add_argument(
-#     '--epochs', default=100, type=int, metavar='N',
-#     help='number of total epochs to run'
-#     )
-# parser.add_argument(
-#     '--start-epoch', default=0, type=int, metavar='N',
-#     help='manual epoch number (useful on restarts)'
-#     )
-# parser.add_argument(
-#     '-b', '--batch-size', default=512, type=int,
-#     metavar='N',
-#     help='mini-batch size (default: 512), this is the total '
-#          'batch size of all GPUs on the current node when '
-#          'using Data Parallel or Distributed Data Parallel'
-#     )
-# parser.add_argument(
-#     '--lr', '--learning-rate', default=0.05, type=float,
-#     metavar='LR', help='initial (base) learning rate', dest='lr'
-#     )
-# parser.add_argument(
-#     '--momentum', default=0.9, type=float, metavar='M',
-#     help='momentum of SGD solver'
-#     )
-# parser.add_argument(
-#     '--wd', '--weight-decay', default=1e-4, type=float,
-#     metavar='W', help='weight decay (default: 1e-4)',
-#     dest='weight_decay'
-#     )
-# parser.add_argument(
-#     '-p', '--print-freq', default=10, type=int,
-#     metavar='N', help='print frequency (default: 10)'
-#     )
-# parser.add_argument(
-#     '--resume', default='', type=str, metavar='PATH',
-#     help='path to latest checkpoint (default: none)'
-#     )
-# parser.add_argument(
-#     '--world-size', default=-1, type=int,
-#     help='number of nodes for distributed training'
-#     )
-# parser.add_argument(
-#     '--rank', default=-1, type=int,
-#     help='node rank for distributed training'
-#     )
-# parser.add_argument(
-#     '--dist-url', default='tcp://224.66.41.62:23456', type=str,
-#     help='url used to set up distributed training'
-#     )
-# parser.add_argument(
-#     '--dist-backend', default='nccl', type=str,
-#     help='distributed backend'
-#     )
-# parser.add_argument(
-#     '--seed', default=None, type=int,
-#     help='seed for initializing training. '
-#     )
-# parser.add_argument(
-#     '--gpu', default=None, type=int,
-#     help='GPU id to use.'
-#     )
-# parser.add_argument(
-#     '--multiprocessing-distributed', action='store_true',
-#     help='Use multi-processing distributed training to launch '
-#          'N processes per node, which has N GPUs. This is the '
-#          'fastest way to use PyTorch for either single node or '
-#          'multi node data parallel training'
-#     )
-
-# # simsiam specific configs:
-# parser.add_argument(
-#     '--dim', default=2048, type=int,
-#     help='feature dimension (default: 2048)'
-#     )
-# parser.add_argument(
-#     '--pred-dim', default=512, type=int,
-#     help='hidden dimension of the predictor (default: 512)'
-#     )
-# parser.add_argument(
-#     '--fix-pred-lr', action='store_true',
-#     help='Fix learning rate for the predictor'
-#     )
 
 
 def main(config, expt_dir):
@@ -246,13 +150,13 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
     
     if config.simsiam.fix_pred_lr:
         optim_params = [{
-                            'params': model.module.encoder.parameters(),
-                            'fix_lr': False
-                            },
-                        {
-                            'params': model.module.predictor.parameters(),
-                            'fix_lr': True
-                            }]
+            'params': model.module.encoder.parameters(),
+            'fix_lr': False
+            },
+            {
+                'params': model.module.predictor.parameters(),
+                'fix_lr': True
+                }]
     else:
         optim_params = model.parameters()
     
@@ -277,7 +181,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
             optimizer.load_state_dict(checkpoint['optimizer'])
             print(
                 "=> loaded checkpoint '{}' (epoch {})"
-                .format(config.expt.resume, checkpoint['epoch'])
+                    .format(config.expt.resume, checkpoint['epoch'])
                 )
         else:
             print("=> no checkpoint found at '{}'".format(config.expt.resume))
@@ -309,13 +213,13 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
         train(train_loader, model, criterion, optimizer, epoch, config, expt_dir)
         
         if not config.expt.multiprocessing_distributed or (config.expt.multiprocessing_distributed
-                                                    and config.expt.rank % ngpus_per_node == 0):
+                                                           and config.expt.rank % ngpus_per_node == 0):
             save_checkpoint(
                 {
-                    'epoch': epoch + 1,
-                    'arch': config.model.model_type,
+                    'epoch':      epoch + 1,
+                    'arch':       config.model.model_type,
                     'state_dict': model.state_dict(),
-                    'optimizer': optimizer.state_dict(),
+                    'optimizer':  optimizer.state_dict(),
                     }, is_best=False, filename=os.path.join(expt_dir, 'checkpoint_{:04d}.pth.tar'.format(epoch))
                 )
 
@@ -367,48 +271,6 @@ def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
         shutil.copyfile(filename, 'model_best.pth.tar')
 
 
-class AverageMeter(object):
-    """Computes and stores the average and current value"""
-    
-    def __init__(self, name, fmt=':f'):
-        self.name = name
-        self.fmt = fmt
-        self.reset()
-    
-    def reset(self):
-        self.val = 0
-        self.avg = 0
-        self.sum = 0
-        self.count = 0
-    
-    def update(self, val, n=1):
-        self.val = val
-        self.sum += val * n
-        self.count += n
-        self.avg = self.sum / self.count
-    
-    def __str__(self):
-        fmtstr = '{name} {val' + self.fmt + '} ({avg' + self.fmt + '})'
-        return fmtstr.format(**self.__dict__)
-
-
-class ProgressMeter(object):
-    def __init__(self, num_batches, meters, prefix=""):
-        self.batch_fmtstr = self._get_batch_fmtstr(num_batches)
-        self.meters = meters
-        self.prefix = prefix
-    
-    def display(self, batch):
-        entries = [self.prefix + self.batch_fmtstr.format(batch)]
-        entries += [str(meter) for meter in self.meters]
-        print('\t'.join(entries))
-    
-    def _get_batch_fmtstr(self, num_batches):
-        num_digits = len(str(num_batches // 1))
-        fmt = '{:' + str(num_digits) + 'd}'
-        return '[' + fmt + '/' + fmt.format(num_batches) + ']'
-
-
 def adjust_learning_rate(optimizer, init_lr, epoch, config):
     """Decay the learning rate based on schedule"""
     cur_lr = init_lr * 0.5 * (1. + math.cos(math.pi * epoch / config.train.epochs))
@@ -424,14 +286,14 @@ if __name__ == '__main__':
     
     with open("metassl/default_metassl_config.yaml", "r") as f:
         config = yaml.load(f)
-
+    
     expt_dir = f"/home/{user}/workspace/experiments/metassl"
     
     expt_dir = pathlib.Path(expt_dir)
     
     config['data']['data_dir'] = f'/home/{user}/workspace/data/metassl'
-
+    
     supporter = Supporter(experiments_dir=expt_dir, config_dict=config, count_expt=True)
     config = supporter.get_config()
-
+    
     main(config=config, expt_dir=expt_dir)
