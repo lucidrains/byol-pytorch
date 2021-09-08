@@ -176,7 +176,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
                 # Map model to be loaded to specified single gpu.
                 loc = 'cuda:{}'.format(config.expt.gpu)
                 checkpoint = torch.load(config.expt.resume, map_location=loc)
-            config.expt.start_epoch = checkpoint['epoch']
+            config.train.start_epoch = checkpoint['epoch']
             model.load_state_dict(checkpoint['state_dict'])
             optimizer.load_state_dict(checkpoint['optimizer'])
             print(
