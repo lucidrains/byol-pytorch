@@ -30,8 +30,9 @@ import yaml
 
 from metassl.utils.data import get_train_valid_loader
 from metassl.utils.supporter import Supporter
-from utils.simsiam import SimSiam
 from utils.meters import AverageMeter, ProgressMeter
+from utils.simsiam import SimSiam
+from metassl.utils.my_optimizer import MyOptimizer
 
 model_names = sorted(
     name for name in models.__dict__
@@ -90,7 +91,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
         builtins.print = print_pass
     
     if config.expt.gpu is not None:
-        print("Use GPU: {} for training".format(config.expt.gpu))
+        print(f"Use GPU: {config.expt.gpu} for training")
     
     if config.expt.distributed:
         if config.expt.dist_url == "env://" and config.expt.rank == -1:
@@ -105,11 +106,8 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
             )
         torch.distributed.barrier()
     # create model
-    print("=> creating model '{}'".format(config.model.model_type))
-    model = SimSiam(
-        models.__dict__[config.model.model_type],
-        config.simsiam.dim, config.simsiam.pred_dim
-        )
+    print(f"=> creating model '{config.model.model_type}'")
+    model = SimSiam(models.__dict__[config.model.model_type], config.simsiam.dim, config.simsiam.pred_dim)
     
     # infer learning rate before changing batch size
     init_lr = config.optim.lr_high * config.train.batch_size / 256
@@ -159,38 +157,10 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
                 }]
     else:
         optim_params = model.parameters()
-    
-    optimizer = torch.optim.SGD(
-        optim_params, init_lr,
-        momentum=config.optim.momentum,
-        weight_decay=config.optim.weight_decay
-        )
-    
-    # optionally resume from a checkpoint
-    if config.expt.resume:
-        if os.path.isfile(config.expt.resume):
-            print("=> loading checkpoint '{}'".format(config.expt.resume))
-            if config.expt.gpu is None:
-                checkpoint = torch.load(config.expt.resume)
-            else:
-                # Map model to be loaded to specified single gpu.
-                loc = 'cuda:{}'.format(config.expt.gpu)
-                checkpoint = torch.load(config.expt.resume, map_location=loc)
-            config.train.start_epoch = checkpoint['epoch']
-            model.load_state_dict(checkpoint['state_dict'])
-            optimizer.load_state_dict(checkpoint['optimizer'])
-            print(
-                "=> loaded checkpoint '{}' (epoch {})"
-                    .format(config.expt.resume, checkpoint['epoch'])
-                )
-        else:
-            print("=> no checkpoint found at '{}'".format(config.expt.resume))
-    
-    cudnn.benchmark = True
-    
+
     # Data loading code
     traindir = os.path.join(config.data.dataset, 'train')
-    
+
     train_loader, valid_loader, train_sampler, valid_sampler = get_train_valid_loader(
         data_dir=traindir,
         batch_size=config.train.batch_size,
@@ -203,11 +173,41 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
         distributed=config.expt.distributed,
         drop_last=True,
         )
+
+    # iter_per_epoch = len(train_loader)
+    # max_steps = config.train.epochs * iter_per_epoch
+    # optimizer = MyOptimizer(0, optim_params, max_steps, iter_per_epoch, lr_high=init_lr, **config.optim.get_dict)
+    
+    optimizer = torch.optim.SGD(
+        optim_params, init_lr,
+        momentum=config.optim.momentum,
+        weight_decay=config.optim.weight_decay
+        )
+    
+    # optionally resume from a checkpoint
+    if config.expt.checkpoint_path:
+        if os.path.isfile(config.expt.checkpoint_path):
+            print(f"=> loading checkpoint '{config.expt.checkpoint_path}'")
+            if config.expt.gpu is None:
+                checkpoint = torch.load(config.expt.checkpoint_path)
+            else:
+                # Map model to be loaded to specified single gpu.
+                loc = f'cuda:{config.expt.gpu}'
+                checkpoint = torch.load(config.expt.checkpoint_path, map_location=loc)
+            config.train.start_epoch = checkpoint['epoch']
+            model.load_state_dict(checkpoint['state_dict'])
+            optimizer.load_state_dict(checkpoint['optimizer'])
+            print(f"=> loaded checkpoint '{config.expt.checkpoint_path}' (epoch {checkpoint['epoch']})")
+        else:
+            print(f"=> no checkpoint found at '{config.expt.checkpoint_path}'")
+    
+    cudnn.benchmark = True
     
     for epoch in range(config.train.start_epoch, config.train.epochs):
         if config.expt.distributed:
             train_sampler.set_epoch(epoch)
-        adjust_learning_rate(optimizer, init_lr, epoch, config)
+        cur_lr = adjust_learning_rate(optimizer, init_lr, epoch, config)
+        print(cur_lr)
         
         # train for one epoch
         train(train_loader, model, criterion, optimizer, epoch, config, expt_dir)
@@ -231,7 +231,7 @@ def train(train_loader, model, criterion, optimizer, epoch, config, expt_dir):
     progress = ProgressMeter(
         len(train_loader),
         [batch_time, data_time, losses],
-        prefix="Epoch: [{}]".format(epoch)
+        prefix=f"Epoch: [{epoch}]"
         )
     
     # switch to train mode
@@ -271,14 +271,18 @@ def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
         shutil.copyfile(filename, 'model_best.pth.tar')
 
 
-def adjust_learning_rate(optimizer, init_lr, epoch, config):
+def adjust_learning_rate(optimizer, init_lr, epoch, config, schedule="cosine"):
     """Decay the learning rate based on schedule"""
-    cur_lr = init_lr * 0.5 * (1. + math.cos(math.pi * epoch / config.train.epochs))
-    for param_group in optimizer.param_groups:
-        if 'fix_lr' in param_group and param_group['fix_lr']:
-            param_group['lr'] = init_lr
-        else:
-            param_group['lr'] = cur_lr
+    if schedule == "cosine":
+        cur_lr = init_lr * 0.5 * (1. + math.cos(math.pi * epoch / config.train.epochs))
+        for param_group in optimizer.param_groups:
+            if 'fix_lr' in param_group and param_group['fix_lr']:
+                param_group['lr'] = init_lr
+                return init_lr
+            else:
+                param_group['lr'] = cur_lr
+                return cur_lr
+                
 
 
 if __name__ == '__main__':

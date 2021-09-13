@@ -3,7 +3,7 @@ import os
 import pathlib
 import pickle
 
-from metassl.train_resnet import begin_training
+from metassl.models.train_resnet import begin_training
 
 if __name__ == "__main__":
     

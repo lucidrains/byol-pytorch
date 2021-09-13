@@ -4,7 +4,7 @@ import pathlib
 
 import yaml
 
-from metassl.train_resnet import begin_training
+from metassl.models.train_resnet import begin_training
 
 """
 
