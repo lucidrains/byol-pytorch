@@ -229,7 +229,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
         momentum=config.optim.momentum,
         weight_decay=config.optim.weight_decay
         )
-    if config.finetuning.optimizer == "lars":
+    if config.finetuning.optim.optimizer == "lars":
         print("=> use LARS optimizer.")
         # from torchlars import LARS
         from apex.parallel.LARC import LARC
