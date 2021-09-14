@@ -191,6 +191,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
         # For multiprocessing distributed, DistributedDataParallel constructor
         # should always set the single device scope, otherwise,
         # DistributedDataParallel will use all available devices.
+        print(config.expt.gpu)
         if config.expt.gpu is not None:
             torch.cuda.set_device(config.expt.gpu)
             model.cuda(config.expt.gpu)
@@ -198,7 +199,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
             # DistributedDataParallel, we need to divide the batch size
             # ourselves based on the total number of GPUs we have
             config.train.batch_size = int(config.train.batch_size / ngpus_per_node)
-            config.workers = int((config.workers + ngpus_per_node - 1) / ngpus_per_node)
+            config.expt.workers = int((config.expt.workers + ngpus_per_node - 1) / ngpus_per_node)
             model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[config.expt.gpu])
         else:
             model.cuda()
