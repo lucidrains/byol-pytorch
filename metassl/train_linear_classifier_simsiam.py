@@ -122,7 +122,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
     # load from pre-trained (ssl model), before DistributedDataParallel constructor
     if config.expt.ssl_model_checkpoint_path:
         if os.path.isfile(config.expt.ssl_model_checkpoint_path):
-            print(f"=> loading checkpoint '{config.expt.ssl_model_checkpoint_path}'")
+            print(f"=> loading pre-trained model checkpoint '{config.expt.ssl_model_checkpoint_path}'")
             checkpoint = torch.load(config.expt.ssl_model_checkpoint_path, map_location="cpu")
             
             # rename moco pre-trained keys
