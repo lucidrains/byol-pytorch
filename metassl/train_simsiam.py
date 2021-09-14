@@ -21,6 +21,7 @@ import torch.backends.cudnn as cudnn
 import torch.distributed as dist
 import torch.multiprocessing as mp
 import torch.nn as nn
+
 import torch.nn.parallel
 import torch.optim
 import torch.utils.data
@@ -32,7 +33,7 @@ from metassl.utils.data import get_train_valid_loader
 from metassl.utils.supporter import Supporter
 from utils.meters import AverageMeter, ProgressMeter
 from utils.simsiam import SimSiam
-from metassl.utils.my_optimizer import MyOptimizer
+
 
 model_names = sorted(
     name for name in models.__dict__
@@ -185,21 +186,21 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
         )
     
     # optionally resume from a checkpoint
-    if config.expt.checkpoint_path:
-        if os.path.isfile(config.expt.checkpoint_path):
-            print(f"=> loading checkpoint '{config.expt.checkpoint_path}'")
+    if config.expt.ssl_model_checkpoint_path:
+        if os.path.isfile(config.expt.ssl_model_checkpoint_path):
+            print(f"=> loading checkpoint '{config.expt.ssl_model_checkpoint_path}'")
             if config.expt.gpu is None:
-                checkpoint = torch.load(config.expt.checkpoint_path)
+                checkpoint = torch.load(config.expt.ssl_model_checkpoint_path)
             else:
                 # Map model to be loaded to specified single gpu.
                 loc = f'cuda:{config.expt.gpu}'
-                checkpoint = torch.load(config.expt.checkpoint_path, map_location=loc)
+                checkpoint = torch.load(config.expt.ssl_model_checkpoint_path, map_location=loc)
             config.train.start_epoch = checkpoint['epoch']
             model.load_state_dict(checkpoint['state_dict'])
             optimizer.load_state_dict(checkpoint['optimizer'])
-            print(f"=> loaded checkpoint '{config.expt.checkpoint_path}' (epoch {checkpoint['epoch']})")
+            print(f"=> loaded checkpoint '{config.expt.ssl_model_checkpoint_path}' (epoch {checkpoint['epoch']})")
         else:
-            print(f"=> no checkpoint found at '{config.expt.checkpoint_path}'")
+            print(f"=> no checkpoint found at '{config.expt.ssl_model_checkpoint_path}'")
     
     cudnn.benchmark = True
     
@@ -210,7 +211,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
         print(cur_lr)
         
         # train for one epoch
-        train(train_loader, model, criterion, optimizer, epoch, config, expt_dir)
+        train(train_loader, model, criterion, optimizer, epoch, config)
         
         if not config.expt.multiprocessing_distributed or (config.expt.multiprocessing_distributed
                                                            and config.expt.rank % ngpus_per_node == 0):
@@ -224,7 +225,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
                 )
 
 
-def train(train_loader, model, criterion, optimizer, epoch, config, expt_dir):
+def train(train_loader, model, criterion, optimizer, epoch, config):
     batch_time = AverageMeter('Time', ':6.3f')
     data_time = AverageMeter('Data', ':6.3f')
     losses = AverageMeter('Loss', ':.4f')
@@ -271,9 +272,9 @@ def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
         shutil.copyfile(filename, 'model_best.pth.tar')
 
 
-def adjust_learning_rate(optimizer, init_lr, epoch, config, schedule="cosine"):
+def adjust_learning_rate(optimizer, init_lr, epoch, config):
     """Decay the learning rate based on schedule"""
-    if schedule == "cosine":
+    if config.optim.schedule == "cosine":
         cur_lr = init_lr * 0.5 * (1. + math.cos(math.pi * epoch / config.train.epochs))
         for param_group in optimizer.param_groups:
             if 'fix_lr' in param_group and param_group['fix_lr']:

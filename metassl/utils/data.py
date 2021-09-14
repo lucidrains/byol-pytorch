@@ -205,8 +205,8 @@ def get_test_loader(
     num_workers=1,
     pin_memory=True,
     download=True,
-    dataset_name="CIFAR100",
-    drop_last=True,
+    dataset_name="ImageNet",
+    drop_last=False,
     ):
     """
     Utility function for loading and returning a multi-process
@@ -249,13 +249,18 @@ def get_test_loader(
             )
     
     elif dataset_name == "ImageNet":
+        normalize = transforms.Normalize(
+            mean=[0.485, 0.456, 0.406],
+            std=[0.229, 0.224, 0.225]
+            )
+        
         transform = transforms.Compose(
-            [
-                transforms.Resize(256, interpolation=Image.BICUBIC),
-                transforms.CenterCrop((224, 244)),
-                transforms.ToTensor(),
-                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-                ]
+                    [
+                        transforms.Resize(256),
+                        transforms.CenterCrop(224),
+                        transforms.ToTensor(),
+                        normalize,
+                    ]
             )
     
     else:

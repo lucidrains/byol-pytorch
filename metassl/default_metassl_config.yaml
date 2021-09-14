@@ -8,7 +8,8 @@ expt:
   job_name:         '001'
   save_model:       True                                      # save the model to disc
   save_model_freq:  5                                         # save model frequency in # of epochs
-  checkpoint_path:  "/home/ferreira/workspace/experiments/metassl/checkpoint_0016.pth.tar"    # resumes training if model with same config exists
+  ssl_model_checkpoint_path:  "/home/ferreira/workspace/experiments/metassl/checkpoint_0099.pth.tar"    # resumes training if model with same config exists
+  target_model_checkpoint_path: null                          #
   print_freq:       10                                        # print frequency
   gpu:              null                                      # GPU ID to train on (if not distributed)
   multiprocessing_distributed:  True                          # Use multi-processing distributed training to launch N processes per node, which has N GPUs.
@@ -28,6 +29,7 @@ train:
   batch_size: 256                         # in distributed setting this is the total batch size, i.e. batch size = individual bs / number of GPUs
   epochs:     100                         # epochs to train
   start_epoch: 0                          # start training at epoch n
+  evaluate:  True                         # evaluate model on validation set
 
 finetuning:
   epochs: 10
@@ -84,7 +86,7 @@ data:
 simsiam:
   dim: 2048                                  # feature dimension (default: 2048)
   pred_dim: 512                              # hidden dimension of the predictor (default: 512)
-  fix_pred_lr:   True                         # Fix learning rate for the predictor
+  fix_pred_lr:   True                        # Fix learning rate for the predictor
 
 
 
