@@ -5,7 +5,6 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
-import argparse
 import builtins
 import math
 import os
@@ -37,50 +36,10 @@ model_names = sorted(
     and callable(models.__dict__[name])
     )
 
-parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
-
-parser.add_argument(
-    '--epochs', default=90, type=int, metavar='N',
-    help='number of total epochs to run'
-    )
-
-parser.add_argument(
-    '--lr', '--learning-rate', default=0.1, type=float,
-    metavar='LR', help='initial (base) learning rate', dest='lr'
-    )
-parser.add_argument(
-    '--momentum', default=0.9, type=float, metavar='M',
-    help='momentum'
-    )
-parser.add_argument(
-    '--wd', '--weight-decay', default=0., type=float,
-    metavar='W', help='weight decay (default: 0.)',
-    dest='weight_decay'
-    )
-parser.add_argument(
-    '-p', '--print-freq', default=10, type=int,
-    metavar='N', help='print frequency (default: 10)'
-    )
-parser.add_argument(
-    '--resume', default='', type=str, metavar='PATH',
-    help='path to latest checkpoint (default: none)'
-    )
-
-# additional configs:
-parser.add_argument(
-    '--pretrained', default='', type=str,
-    help='path to simsiam pretrained checkpoint'
-    )
-parser.add_argument(
-    '--lars', action='store_true',
-    help='Use LARS'
-    )
-
 best_acc1 = 0
 
 
 def main(config, expt_dir):
-    # args = parser.parse_args()
     
     if config.expt.seed is not None:
         random.seed(config.expt.seed)
@@ -160,11 +119,11 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
     model.fc.weight.data.normal_(mean=0.0, std=0.01)
     model.fc.bias.data.zero_()
     
-    # load from pre-trained (target task), before DistributedDataParallel constructor
-    if config.expt.target_model_checkpoint_path:
-        if os.path.isfile(config.expt.target_model_checkpoint_path):
-            print(f"=> loading checkpoint '{config.expt.target_model_checkpoint_path}'")
-            checkpoint = torch.load(config.expt.target_model_checkpoint_path, map_location="cpu")
+    # load from pre-trained (ssl model), before DistributedDataParallel constructor
+    if config.expt.ssl_model_checkpoint_path:
+        if os.path.isfile(config.expt.ssl_model_checkpoint_path):
+            print(f"=> loading checkpoint '{config.expt.ssl_model_checkpoint_path}'")
+            checkpoint = torch.load(config.expt.ssl_model_checkpoint_path, map_location="cpu")
             
             # rename moco pre-trained keys
             state_dict = checkpoint['state_dict']
@@ -180,9 +139,9 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
             msg = model.load_state_dict(state_dict, strict=False)
             assert set(msg.missing_keys) == {"fc.weight", "fc.bias"}
             
-            print(f"=> loaded pre-trained model '{config.expt.target_model_checkpoint_path}'")
+            print(f"=> loaded pre-trained model '{config.expt.ssl_model_checkpoint_path}'")
         else:
-            print(f"=> no checkpoint found at '{config.expt.target_model_checkpoint_path}'")
+            print(f"=> no checkpoint found at '{config.expt.ssl_model_checkpoint_path}'")
     
     # infer learning rate before changing batch size
     init_lr = config.optim.lr_high * config.train.batch_size / 256
@@ -191,7 +150,6 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
         # For multiprocessing distributed, DistributedDataParallel constructor
         # should always set the single device scope, otherwise,
         # DistributedDataParallel will use all available devices.
-        print(config.expt.gpu)
         if config.expt.gpu is not None:
             torch.cuda.set_device(config.expt.gpu)
             model.cuda(config.expt.gpu)
@@ -235,16 +193,17 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
         from apex.parallel.LARC import LARC
         optimizer = LARC(optimizer=optimizer, trust_coefficient=.001, clip=False)
     
-    # optionally resume from a checkpoint (self-supervised learning model)
-    if config.expt.ssl_model_checkpoint_path:
-        if os.path.isfile(config.expt.ssl_model_checkpoint_path):
-            print("=> loading checkpoint '{}'".format(config.expt.ssl_model_checkpoint_path))
+    # optionally resume from a checkpoint (target task model)
+    print(config.expt.target_model_checkpoint_path)
+    if config.expt.target_model_checkpoint_path:
+        if os.path.isfile(config.expt.target_model_checkpoint_path):
+            print("=> loading checkpoint '{}'".format(config.expt.target_model_checkpoint_path))
             if config.expt.gpu is None:
-                checkpoint = torch.load(config.expt.ssl_model_checkpoint_path)
+                checkpoint = torch.load(config.expt.target_model_checkpoint_path)
             else:
                 # Map model to be loaded to specified single gpu.
                 loc = f'cuda:{config.expt.gpu}'
-                checkpoint = torch.load(config.expt.ssl_model_checkpoint_path, map_location=loc)
+                checkpoint = torch.load(config.expt.target_model_checkpoint_path, map_location=loc)
             config.train.start_epoch = checkpoint['epoch']
             best_acc1 = checkpoint['best_acc1']
             if config.expt.gpu is not None:
@@ -252,15 +211,14 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
                 best_acc1 = best_acc1.to(config.expt.gpu)
             model.load_state_dict(checkpoint['state_dict'])
             optimizer.load_state_dict(checkpoint['optimizer'])
-            print(f"=> loaded checkpoint '{config.expt.ssl_model_checkpoint_path}' (epoch {checkpoint['epoch']})")
+            print(f"=> loaded checkpoint '{config.expt.target_model_checkpoint_path}' (epoch {checkpoint['epoch']})")
         else:
-            print(f"=> no checkpoint found at '{config.expt.ssl_model_checkpoint_path}'")
+            print(f"=> no checkpoint found at '{config.expt.target_model_checkpoint_path}'")
     
     cudnn.benchmark = True
     
     # Data loading code
     traindir = os.path.join(config.data.dataset, 'train')
-    # valdir = os.path.join(config.data.dataset, 'val')
     
     train_loader, _, train_sampler, _ = get_train_valid_loader(
         data_dir=traindir,
