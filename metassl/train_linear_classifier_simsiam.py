@@ -316,7 +316,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
                     }, is_best
                 )
             if epoch == config.train.start_epoch:
-                sanity_check(model.state_dict(), config.expt.checkpoint_path)
+                sanity_check(model.state_dict(), config.expt.target_model_checkpoint_path)
 
 
 def train(train_loader, model, criterion, optimizer, epoch, config):
