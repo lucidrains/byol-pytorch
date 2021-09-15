@@ -2,16 +2,16 @@
 ###       Logging Configuration     ###
 #######################################
 expt:
-  project_name:     'metassl'
-  session_name:     'resnet50_metassl_imagenet'
-  experiment_name:  'default_config'
-  job_name:         '001'
-  save_model:       True                                      # save the model to disc
-  save_model_freq:  5                                         # save model frequency in # of epochs
+  project_name:                 'metassl'
+  session_name:                 'resnet50_metassl_imagenet'
+  experiment_name:              'default_config'
+  job_name:                     '001'
+  save_model:                   True                          # save the model to disc
+  save_model_freq:              5                             # save model frequency in # of epochs
   ssl_model_checkpoint_path:  "/home/ferreira/workspace/experiments/metassl/checkpoint_0099.pth.tar"    # resumes training if model with same config exists
   target_model_checkpoint_path: null                          #
-  print_freq:       10                                        # print frequency
-  gpu:              null                                      # GPU ID to train on (if not distributed)
+  print_freq:                   10                            # print frequency
+  gpu:                          null                          # GPU ID to train on (if not distributed)
   multiprocessing_distributed:  True                          # Use multi-processing distributed training to launch N processes per node, which has N GPUs.
                                                               # This is the fastest way to use PyTorch for either single node or multi node data parallel training'
   dist_backend:                 'nccl'                        # distributed backend
@@ -21,6 +21,7 @@ expt:
   world_size:                   1                             # number of nodes for distributed training
   eval_freq:                    10                            # every eval_freq iteration will the model be evaluated
   seed:                         123                           # random seed of numpy and torch
+  evaluate:                     False                          # evaluate model on validation set once and terminate
 
 #######################################
 ###     Training Configuration      ###
@@ -29,7 +30,6 @@ train:
   batch_size:       256                   # in distributed setting this is the total batch size, i.e. batch size = individual bs / number of GPUs
   epochs:           100                   # number of pre-training epochs
   start_epoch:      0                     # start training at epoch n
-  evaluate:         True                  # evaluate model on validation set
   optimizer:        "sgd"                 # optimizer type, options: adam adamW rmsprop adabelief sgd
   schedule:         "cosine"              # learning rate schedule, options: 'cosine' 'cosineW' 'plateau' 'step' 'const' 'cosineWarm' 'exponential' 'None' (BOHO case)
   warmup:           1000                  # 0 (turned off) or higher (e.g. 1000 ~ 5 epochs at batch size 256 on CIFAR100)

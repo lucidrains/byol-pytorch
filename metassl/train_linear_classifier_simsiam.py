@@ -194,7 +194,6 @@ def main_worker(gpu, ngpus_per_node, config):
         optimizer = LARC(optimizer=optimizer, trust_coefficient=.001, clip=False)
     
     # optionally resume from a checkpoint (target task model)
-    print(config.expt.target_model_checkpoint_path)
     if config.expt.target_model_checkpoint_path:
         if os.path.isfile(config.expt.target_model_checkpoint_path):
             print("=> loading checkpoint '{}'".format(config.expt.target_model_checkpoint_path))
@@ -244,14 +243,15 @@ def main_worker(gpu, ngpus_per_node, config):
         drop_last=False,
         )
     
-    if config.train.evaluate:
+    if config.expt.evaluate:
         validate(test_loader, model, criterion, config)
         return
     
     for epoch in range(config.finetuning.start_epoch, config.finetuning.epochs):
         if config.expt.distributed:
             train_sampler.set_epoch(epoch)
-        adjust_learning_rate(optimizer, init_lr, epoch, config)
+        cur_lr = adjust_learning_rate(optimizer, init_lr, epoch, config)
+        print(cur_lr)
         
         # train for one epoch
         train(train_loader, model, criterion, optimizer, epoch, config)
@@ -375,7 +375,7 @@ def validate(val_loader, model, criterion, config):
     return top1.avg
 
 
-def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
+def save_checkpoint(state, is_best, filename='lin_class_checkpoint.pth.tar'):
     torch.save(state, filename)
     if is_best:
         shutil.copyfile(filename, 'model_best.pth.tar')
@@ -411,6 +411,7 @@ def adjust_learning_rate(optimizer, init_lr, epoch, config):
     for param_group in optimizer.param_groups:
         param_group['lr'] = cur_lr
 
+    return cur_lr
 
 def accuracy(output, target, topk=(1,)):
     """Computes the accuracy over the k top predictions for the specified values of k"""
