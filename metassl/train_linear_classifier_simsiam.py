@@ -230,11 +230,12 @@ def main_worker(gpu, ngpus_per_node, config):
         download=False,
         distributed=config.expt.distributed,
         drop_last=True,
+        get_fine_tuning_loaders=True,
         )
     
     test_loader = get_test_loader(
         data_dir=traindir,
-        batch_size=256,
+        batch_size=config.finetuning.batch_size,
         dataset_name="ImageNet",
         shuffle=False,
         num_workers=config.expt.workers,

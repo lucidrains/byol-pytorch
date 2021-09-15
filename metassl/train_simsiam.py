@@ -162,7 +162,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
     # Data loading code
     traindir = os.path.join(config.data.dataset, 'train')
 
-    train_loader, valid_loader, train_sampler, valid_sampler = get_train_valid_loader(
+    train_loader, _, train_sampler, _ = get_train_valid_loader(
         data_dir=traindir,
         batch_size=config.train.batch_size,
         random_seed=config.expt.seed,
@@ -173,6 +173,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
         download=True,
         distributed=config.expt.distributed,
         drop_last=True,
+        get_fine_tuning_loaders=False,
         )
     
     optimizer = torch.optim.SGD(
