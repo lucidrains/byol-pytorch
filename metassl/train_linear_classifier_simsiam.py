@@ -74,7 +74,7 @@ def main(config, expt_dir):
         mp.spawn(main_worker, nprocs=ngpus_per_node, args=(ngpus_per_node, config, expt_dir))
     else:
         # Simply call main_worker function
-        main_worker(config.expt.gpu, ngpus_per_node, config, expt_dir)
+        main_worker(config.expt.gpu, ngpus_per_node, config)
 
 
 def main_worker(gpu, ngpus_per_node, config):
