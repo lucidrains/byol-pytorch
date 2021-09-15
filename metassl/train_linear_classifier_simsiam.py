@@ -370,7 +370,7 @@ def validate(val_loader, model, criterion, config):
                 progress.display(i)
         
         # TODO: this should also be done with the ProgressMeter
-        print(f' * Acc@1 {top1.avg:{top1}} Acc@5 {top5.avg:{top5}}')
+        print(f' * Acc@1 {top1.avg:.3f} Acc@5 {top5.avg:.3f}')
     
     return top1.avg
 
