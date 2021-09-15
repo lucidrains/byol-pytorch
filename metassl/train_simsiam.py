@@ -111,7 +111,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
     model = SimSiam(models.__dict__[config.model.model_type], config.simsiam.dim, config.simsiam.pred_dim)
     
     # infer learning rate before changing batch size
-    init_lr = config.optim.lr_high * config.train.batch_size / 256
+    init_lr = config.train.lr * config.train.batch_size / 256
     
     if config.expt.distributed:
         # Apply SyncBN
@@ -174,15 +174,11 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
         distributed=config.expt.distributed,
         drop_last=True,
         )
-
-    # iter_per_epoch = len(train_loader)
-    # max_steps = config.train.epochs * iter_per_epoch
-    # optimizer = MyOptimizer(0, optim_params, max_steps, iter_per_epoch, lr_high=init_lr, **config.optim.get_dict)
     
     optimizer = torch.optim.SGD(
         optim_params, init_lr,
-        momentum=config.optim.momentum,
-        weight_decay=config.optim.weight_decay
+        momentum=config.train.momentum,
+        weight_decay=config.train.weight_decay
         )
     
     # optionally resume from a checkpoint
@@ -274,7 +270,7 @@ def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
 
 def adjust_learning_rate(optimizer, init_lr, epoch, config):
     """Decay the learning rate based on schedule"""
-    if config.optim.schedule == "cosine":
+    if config.train.schedule == "cosine":
         cur_lr = init_lr * 0.5 * (1. + math.cos(math.pi * epoch / config.train.epochs))
         for param_group in optimizer.param_groups:
             if 'fix_lr' in param_group and param_group['fix_lr']:

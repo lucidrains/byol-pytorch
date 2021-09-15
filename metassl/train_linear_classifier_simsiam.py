@@ -77,7 +77,7 @@ def main(config, expt_dir):
         main_worker(config.expt.gpu, ngpus_per_node, config, expt_dir)
 
 
-def main_worker(gpu, ngpus_per_node, config, expt_dir):
+def main_worker(gpu, ngpus_per_node, config):
     global best_acc1
     config.expt.gpu = gpu
     
@@ -144,7 +144,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
             print(f"=> no checkpoint found at '{config.expt.ssl_model_checkpoint_path}'")
     
     # infer learning rate before changing batch size
-    init_lr = config.optim.lr_high * config.train.batch_size / 256
+    init_lr = config.finetuning.lr * config.train.batch_size / 256
     
     if config.expt.distributed:
         # For multiprocessing distributed, DistributedDataParallel constructor
@@ -184,10 +184,10 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
     
     optimizer = torch.optim.SGD(
         parameters, init_lr,
-        momentum=config.optim.momentum,
-        weight_decay=config.optim.weight_decay
+        momentum=config.finetuning.momentum,
+        weight_decay=config.finetuning.weight_decay
         )
-    if config.finetuning.optim.optimizer == "lars":
+    if config.finetuning.optimizer == "lars":
         print("=> use LARS optimizer.")
         # from torchlars import LARS
         from apex.parallel.LARC import LARC
@@ -222,7 +222,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
     
     train_loader, _, train_sampler, _ = get_train_valid_loader(
         data_dir=traindir,
-        batch_size=config.train.batch_size,
+        batch_size=config.finetuning.batch_size,
         random_seed=config.expt.seed,
         dataset_name="ImageNet",
         shuffle=True,
@@ -248,7 +248,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
         validate(test_loader, model, criterion, config)
         return
     
-    for epoch in range(config.train.start_epoch, config.train.epochs):
+    for epoch in range(config.finetuning.start_epoch, config.finetuning.epochs):
         if config.expt.distributed:
             train_sampler.set_epoch(epoch)
         adjust_learning_rate(optimizer, init_lr, epoch, config)
@@ -405,9 +405,9 @@ def sanity_check(state_dict, pretrained_weights):
     print("=> sanity check passed.")
 
 
-def adjust_learning_rate(optimizer, init_lr, epoch, args):
+def adjust_learning_rate(optimizer, init_lr, epoch, config):
     """Decay the learning rate based on schedule"""
-    cur_lr = init_lr * 0.5 * (1. + math.cos(math.pi * epoch / args.epochs))
+    cur_lr = init_lr * 0.5 * (1. + math.cos(math.pi * epoch / config.train.epochs))
     for param_group in optimizer.param_groups:
         param_group['lr'] = cur_lr
 
