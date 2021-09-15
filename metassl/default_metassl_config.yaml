@@ -41,7 +41,7 @@ train:
 
 
 finetuning:
-  batch_size:       4096
+  batch_size:       4096                  # in distributed setting this is the total batch size, i.e. batch size = individual bs / number of GPUs
   epochs:           90                    # number of finetuning epochs
   start_epoch:      0                     # start training at epoch n
   optimizer:        "lars"                # optimizer type, options: lars adam adamW rmsprop adabelief sgd
