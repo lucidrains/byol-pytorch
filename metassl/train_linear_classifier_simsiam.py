@@ -40,7 +40,6 @@ best_acc1 = 0
 
 
 def main(config, expt_dir):
-    
     if config.expt.seed is not None:
         random.seed(config.expt.seed)
         torch.manual_seed(config.expt.seed)
@@ -77,7 +76,7 @@ def main(config, expt_dir):
         main_worker(config.expt.gpu, ngpus_per_node, config)
 
 
-def main_worker(gpu, ngpus_per_node, config):
+def main_worker(gpu, ngpus_per_node, config, expt_dir):
     global best_acc1
     config.expt.gpu = gpu
     
@@ -251,7 +250,7 @@ def main_worker(gpu, ngpus_per_node, config):
     for epoch in range(config.finetuning.start_epoch, config.finetuning.epochs):
         if config.expt.distributed:
             train_sampler.set_epoch(epoch)
-        cur_lr = adjust_learning_rate(optimizer, init_lr, epoch, config)
+        cur_lr = adjust_learning_rate(optimizer, init_lr, epoch, config.finetuning.epochs, config)
         print(cur_lr)
         
         # train for one epoch
@@ -273,7 +272,7 @@ def main_worker(gpu, ngpus_per_node, config):
                     'state_dict': model.state_dict(),
                     'best_acc1':  best_acc1,
                     'optimizer':  optimizer.state_dict(),
-                    }, is_best
+                    }, is_best, filename=os.path.join(expt_dir, f'lin_class_checkpoint_{epoch:04d}.pth.tar')
                 )
             if epoch == config.train.start_epoch:
                 sanity_check(model.state_dict(), config.expt.ssl_model_checkpoint_path)
@@ -406,13 +405,14 @@ def sanity_check(state_dict, pretrained_weights):
     print("=> sanity check passed.")
 
 
-def adjust_learning_rate(optimizer, init_lr, epoch, config):
+def adjust_learning_rate(optimizer, init_lr, epoch, total_epochs, config):
     """Decay the learning rate based on schedule"""
-    cur_lr = init_lr * 0.5 * (1. + math.cos(math.pi * epoch / config.train.epochs))
+    cur_lr = init_lr * 0.5 * (1. + math.cos(math.pi * epoch / total_epochs))
     for param_group in optimizer.param_groups:
         param_group['lr'] = cur_lr
-
+    
     return cur_lr
+
 
 def accuracy(output, target, topk=(1,)):
     """Computes the accuracy over the k top predictions for the specified values of k"""

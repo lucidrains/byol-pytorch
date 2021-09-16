@@ -204,7 +204,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
     for epoch in range(config.train.start_epoch, config.train.epochs):
         if config.expt.distributed:
             train_sampler.set_epoch(epoch)
-        cur_lr = adjust_learning_rate(optimizer, init_lr, epoch, config)
+        cur_lr = adjust_learning_rate(optimizer, init_lr, epoch, config.train.epochs, config)
         print(cur_lr)
         
         # train for one epoch
@@ -269,10 +269,10 @@ def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
         shutil.copyfile(filename, 'model_best.pth.tar')
 
 
-def adjust_learning_rate(optimizer, init_lr, epoch, config):
+def adjust_learning_rate(optimizer, init_lr, epoch, total_epochs, config):
     """Decay the learning rate based on schedule"""
     if config.train.schedule == "cosine":
-        cur_lr = init_lr * 0.5 * (1. + math.cos(math.pi * epoch / config.train.epochs))
+        cur_lr = init_lr * 0.5 * (1. + math.cos(math.pi * epoch / total_epochs))
         for param_group in optimizer.param_groups:
             if 'fix_lr' in param_group and param_group['fix_lr']:
                 param_group['lr'] = init_lr
