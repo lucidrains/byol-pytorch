@@ -228,7 +228,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
         pin_memory=True,
         download=False,
         distributed=config.expt.distributed,
-        drop_last=True,
+        drop_last=False,
         get_fine_tuning_loaders=True,
         )
     
