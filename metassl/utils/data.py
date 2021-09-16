@@ -157,7 +157,8 @@ def get_train_valid_loader(
 
     if dataset_name == "ImageNet":
         # hardcoded for now
-        root = "/data/datasets/ImageNet/imagenet-pytorch"
+        # root = "/data/datasets/ImageNet/imagenet-pytorch"
+        root = "/data/datasets/ILSVRC2012"
         # load the dataset
         train_dataset = ImageNet(
             root=root, split='train',
@@ -230,7 +231,6 @@ def get_test_loader(
     download=True,
     dataset_name="ImageNet",
     drop_last=False,
-    get_fine_tuning_loaders=False,
     ):
     """
     Utility function for loading and returning a multi-process

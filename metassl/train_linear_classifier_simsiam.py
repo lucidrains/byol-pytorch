@@ -439,12 +439,17 @@ if __name__ == '__main__':
         config = yaml.load(f)
     
     expt_dir = f"/home/{user}/workspace/experiments/metassl"
+    expt_name = "pre-training-fix-lr-100-256"
+    expt_sub_dir = f"/home/{user}/workspace/experiments/metassl/{expt_name}"
     
     expt_dir = pathlib.Path(expt_dir)
+    
+    if not os.path.exists(os.path.join(expt_dir, expt_name)):
+        os.makedirs(os.path.join(expt_dir, expt_name))
     
     config['data']['data_dir'] = f'/home/{user}/workspace/data/metassl'
     
     supporter = Supporter(experiments_dir=expt_dir, config_dict=config, count_expt=True)
     config = supporter.get_config()
     
-    main(config=config, expt_dir=expt_dir)
+    main(config=config, expt_dir=expt_sub_dir)
