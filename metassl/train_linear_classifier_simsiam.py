@@ -143,7 +143,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
             print(f"=> no checkpoint found at '{config.expt.ssl_model_checkpoint_path}'")
     
     # infer learning rate before changing batch size
-    init_lr = config.finetuning.lr * config.train.batch_size / 256
+    init_lr = config.finetuning.lr * config.finetuning.batch_size / 256
     
     if config.expt.distributed:
         # For multiprocessing distributed, DistributedDataParallel constructor
@@ -155,7 +155,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
             # When using a single GPU per process and per
             # DistributedDataParallel, we need to divide the batch size
             # ourselves based on the total number of GPUs we have
-            config.train.batch_size = int(config.train.batch_size / ngpus_per_node)
+            config.finetuning.batch_size = int(config.finetuning.batch_size / ngpus_per_node)
             config.expt.workers = int((config.expt.workers + ngpus_per_node - 1) / ngpus_per_node)
             model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[config.expt.gpu])
         else:
