@@ -52,8 +52,8 @@ def get_train_valid_loader(
     - train_loader: training set iterator.
     - valid_loader: validation set iterator.
     """
-    error_msg = "[!] valid_size should be in the range [0, 1]."
-    assert ((valid_size >= 0) and (valid_size <= 1)), error_msg
+    # error_msg = "[!] valid_size should be in the range [0, 1]."
+    # assert ((valid_size >= 0) and (valid_size <= 1)), error_msg
     allowed_datasets = ["CIFAR10", "CIFAR100", "ImageNet"]
     if dataset_name not in allowed_datasets:
         print(f"dataset name should be in {allowed_datasets}")
@@ -189,7 +189,10 @@ def get_train_valid_loader(
         np.random.seed(random_seed)
         np.random.shuffle(indices)
     
-    train_idx, valid_idx = indices[split:], indices[:split]
+    if np.isclose(valid_size, 0.0):
+        train_idx, valid_idx = indices, indices
+    else:
+        train_idx, valid_idx = indices[split:], indices[:split]
     
     valid_sampler = SubsetRandomSampler(valid_idx)
     
@@ -218,8 +221,11 @@ def get_train_valid_loader(
         images, labels = data_iter.next()
         X = images.numpy().transpose([0, 2, 3, 1])
         plot_images(X, labels)
-    
-    return train_loader, valid_loader, train_sampler, valid_sampler
+        
+    if np.isclose(valid_size, 0.0):
+        return train_loader, None, train_sampler, None
+    else:
+        return train_loader, valid_loader, train_sampler, valid_sampler
 
 
 def get_test_loader(

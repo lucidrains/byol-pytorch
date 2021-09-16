@@ -134,7 +134,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
                 # delete renamed or unused k
                 del state_dict[k]
             
-            config.train.start_epoch = 0
+            config.finetuning.start_epoch = 0
             msg = model.load_state_dict(state_dict, strict=False)
             assert set(msg.missing_keys) == {"fc.weight", "fc.bias"}
             
@@ -202,7 +202,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
                 # Map model to be loaded to specified single gpu.
                 loc = f'cuda:{config.expt.gpu}'
                 checkpoint = torch.load(config.expt.target_model_checkpoint_path, map_location=loc)
-            config.train.start_epoch = checkpoint['epoch']
+            config.finetuning.start_epoch = checkpoint['epoch']
             best_acc1 = checkpoint['best_acc1']
             if config.expt.gpu is not None:
                 # best_acc1 may be from a checkpoint from a different GPU
@@ -222,6 +222,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
         data_dir=traindir,
         batch_size=config.finetuning.batch_size,
         random_seed=config.expt.seed,
+        valid_size=0.0,
         dataset_name="ImageNet",
         shuffle=True,
         num_workers=config.expt.workers,
@@ -234,7 +235,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
     
     test_loader = get_test_loader(
         data_dir=traindir,
-        batch_size=config.finetuning.batch_size,
+        batch_size=256,
         dataset_name="ImageNet",
         shuffle=False,
         num_workers=config.expt.workers,
