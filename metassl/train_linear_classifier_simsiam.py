@@ -440,13 +440,14 @@ if __name__ == '__main__':
         config = yaml.load(f)
     
     expt_dir = f"/home/{user}/workspace/experiments/metassl"
-    expt_name = "pre-training-fix-lr-100-256"
-    expt_sub_dir = f"/home/{user}/workspace/experiments/metassl/{expt_name}"
+    # expt_name = "pre-training-fix-lr-100-256"
+    expt_name = "pre-training-full-train-data-fix-lr-100-256"
+    expt_sub_dir = os.path.join(expt_dir, expt_name)
     
     expt_dir = pathlib.Path(expt_dir)
     
-    if not os.path.exists(os.path.join(expt_dir, expt_name)):
-        os.makedirs(os.path.join(expt_dir, expt_name))
+    if not os.path.exists(expt_sub_dir):
+        os.makedirs(expt_sub_dir)
     
     config['data']['data_dir'] = f'/home/{user}/workspace/data/metassl'
     
