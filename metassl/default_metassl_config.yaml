@@ -8,7 +8,7 @@ expt:
   job_name:                     '001'
   save_model:                   True                          # save the model to disc
   save_model_freq:              5                             # save model frequency in # of epochs
-  ssl_model_checkpoint_path:  "/home/ferreira/workspace/experiments/metassl/checkpoint_0099.pth.tar"    # resumes training if model with same config exists
+  ssl_model_checkpoint_path:  "/home/ferreira/workspace/experiments/metassl/pre-training-fix-lr-100-256/checkpoint_0099.pth.tar"    # resumes training if model with same config exists
   target_model_checkpoint_path: null                          #
   print_freq:                   10                            # print frequency
   gpu:                          null                          # GPU ID to train on (if not distributed)
