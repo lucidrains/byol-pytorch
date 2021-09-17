@@ -7,6 +7,7 @@
 
 # code taken from https://github.com/facebookresearch/simsiam
 
+import argparse
 import builtins
 import math
 import os
@@ -166,13 +167,14 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
         data_dir=traindir,
         batch_size=config.train.batch_size,
         random_seed=config.expt.seed,
+        valid_size=0.0,
         dataset_name="ImageNet",
         shuffle=True,
         num_workers=config.expt.workers,
         pin_memory=True,
-        download=True,
+        download=False,
         distributed=config.expt.distributed,
-        drop_last=True,
+        drop_last=False,
         get_fine_tuning_loaders=False,
         )
     
@@ -284,13 +286,18 @@ def adjust_learning_rate(optimizer, init_lr, epoch, total_epochs, config):
 
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
+    parser.add_argument('--expt_name', default='pre-training-fix-lr-100-256', type=str, help='experiment name')
+    args = parser.parse_args()
+    
     user = os.environ.get('USER')
     
     with open("metassl/default_metassl_config.yaml", "r") as f:
         config = yaml.load(f)
     
     expt_dir = f"/home/{user}/workspace/experiments/metassl"
-    expt_name = "pre-training-full-train-data-fix-lr-100-256"
+    # expt_name = "pre-training-full-train-data-fix-lr-100-256"
+    expt_name = args.expt_name
     expt_sub_dir = os.path.join(expt_dir, expt_name)
     
     expt_dir = pathlib.Path(expt_dir)
