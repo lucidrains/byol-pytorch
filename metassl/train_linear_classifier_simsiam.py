@@ -441,8 +441,6 @@ if __name__ == '__main__':
     
     user = os.environ.get('USER')
     
-    with open("metassl/default_metassl_config.yaml", "r") as f:
-        config = yaml.load(f)
     
     expt_dir = f"/home/{user}/workspace/experiments/metassl"
     # expt_name = "pre-training-fix-lr-100-256"
@@ -455,6 +453,10 @@ if __name__ == '__main__':
     if not os.path.exists(expt_sub_dir):
         os.makedirs(expt_sub_dir)
     
+    with open("metassl/default_metassl_config.yaml", "r") as f:
+        config = yaml.load(f)
+        yaml.dump(expt_sub_dir, f)
+
     config['data']['data_dir'] = f'/home/{user}/workspace/data/metassl'
     
     supporter = Supporter(experiments_dir=expt_dir, config_dict=config, count_expt=True)
