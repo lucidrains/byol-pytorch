@@ -157,10 +157,10 @@ def get_train_valid_loader(
 
     if dataset_name == "ImageNet":
         # hardcoded for now
-        # root = "/data/datasets/ImageNet/imagenet-pytorch"
+        root = "/data/datasets/ImageNet/imagenet-pytorch"
         # root = "/data/datasets/ILSVRC2012"
-        print("---------------------using new ImageNet----------------------")
-        root = "/data/datasets/ImageNet/imagenet-pytorch/imagenet-pytorch-2-dont-use"
+        # print("---------------------using new ImageNet----------------------")
+        # root = "/data/datasets/ImageNet/imagenet-pytorch/imagenet-pytorch-2-dont-use"
         # load the dataset
         train_dataset = ImageNet(
             root=root, split='train',

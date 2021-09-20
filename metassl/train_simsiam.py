@@ -307,7 +307,7 @@ if __name__ == '__main__':
     
     config['data']['data_dir'] = f'/home/{user}/workspace/data/metassl'
     
-    supporter = Supporter(experiments_dir=expt_dir, config_dict=config, count_expt=True)
+    supporter = Supporter(experiments_dir=expt_sub_dir, config_dict=config, count_expt=True)
     config = supporter.get_config()
     
-    main(config=config, expt_dir=expt_dir)
+    main(config=config, expt_dir=expt_sub_dir)
