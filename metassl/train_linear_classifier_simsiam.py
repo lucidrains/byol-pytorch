@@ -13,7 +13,6 @@ import random
 import shutil
 import time
 import warnings
-import submitit
 
 import argparse
 import torch
@@ -455,7 +454,8 @@ if __name__ == '__main__':
     
     with open("metassl/default_metassl_config.yaml", "r") as f:
         config = yaml.load(f)
-        yaml.dump(expt_sub_dir, f)
+        
+    shutil.copy("metassl/default_metassl_config.yaml", expt_sub_dir)
 
     config['data']['data_dir'] = f'/home/{user}/workspace/data/metassl'
     
