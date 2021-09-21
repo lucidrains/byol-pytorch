@@ -291,7 +291,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
     parser.add_argument('--expt_name', default='pre-training-fix-lr-100-256', type=str, help='experiment name')
     parser.add_argument('--epochs', default=100, type=int, metavar='N', help='number of total epochs to run')
-    parser.add_argument('--lr', '--learning-rate', default=0.1, type=float, metavar='LR', help='initial (base) learning rate', dest='lr')
+    parser.add_argument('--lr', '--learning-rate', default=0.05, type=float, metavar='LR', help='initial (base) learning rate', dest='lr')
     parser.add_argument('--ssl_model_checkpoint_path', default=None, type=str, help='pretrained model checkpoint path')
     args = parser.parse_args()
 
