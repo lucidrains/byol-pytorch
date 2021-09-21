@@ -292,11 +292,7 @@ if __name__ == '__main__':
     parser.add_argument('--expt_name', default='pre-training-fix-lr-100-256', type=str, help='experiment name')
     parser.add_argument('--epochs', default=100, type=int, metavar='N', help='number of total epochs to run')
     parser.add_argument('--lr', '--learning-rate', default=0.1, type=float, metavar='LR', help='initial (base) learning rate', dest='lr')
-    parser.add_argument(
-        '--ssl_model_checkpoint_path',
-        default='/home/ferreira/workspace/experiments/metassl/pre-training-fix-lr-100-256/checkpoint_0099.pth.tar', type=str,
-        help='pretrained model checkpoint path'
-        )
+    parser.add_argument('--ssl_model_checkpoint_path', default=None, type=str, help='pretrained model checkpoint path')
     args = parser.parse_args()
 
     expt_name = args.expt_name
@@ -312,7 +308,7 @@ if __name__ == '__main__':
     if not os.path.exists(expt_sub_dir):
         os.makedirs(expt_sub_dir)
 
-    with open("metassl/default_metassl_config.yaml", "r") as f:
+    with open("../metassl/default_metassl_config.yaml", "r") as f:
         config = yaml.safe_load(f)
 
     config['data']['data_dir'] = f'/home/{user}/workspace/data/metassl'
@@ -320,6 +316,8 @@ if __name__ == '__main__':
     config['expt']['ssl_model_checkpoint_path'] = ssl_model_checkpoint_path
     config['train']['epochs'] = epochs
     config['train']['lr'] = lr
+
+    print(expt_name, ssl_model_checkpoint_path, epochs, lr)
 
     with open(os.path.join(expt_sub_dir, "config.yaml"), "w") as f:
         yaml.dump(config, f)
