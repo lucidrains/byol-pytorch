@@ -5,6 +5,7 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
+import argparse
 import builtins
 import math
 import os
@@ -14,7 +15,6 @@ import shutil
 import time
 import warnings
 
-import argparse
 import torch
 import torch.backends.cudnn as cudnn
 import torch.distributed as dist
@@ -28,7 +28,7 @@ import torchvision.models as models
 import yaml
 
 from metassl.utils.data import get_train_valid_loader, get_test_loader
-from metassl.utils.supporter import Supporter
+from utils.config import AttrDict
 from utils.meters import AverageMeter, ProgressMeter
 
 model_names = sorted(
@@ -434,17 +434,21 @@ def accuracy(output, target, topk=(1,)):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
-    parser.add_argument('--expt_name', default='pre-training-fix-lr-100-256', type=str, help='experiment name')
-    args = parser.parse_args()
-    
     user = os.environ.get('USER')
     
+    parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
+    parser.add_argument('--expt_name', default='pre-training-fix-lr-100-256', type=str, help='experiment name')
+    parser.add_argument('--epochs', default=100, type=int, metavar='N', help='number of total epochs to run')
+    parser.add_argument('--lr', '--learning-rate', default=0.1, type=float, metavar='LR', help='initial (base) learning rate', dest='lr')
+    parser.add_argument('--ssl_model_checkpoint_path', default='/home/ferreira/workspace/experiments/metassl/pre-training-fix-lr-100-256/checkpoint_0099.pth.tar', type=str, help='pretrained model checkpoint path')
+    args = parser.parse_args()
+    
+    expt_name = args.expt_name
+    epochs = args.epochs
+    lr = args.lr
+    ssl_model_checkpoint_path = args.ssl_model_checkpoint_path
     
     expt_dir = f"/home/{user}/workspace/experiments/metassl"
-    # expt_name = "pre-training-fix-lr-100-256"
-    # expt_name = "pre-training-full-train-data-fix-lr-100-256"
-    expt_name = args.expt_name
     expt_sub_dir = os.path.join(expt_dir, expt_name)
     
     expt_dir = pathlib.Path(expt_dir)
@@ -453,14 +457,17 @@ if __name__ == '__main__':
         os.makedirs(expt_sub_dir)
     
     with open("metassl/default_metassl_config.yaml", "r") as f:
-        config = yaml.load(f)
-        
-    shutil.copy("metassl/default_metassl_config.yaml", expt_sub_dir)
+        config = yaml.safe_load(f)
 
     config['data']['data_dir'] = f'/home/{user}/workspace/data/metassl'
+    config['expt']['expt_name'] = expt_name
+    config['expt']['ssl_model_checkpoint_path'] = ssl_model_checkpoint_path
+    config['train']['epochs'] = epochs
+    config['train']['lr'] = lr
     
-    supporter = Supporter(experiments_dir=expt_dir, config_dict=config, count_expt=True)
-    config = supporter.get_config()
+    with open(os.path.join(expt_sub_dir, "config.yaml"), "w") as f:
+        yaml.dump(config, f)
+    
+    config = AttrDict(config)
     
     main(config=config, expt_dir=expt_sub_dir)
-
