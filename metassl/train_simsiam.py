@@ -308,7 +308,7 @@ if __name__ == '__main__':
     if not os.path.exists(expt_sub_dir):
         os.makedirs(expt_sub_dir)
 
-    with open("../metassl/default_metassl_config.yaml", "r") as f:
+    with open("metassl/default_metassl_config.yaml", "r") as f:
         config = yaml.safe_load(f)
 
     config['data']['data_dir'] = f'/home/{user}/workspace/data/metassl'
@@ -318,9 +318,11 @@ if __name__ == '__main__':
     config['train']['lr'] = lr
 
     print(expt_name, ssl_model_checkpoint_path, epochs, lr)
+    print(f"batch size {config['train']['batch_size']}")
 
     with open(os.path.join(expt_sub_dir, "config.yaml"), "w") as f:
         yaml.dump(config, f)
+        print(f"copied config to {expt_sub_dir}")
 
     config = AttrDict(config)
     

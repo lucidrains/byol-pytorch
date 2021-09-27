@@ -437,10 +437,10 @@ if __name__ == '__main__':
     user = os.environ.get('USER')
     
     parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
-    parser.add_argument('--expt_name', default='pre-training-fix-lr-100-256', type=str, help='experiment name')
+    parser.add_argument('--expt_name', default='pre-training-full-train-data-fix-lr-100-256', type=str, help='experiment name')
     parser.add_argument('--epochs', default=100, type=int, metavar='N', help='number of total epochs to run')
     parser.add_argument('--lr', '--learning-rate', default=0.1, type=float, metavar='LR', help='initial (base) learning rate', dest='lr')
-    parser.add_argument('--ssl_model_checkpoint_path', default='/home/ferreira/workspace/experiments/metassl/pre-training-fix-lr-100-256/checkpoint_0099.pth.tar', type=str, help='pretrained model checkpoint path')
+    parser.add_argument('--ssl_model_checkpoint_path', default='/home/ferreira/workspace/experiments/metassl/pre-training-full-train-data-fix-lr-100-256/checkpoint_0099.pth.tar', type=str, help='pretrained model checkpoint path')
     args = parser.parse_args()
     
     expt_name = args.expt_name
