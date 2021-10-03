@@ -26,7 +26,7 @@ expt:
 #######################################
 train:
   batch_size:       512                   # in distributed setting this is the total batch size, i.e. batch size = individual bs / number of GPUs
-  epochs:           1                   # number of pre-training epochs
+  epochs:           800                   # number of pre-training epochs
   start_epoch:      0                     # start training at epoch n
   optimizer:        "sgd"                 # optimizer type, options: adam adamW rmsprop adabelief sgd
   schedule:         "cosine"              # learning rate schedule, options: 'cosine' 'cosineW' 'plateau' 'step' 'const' 'cosineWarm' 'exponential' 'None' (BOHO case)
