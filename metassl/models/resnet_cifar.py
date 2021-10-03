@@ -19,7 +19,7 @@ class BasicBlock(nn.Module):
     #to distinct
     expansion = 1
 
-    def __init__(self, in_channels, out_channels, stride=1):
+    def __init__(self, in_channels, out_channels, stride=1, zero_init_residual=True):
         super().__init__()
 
         #residual function
@@ -30,6 +30,8 @@ class BasicBlock(nn.Module):
             nn.Conv2d(out_channels, out_channels * BasicBlock.expansion, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(out_channels * BasicBlock.expansion)
         )
+        if zero_init_residual:
+            nn.init.constant_(self.residual_function[-1].weight, 0)  # TODO: What about the bias?
 
         #shortcut
         self.shortcut = nn.Sequential()
@@ -49,7 +51,7 @@ class BottleNeck(nn.Module):
     """Residual block for resnet over 50 layers
     """
     expansion = 4
-    def __init__(self, in_channels, out_channels, stride=1):
+    def __init__(self, in_channels, out_channels, stride=1, zero_init_residual=True):
         super().__init__()
         self.residual_function = nn.Sequential(
             nn.Conv2d(in_channels, out_channels, kernel_size=1, bias=False),
@@ -61,6 +63,8 @@ class BottleNeck(nn.Module):
             nn.Conv2d(out_channels, out_channels * BottleNeck.expansion, kernel_size=1, bias=False),
             nn.BatchNorm2d(out_channels * BottleNeck.expansion),
         )
+        if zero_init_residual:
+            nn.init.constant_(self.residual_function[-1].weight, 0)  # TODO: What about the bias?
 
         self.shortcut = nn.Sequential()
 
@@ -75,25 +79,25 @@ class BottleNeck(nn.Module):
 
 class ResNet(nn.Module):
 
-    def __init__(self, block, num_block, num_classes=100):
+    def __init__(self, block, num_block, num_classes=100, zero_init_residual: bool = True,):
         super().__init__()
 
         self.in_channels = 64
-
+        self.zero_init_residual = zero_init_residual
         self.conv1 = nn.Sequential(
             nn.Conv2d(3, 64, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(64),
             nn.ReLU(inplace=True))
         #we use a different inputsize than the original paper
         #so conv2_x's stride is 1
-        self.conv2_x = self._make_layer(block, 64, num_block[0], 1)
-        self.conv3_x = self._make_layer(block, 128, num_block[1], 2)
-        self.conv4_x = self._make_layer(block, 256, num_block[2], 2)
-        self.conv5_x = self._make_layer(block, 512, num_block[3], 2)
+        self.conv2_x = self._make_layer(block, 64, num_block[0], 1, zero_init_residual)
+        self.conv3_x = self._make_layer(block, 128, num_block[1], 2, zero_init_residual)
+        self.conv4_x = self._make_layer(block, 256, num_block[2], 2, zero_init_residual)
+        self.conv5_x = self._make_layer(block, 512, num_block[3], 2, zero_init_residual)
         self.avg_pool = nn.AdaptiveAvgPool2d((1, 1))
         self.fc = nn.Linear(512 * block.expansion, num_classes)
 
-    def _make_layer(self, block, out_channels, num_blocks, stride):
+    def _make_layer(self, block, out_channels, num_blocks, stride, zero_init_residual):
         """make resnet layers(by layer i didnt mean this 'layer' was the
         same as a neuron netowork layer, ex. conv layer), one layer may
         contain more than one residual block
@@ -111,7 +115,7 @@ class ResNet(nn.Module):
         strides = [stride] + [1] * (num_blocks - 1)
         layers = []
         for stride in strides:
-            layers.append(block(self.in_channels, out_channels, stride))
+            layers.append(block(self.in_channels, out_channels, stride, zero_init_residual))
             self.in_channels = out_channels * block.expansion
 
         return nn.Sequential(*layers)
@@ -128,27 +132,27 @@ class ResNet(nn.Module):
 
         return output
 
-def resnet18(num_classes):
+def resnet18(num_classes, zero_init_residual):
     """ return a ResNet 18 object
     """
-    return ResNet(BasicBlock, [2, 2, 2, 2], num_classes=num_classes)
+    return ResNet(BasicBlock, [2, 2, 2, 2], num_classes=num_classes, zero_init_residual=zero_init_residual)
 
-def resnet34(num_classes):
+def resnet34(num_classes, zero_init_residual):
     """ return a ResNet 34 object
     """
-    return ResNet(BasicBlock, [3, 4, 6, 3], num_classes=num_classes)
+    return ResNet(BasicBlock, [3, 4, 6, 3], num_classes=num_classes, zero_init_residual=zero_init_residual)
 
-def resnet50(num_classes):
+def resnet50(num_classes, zero_init_residual):
     """ return a ResNet 50 object
     """
-    return ResNet(BottleNeck, [3, 4, 6, 3], num_classes=num_classes)
+    return ResNet(BottleNeck, [3, 4, 6, 3], num_classes=num_classes, zero_init_residual=zero_init_residual)
 
-def resnet101(num_classes):
+def resnet101(num_classes, zero_init_residual):
     """ return a ResNet 101 object
     """
-    return ResNet(BottleNeck, [3, 4, 23, 3], num_classes=num_classes)
+    return ResNet(BottleNeck, [3, 4, 23, 3], num_classes=num_classes, zero_init_residual=zero_init_residual)
 
-def resnet152(num_classes):
+def resnet152(num_classes, zero_init_residual):
     """ return a ResNet 152 object
     """
-    return ResNet(BottleNeck, [3, 8, 36, 3], num_classes=num_classes)
+    return ResNet(BottleNeck, [3, 8, 36, 3], num_classes=num_classes, zero_init_residual=zero_init_residual)
