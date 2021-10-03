@@ -467,8 +467,9 @@ if __name__ == '__main__':
     config['data']['data_dir'] = f'/home/{user}/workspace/data/metassl'
     config['expt']['expt_name'] = expt_name
     config['expt']['ssl_model_checkpoint_path'] = ssl_model_checkpoint_path
-    config['train']['epochs'] = epochs
-    config['train']['lr'] = lr
+    config['finetuning']['epochs'] = epochs
+    config['finetuning']['lr'] = lr
+    
     
     with open(os.path.join(expt_sub_dir, "config.yaml"), "w") as f:
         yaml.dump(config, f)
