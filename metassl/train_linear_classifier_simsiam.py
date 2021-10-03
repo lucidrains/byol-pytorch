@@ -458,12 +458,18 @@ if __name__ == '__main__':
     
     with open("metassl/default_metassl_config.yaml", "r") as f:
         config = yaml.safe_load(f)
+        
+    print(f"epochs: {epochs}")
+    print(f"lr: {lr}")
+    print(f"ssl model checkpoint: {ssl_model_checkpoint_path}")
+    print(f"experiment name: {expt_name}")
 
     config['data']['data_dir'] = f'/home/{user}/workspace/data/metassl'
     config['expt']['expt_name'] = expt_name
     config['expt']['ssl_model_checkpoint_path'] = ssl_model_checkpoint_path
-    config['train']['epochs'] = epochs
-    config['train']['lr'] = lr
+    config['finetuning']['epochs'] = epochs
+    config['finetuning']['lr'] = lr
+    
     
     with open(os.path.join(expt_sub_dir, "config.yaml"), "w") as f:
         yaml.dump(config, f)
