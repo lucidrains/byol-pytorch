@@ -30,10 +30,20 @@ import torch.utils.data.distributed
 import torchvision.models as models
 import yaml
 
-from metassl.utils.data import get_train_valid_loader
-from utils.config import AttrDict
-from utils.meters import AverageMeter, ProgressMeter
-from utils.simsiam import SimSiam
+try:
+    # For execution in PyCharm
+    from metassl.utils.data import get_train_valid_loader
+    from metassl.utils.config import AttrDict
+    from metassl.utils.meters import AverageMeter, ProgressMeter
+    from metassl.utils.simsiam import SimSiam
+    import metassl.models.resnet_cifar as our_cifar_resnets
+except ImportError:
+    # For execution in command line
+    from .utils.data import get_train_valid_loader
+    from .utils.config import AttrDict
+    from .utils.meters import AverageMeter, ProgressMeter
+    from .utils.simsiam import SimSiam
+    from .models import resnet_cifar as our_cifar_resnets
 
 
 model_names = sorted(
@@ -84,7 +94,7 @@ def main(config, expt_dir):
 
 def main_worker(gpu, ngpus_per_node, config, expt_dir):
     config.expt.gpu = gpu
-    
+
     # suppress printing if not master
     if config.expt.multiprocessing_distributed and config.expt.gpu != 0:
         def print_pass(*args):
@@ -109,8 +119,12 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
         torch.distributed.barrier()
     # create model
     print(f"=> creating model '{config.model.model_type}'")
-    model = SimSiam(models.__dict__[config.model.model_type], config.simsiam.dim, config.simsiam.pred_dim)
-    
+    if config.data.dataset == 'CIFAR10':
+        # Use model from our model folder instead from torchvision!
+        model = SimSiam(our_cifar_resnets.resnet18, config.simsiam.dim, config.simsiam.pred_dim)
+    else:
+        model = SimSiam(models.__dict__[config.model.model_type], config.simsiam.dim, config.simsiam.pred_dim)
+
     # infer learning rate before changing batch size
     init_lr = config.train.lr * config.train.batch_size / 256
     
@@ -168,7 +182,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
         batch_size=config.train.batch_size,
         random_seed=config.expt.seed,
         valid_size=0.0,
-        dataset_name="ImageNet",
+        dataset_name=config.data.dataset,
         shuffle=True,
         num_workers=config.expt.workers,
         pin_memory=True,
@@ -208,10 +222,10 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
             train_sampler.set_epoch(epoch)
         cur_lr = adjust_learning_rate(optimizer, init_lr, epoch, config.train.epochs, config)
         print(cur_lr)
-        
+
         # train for one epoch
         train(train_loader, model, criterion, optimizer, epoch, config)
-        
+
         if not config.expt.multiprocessing_distributed or (config.expt.multiprocessing_distributed
                                                            and config.expt.rank % ngpus_per_node == 0):
             save_checkpoint(
@@ -236,7 +250,7 @@ def train(train_loader, model, criterion, optimizer, epoch, config):
     
     # switch to train mode
     model.train()
-    
+
     end = time.time()
     for i, (images, _) in enumerate(train_loader):
         # measure data loading time
@@ -249,7 +263,7 @@ def train(train_loader, model, criterion, optimizer, epoch, config):
         # compute output and loss
         p1, p2, z1, z2 = model(x1=images[0], x2=images[1])
         loss = -(criterion(p1, z2).mean() + criterion(p2, z1).mean()) * 0.5
-        
+
         losses.update(loss.item(), images[0].size(0))
         
         # compute gradient and do SGD step
@@ -293,14 +307,21 @@ if __name__ == '__main__':
     parser.add_argument('--epochs', default=100, type=int, metavar='N', help='number of total epochs to run')
     parser.add_argument('--lr', '--learning-rate', default=0.05, type=float, metavar='LR', help='initial (base) learning rate', dest='lr')
     parser.add_argument('--ssl_model_checkpoint_path', default=None, type=str, help='pretrained model checkpoint path')
+    parser.add_argument('--expt_mode', default="ImageNet", choices=["ImageNet", "CIFAR10"], help='Define which dataset to use to select the correct yaml file.')
     args = parser.parse_args()
 
     expt_name = args.expt_name
     epochs = args.epochs
     lr = args.lr
     ssl_model_checkpoint_path = args.ssl_model_checkpoint_path
-    
-    expt_dir = f"/home/{user}/workspace/experiments/metassl"
+
+    # Saving checkpoint and config pased on experiment mode
+    if args.expt_mode == "ImageNet":
+        expt_dir = f"/home/{user}/workspace/experiments/metassl"
+    elif args.expt_mode == "CIFAR10":
+        expt_dir = "experiments"
+    else:
+        raise ValueError(f"Experiment mode {args.expt_mode} is undefined!")
     expt_sub_dir = os.path.join(expt_dir, expt_name)
     
     expt_dir = pathlib.Path(expt_dir)
@@ -308,14 +329,22 @@ if __name__ == '__main__':
     if not os.path.exists(expt_sub_dir):
         os.makedirs(expt_sub_dir)
 
-    with open("metassl/default_metassl_config.yaml", "r") as f:
+    # Select which yaml file to use depending on the selected experiment mode
+    if args.expt_mode == "ImageNet":
+        config_path = "metassl/default_metassl_config.yaml"
+    elif args.expt_mode == "CIFAR10":
+        config_path = "metassl/default_metassl_config_cifar10.yaml"
+    else:
+        raise ValueError(f"Experiment mode {args.expt_mode} is undefined!")
+    with open(config_path, "r") as f:
         config = yaml.safe_load(f)
 
-    config['data']['data_dir'] = f'/home/{user}/workspace/data/metassl'
-    config['expt']['expt_name'] = expt_name
-    config['expt']['ssl_model_checkpoint_path'] = ssl_model_checkpoint_path
-    config['train']['epochs'] = epochs
-    config['train']['lr'] = lr
+    if args.expt_mode == "ImageNet":
+        config['data']['data_dir'] = f'/home/{user}/workspace/data/metassl'
+        config['expt']['expt_name'] = expt_name
+        config['expt']['ssl_model_checkpoint_path'] = ssl_model_checkpoint_path
+        config['train']['epochs'] = epochs
+        config['train']['lr'] = lr
 
     print(expt_name, ssl_model_checkpoint_path, epochs, lr)
     print(f"batch size {config['train']['batch_size']}")
