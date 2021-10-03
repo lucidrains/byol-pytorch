@@ -1,0 +1,81 @@
+#######################################
+###       Logging Configuration     ###
+#######################################
+expt:
+  expt_name:                   'pre-training-full-train-data-fix-lr-100-256'
+  save_model:                   True                          # save the model to disc
+  save_model_p:                 5                             # save model frequency in # of epochs
+  ssl_model_checkpoint_path:    "/home/ferreira/workspace/experiments/metassl/pre-training-full-train-data-fix-lr-100-256/checkpoint_0099.pth.tar"    # resumes training if model with same config exists
+#  ssl_model_checkpoint_path:    null    # resumes training if model with same config exists
+  target_model_checkpoint_path: null                          #
+  print_freq:                   10                            # print frequency
+  gpu:                          null                          # GPU ID to train on (if not distributed)
+  multiprocessing_distributed:  True                          # Use multi-processing distributed training to launch N processes per node, which has N GPUs.
+                                                              # This is the fastest way to use PyTorch for either single node or multi node data parallel training'
+  dist_backend:                 'nccl'                        # distributed backend
+  dist_url:                     'tcp://localhost:10001'       # url used to set up distributed training
+  workers:                      32                            # number of data loading workers
+  rank:                         0                             # node rank for distributed training
+  world_size:                   1                             # number of nodes for distributed training
+  eval_freq:                    10                            # every eval_freq iteration will the model be evaluated
+  seed:                         123                           # random seed of numpy and torch
+  evaluate:                     False                          # evaluate model on validation set once and terminate
+
+#######################################
+###     Training Configuration      ###
+#######################################
+train:
+  batch_size:       256                   # in distributed setting this is the total batch size, i.e. batch size = individual bs / number of GPUs
+  epochs:           100                   # number of pre-training epochs
+  start_epoch:      0                     # start training at epoch n
+  optimizer:        "sgd"                 # optimizer type, options: adam adamW rmsprop adabelief sgd
+  schedule:         "cosine"              # learning rate schedule, options: 'cosine' 'cosineW' 'plateau' 'step' 'const' 'cosineWarm' 'exponential' 'None' (BOHO case)
+  warmup:           1000                  # 0 (turned off) or higher (e.g. 1000 ~ 5 epochs at batch size 256 on CIFAR100)
+  weight_decay:     0.0001
+  momentum:         0.9                   # momentum of SGD solver
+  lr:               0.05                  # the default LR for all schedulers, in case of const LR schedule: set lr_high=lr_low
+  clip_grad:        False                 # gradient cliping, options: 0.1 ... 100, False
+  scheduler_epochs: 100                   # T_max or T_0 in 'cosine' and 'cosineWarm' scheduler, in case of 'step' scheduler this denotes when scheduler should step
+
+
+finetuning:
+  batch_size:       256                  # in distributed setting this is the total batch size, i.e. batch size = individual bs / number of GPUs
+  epochs:           90                    # number of finetuning epochs
+  start_epoch:      0                     # start training at epoch n
+  optimizer:        "sgd"                # optimizer type, options: lars adam adamW rmsprop adabelief sgd
+  schedule:         "cosine"              # learning rate schedule, options: 'cosine' 'cosineW' 'plateau' 'step' 'const' 'cosineWarm' 'exponential' 'None' (BOHO case)
+  warmup:           1000                  # 0 (turned off) or higher (e.g. 1000 ~ 5 epochs at batch size 256 on CIFAR100)
+  weight_decay:     0.
+  momentum:         0.9                   # momentum of SGD solver
+  lr:               30                    # the default LR
+  clip_grad:        False                 # gradient cliping, options: 0.1 ... 100, False
+  scheduler_epochs: 100                   # T_max or T_0 in 'cosine' and 'cosineWarm' scheduler, in case of 'step' scheduler this denotes when scheduler should step
+
+
+#######################################
+###       Model Configuration       ###
+#######################################
+model:
+  model_type: "resnet50"                  # supported models: all torchvision ResNets
+  seed:       123
+
+
+#######################################
+###       Data Configuration        ###
+#######################################
+data:
+  seed:     123
+  dataset:  'CIFAR10'                    # supported datasets: CIFAR10, CIFAR100, ImageNet
+  data_dir: '/home/ferreira/workspace/data/metassl'
+
+
+#######################################
+###       SimSiam Specific          ###
+#######################################
+simsiam:
+  dim: 2048                                  # feature dimension (default: 2048)
+  pred_dim: 512                              # hidden dimension of the predictor (default: 512)
+  fix_pred_lr:   True                        # Fix learning rate for the predictor
+
+
+
