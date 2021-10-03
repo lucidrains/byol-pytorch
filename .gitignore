@@ -6,6 +6,10 @@ __pycache__/
 # C extensions
 *.so
 
+# Datasets
+experiments/CIFAR10/*/*
+experiments/ImageNet/*/*
+
 # Distribution / packaging
 .Python
 build/
