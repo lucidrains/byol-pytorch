@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+import torchvision
 import torchvision.transforms as transforms
 from PIL import Image
 from torch.utils.data import Subset
@@ -63,20 +64,41 @@ def get_train_valid_loader(
     print(f"using dataset: {dataset}")
     
     if dataset_name == "CIFAR10":
-        train_transform = transforms.Compose(
-            [
-                transforms.RandomCrop(32, padding=4),
-                transforms.RandomHorizontalFlip(),
-                transforms.ToTensor(),
-                transforms.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.2023, 0.1994, 0.2010])
+        # No blur augmentation for CIFAR10!
+        if not get_fine_tuning_loaders:
+            train_transform = TwoCropsTransform(
+                transforms.Compose([
+                    transforms.RandomResizedCrop(size=32, scale=(0.2, 1.)),
+                    transforms.RandomApply(
+                        [
+                            transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.1)
+                        ], p=0.8
+                    ),
+                    transforms.RandomGrayscale(p=0.2),
+                    transforms.RandomHorizontalFlip(),
+                    transforms.ToTensor(),
+                    transforms.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.2023, 0.1994, 0.2010])
+                    ]
+                )
+            )
+
+            valid_transform = TwoCropsTransform(
+                transforms.Compose([
+                    transforms.ToTensor(),
+                    transforms.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.2023, 0.1994, 0.2010])
+                    ]
+                )
+            )
+        else:  # TODO: Check out which data augmentations are being used here!
+            train_transform = transforms.Compose([
+                    transforms.ToTensor(),
+                    transforms.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.2023, 0.1994, 0.2010])
                 ]
             )
-        
-        valid_transform = transforms.Compose(
-            [
-                transforms.ToTensor(),
-                transforms.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.2023, 0.1994, 0.2010])
-                
+
+            valid_transform = transforms.Compose([
+                    transforms.ToTensor(),
+                    transforms.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.2023, 0.1994, 0.2010])
                 ]
             )
     
@@ -171,17 +193,27 @@ def get_train_valid_loader(
             root=root, split='train',
             transform=valid_transform, ignore_archive=True,
             )
+    elif dataset_name == "CIFAR10":
+        # TODO: Check out how to set the train split here.
+        train_dataset = torchvision.datasets.CIFAR10(root='datasets/CIFAR10', train=True,
+                                                download=True, transform=train_transform)
+
+
+        valid_dataset = torchvision.datasets.CIFAR10(root='datasets/CIFAR10', train=False,
+                                               download=True, transform=valid_transform)
     else:
-        # load the dataset
-        train_dataset = dataset(
-            root=data_dir, train=True,
-            download=download, transform=train_transform,
-            )
-        
-        valid_dataset = dataset(
-            root=data_dir, train=True,
-            download=download, transform=valid_transform,
-            )
+        # not supported
+        raise ValueError('invalid dataset name=%s' % dataset)
+        # # load the dataset
+        # train_dataset = dataset(
+        #     root=data_dir, train=True,
+        #     download=download, transform=train_transform,
+        #     )
+        #
+        # valid_dataset = dataset(
+        #     root=data_dir, train=True,
+        #     download=download, transform=valid_transform,
+        #     )
     
     num_train = len(train_dataset)
     indices = list(range(num_train))
