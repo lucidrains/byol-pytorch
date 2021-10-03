@@ -7,8 +7,12 @@ __pycache__/
 *.so
 
 # Datasets
-experiments/CIFAR10/*/*
-experiments/ImageNet/*/*
+datasets/CIFAR10/*/*
+datasets/ImageNet/*/*
+
+# Experiments
+experiments/*/*
+experiments/*/*
 
 # Distribution / packaging
 .Python
