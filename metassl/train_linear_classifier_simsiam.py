@@ -269,11 +269,11 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
                                                            and config.expt.rank % ngpus_per_node == 0):
             save_checkpoint(
                 {
-                    'epoch':      epoch + 1,
-                    'arch':       config.model.model_type,
+                    'epoch': epoch + 1,
+                    'arch': config.model.model_type,
                     'state_dict': model.state_dict(),
-                    'best_acc1':  best_acc1,
-                    'optimizer':  optimizer.state_dict(),
+                    'best_acc1': best_acc1,
+                    'optimizer': optimizer.state_dict(),
                     }, is_best, filename=os.path.join(expt_dir, f'lin_class_checkpoint_{epoch:04d}.pth.tar')
                 )
             if epoch == config.train.start_epoch:
@@ -440,13 +440,23 @@ if __name__ == '__main__':
     parser.add_argument('--expt_name', default='pre-training-full-train-data-fix-lr-100-256', type=str, help='experiment name')
     parser.add_argument('--epochs', default=100, type=int, metavar='N', help='number of total epochs to run')
     parser.add_argument('--lr', '--learning-rate', default=0.1, type=float, metavar='LR', help='initial (base) learning rate', dest='lr')
-    parser.add_argument('--ssl_model_checkpoint_path', default='/home/ferreira/workspace/experiments/metassl/pre-training-full-train-data-fix-lr-100-256/checkpoint_0099.pth.tar', type=str, help='pretrained model checkpoint path')
+    parser.add_argument(
+        '--ssl_model_checkpoint_path',
+        default='/home/ferreira/workspace/experiments/metassl/pre-training-full-train-data-fix-lr-100-256/checkpoint_0099.pth.tar',
+        type=str, help='pretrained model checkpoint path'
+        )
+    parser.add_argument(
+        '--target_model_checkpoint_path',
+        default='/home/ferreira/workspace/experiments/metassl/finetuning-fix-smaller-lr-0.01-100-256/lin_class_checkpoint_0063.pth.tar',
+        type=str, help='target model checkpoint path'
+        )
     args = parser.parse_args()
     
     expt_name = args.expt_name
     epochs = args.epochs
     lr = args.lr
     ssl_model_checkpoint_path = args.ssl_model_checkpoint_path
+    target_model_checkpoint_path = args.target_model_checkpoint_path
     
     expt_dir = f"/home/{user}/workspace/experiments/metassl"
     expt_sub_dir = os.path.join(expt_dir, expt_name)
@@ -458,18 +468,19 @@ if __name__ == '__main__':
     
     with open("metassl/default_metassl_config.yaml", "r") as f:
         config = yaml.safe_load(f)
-        
+    
     print(f"epochs: {epochs}")
     print(f"lr: {lr}")
     print(f"ssl model checkpoint: {ssl_model_checkpoint_path}")
+    print(f"target model checkpoint: {target_model_checkpoint_path}")
     print(f"experiment name: {expt_name}")
-
+    
     config['data']['data_dir'] = f'/home/{user}/workspace/data/metassl'
     config['expt']['expt_name'] = expt_name
     config['expt']['ssl_model_checkpoint_path'] = ssl_model_checkpoint_path
+    config['expt']['target_model_checkpoint_path'] = target_model_checkpoint_path
     config['finetuning']['epochs'] = epochs
     config['finetuning']['lr'] = lr
-    
     
     with open(os.path.join(expt_sub_dir, "config.yaml"), "w") as f:
         yaml.dump(config, f)
