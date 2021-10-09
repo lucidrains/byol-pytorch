@@ -182,8 +182,8 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
     
     pt_optimizer = torch.optim.SGD(
         optim_params, init_lr,
-        momentum=config.finetuning.momentum,
-        weight_decay=config.finetuning.weight_decay
+        momentum=config.train.momentum,
+        weight_decay=config.train.weight_decay
         )
     
     # optionally resume from a checkpoint
@@ -196,7 +196,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
                 # Map model to be loaded to specified single gpu.
                 loc = f'cuda:{config.expt.gpu}'
                 checkpoint = torch.load(config.expt.ssl_model_checkpoint_path, map_location=loc)
-            config.finetuning.start_epoch = checkpoint['epoch']
+            config.train.start_epoch = checkpoint['epoch']
             model.load_state_dict(checkpoint['state_dict'])
             pt_optimizer.load_state_dict(checkpoint['optimizer'])
             print(f"=> loaded checkpoint '{config.expt.ssl_model_checkpoint_path}' (epoch {checkpoint['epoch']})")
@@ -208,42 +208,25 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
     # call prep functions once to get optimizer params
     layers_to_retain_ft = prepare_pretraining(model, config, layers_to_retain_pt=None)
     layers_to_retain_pt = prepare_finetuning(model, config, layers_to_retain_ft=None)
-
-    # optimize only the linear classifier
-    ft_parameters = list(filter(lambda p: p.requires_grad, model.parameters()))
-    assert len(ft_parameters) == 2  # fc.weight, fc.bias
-
-    ft_optimizer = torch.optim.SGD(
-        ft_parameters, init_lr,
-        momentum=config.finetuning.momentum,
-        weight_decay=config.finetuning.weight_decay
-        )
     
-    for epoch in range(config.finetuning.start_epoch, config.finetuning.epochs):
+    for epoch in range(config.train.start_epoch, config.train.epochs):
         if config.expt.distributed:
             pt_train_sampler.set_epoch(epoch)
+            ft_train_sampler.set_epoch(epoch)
 
         # train for one epoch
         if epoch % 2 == 0:
             print(f"preparing pretraining at epoch {epoch}")
-            cur_lr = adjust_learning_rate(pt_optimizer, init_lr, epoch, config.finetuning.epochs, config)
+            cur_lr = adjust_learning_rate(pt_optimizer, init_lr, epoch, config.train.epochs, config)
             print(f"current lr: {cur_lr}")
             
             layers_to_retain_ft = prepare_pretraining(model, config, layers_to_retain_pt=layers_to_retain_pt)
             print(layers_to_retain_ft)
 
-            pretrain(pt_train_loader, model, pt_criterion, pt_optimizer, epoch, config, test_mode=True)
+            pretrain(pt_train_loader, model, pt_criterion, pt_optimizer, epoch, config, test_mode=False)
             
-            # if not config.expt.multiprocessing_distributed or (config.expt.multiprocessing_distributed
-            #                                                    and config.expt.rank % ngpus_per_node == 0):
-            #     if epoch == config.train.start_epoch:
-            #         model_prev_state_dct = {k: v.to('cpu') for k, v in model.state_dict().items()}
-            #         model_prev_state_dct = OrderedDict(model_prev_state_dct)
         else:
             print(f"preparing finetuning at epoch {epoch}")
-            cur_lr = adjust_learning_rate(ft_optimizer, init_lr, epoch, config.finetuning.epochs, config)
-            print(f"current lr: {cur_lr}")
-            
             layers_to_retain_pt = prepare_finetuning(model, config, layers_to_retain_ft=layers_to_retain_ft)
 
             # optimize only the linear classifier
@@ -255,12 +238,15 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
                 momentum=config.finetuning.momentum,
                 weight_decay=config.finetuning.weight_decay
                 )
-            
+
+            cur_lr = adjust_learning_rate(ft_optimizer, init_lr, epoch, config.finetuning.epochs, config)
+            print(f"current lr: {cur_lr}")
+
             # train for one epoch
-            finetune(ft_train_loader, model, ft_criterion, ft_optimizer, epoch, config, test_mode=True)
+            finetune(ft_train_loader, model, ft_criterion, ft_optimizer, epoch, config, test_mode=False)
 
             # evaluate on validation set
-            acc1 = validate(ft_test_loader, model, ft_criterion, config, test_mode=True)
+            validate(ft_test_loader, model, ft_criterion, config, test_mode=False)
         
         if not config.expt.multiprocessing_distributed or (config.expt.multiprocessing_distributed
                                                            and config.expt.rank % ngpus_per_node == 0):
@@ -343,7 +329,7 @@ def adjust_learning_rate(optimizer, init_lr, epoch, total_epochs, config):
 def get_loaders(traindir, config):
     pt_train_loader, _, pt_train_sampler, _ = get_train_valid_loader(
         data_dir=traindir,
-        batch_size=config.finetuning.batch_size,
+        batch_size=config.train.batch_size,
         random_seed=config.expt.seed,
         valid_size=0.0,
         dataset_name=config.data.dataset,
