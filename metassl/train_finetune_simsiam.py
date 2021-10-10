@@ -390,6 +390,7 @@ def prepare_finetuning(model, config, layers_to_retain_ft=None):
         with torch.no_grad():
             model.module.encoder.fc.weight.copy_(layers_to_retain_ft['module.encoder.fc.weight']).cuda(config.expt.gpu)
             model.module.encoder.fc.bias.copy_(layers_to_retain_ft['module.encoder.fc.bias']).cuda(config.expt.gpu)
+            del layers_to_retain_ft
     else:
         with torch.no_grad():
             model.module.encoder.fc.weight.data.normal_(mean=0.0, std=0.01)
@@ -409,15 +410,14 @@ def prepare_finetuning(model, config, layers_to_retain_ft=None):
 
 
 def prepare_pretraining(model, config, layers_to_retain_pt=None):
-    layers_to_retain_ft = None
+    
+    # get the weights for retaining in the finetuning step
+    layers_to_retain_ft = model.state_dict()
+    for k in list(layers_to_retain_ft.keys()):
+        if not k.startswith('module.encoder.fc'):
+            del layers_to_retain_ft[k]
     
     if layers_to_retain_pt:
-        # get the weights for retaining in the finetuning step
-        layers_to_retain_ft = model.state_dict()
-        for k in list(layers_to_retain_ft.keys()):
-            if not k.startswith('module.encoder.fc'):
-                del layers_to_retain_ft[k]
-        
         prev_dim = layers_to_retain_pt['module.encoder.fc.0.weight'].shape[1]
         # restoring old shapes
         model.module.encoder.fc = nn.Sequential(
@@ -446,6 +446,7 @@ def prepare_pretraining(model, config, layers_to_retain_pt=None):
             model.module.encoder.fc[6].weight.copy_(layers_to_retain_pt['module.encoder.fc.6.weight']).cuda(config.expt.gpu)
             
             model.module.encoder.fc[6].bias.copy_(layers_to_retain_pt['module.encoder.fc.6.bias']).cuda(config.expt.gpu)
+            del layers_to_retain_pt
         
         # for name, param in model.named_parameters():
         #     print(name, param.shape)
