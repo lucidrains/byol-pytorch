@@ -204,6 +204,8 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
             print(f"=> no checkpoint found at '{config.expt.ssl_model_checkpoint_path}'")
     
     cudnn.benchmark = True
+    layers_to_retain_pt = None
+    
     
     for epoch in range(config.train.start_epoch, config.train.epochs):
         if config.expt.distributed:
