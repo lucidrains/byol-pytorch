@@ -40,7 +40,7 @@ class SimSiam(nn.Module):
 
         self.classifier_head = nn.Linear(prev_dim, num_classes)
 
-    def forward(self, x1, x2, finetuning=False):
+    def forward(self, x1, x2=None, finetuning=False):
         """
         Input:
             x1: first views of images
