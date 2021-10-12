@@ -19,7 +19,7 @@ class SimSiam(nn.Module):
         # num_classes is the output fc dimension, zero-initialize last BNs
         self.backbone: ResNet = base_encoder(num_classes=dim, zero_init_residual=True)
         prev_dim = self.backbone.fc.weight.shape[1]
-        self.backbone.fc = lambda x: x
+        self.backbone.fc = torch.nn.Identity()
 
         # build a 3-layer projector
         self.encoder_head = nn.Sequential(nn.Linear(prev_dim, prev_dim, bias=False),

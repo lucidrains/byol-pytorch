@@ -176,6 +176,10 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
     
     init_lr_pt = config.train.lr * config.train.batch_size / 256
     init_lr_ft = config.finetuning.lr * config.finetuning.batch_size / 256
+    print(f"finetuning bs: {config.finetuning.batch_size}")
+    print(f"finetuning lr: {config.finetuning.lr }")
+    print(f"init_lr_ft: {init_lr_ft}")
+    
     
     pt_optimizer = torch.optim.SGD(
         optim_params_pt, init_lr_pt,
@@ -184,7 +188,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
         )
     
     ft_optimizer = torch.optim.SGD(
-        model.module.classifier_head.paramters(), init_lr_ft,
+        model.module.classifier_head.parameters(), init_lr_ft,
         momentum=config.finetuning.momentum,
         weight_decay=config.finetuning.weight_decay
         )
@@ -212,22 +216,16 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
     pt_train_loader, pt_train_sampler, ft_train_loader, ft_train_sampler, ft_test_loader = get_loaders(traindir, config)
     
     cudnn.benchmark = True
-    layers_to_retain_ft = None
-    layers_to_retain_pt = None
     
     for epoch in range(config.train.start_epoch, config.train.epochs):
         if config.expt.distributed:
             pt_train_sampler.set_epoch(epoch)
             ft_train_sampler.set_epoch(epoch)
-        
-        # if config.expt.rank == 0:
-        #     for name, param in model.named_parameters():
-        #         print(name, param.shape)
-        
+            
         # train for one epoch
         print(f"preparing pretraining at epoch {epoch}")
-        cur_lr_pt = adjust_learning_rate(pt_optimizer, init_lr_pt, epoch, config.train.epochs, config)
-        cur_lr_ft = adjust_learning_rate(ft_optimizer, init_lr_ft, epoch, config.finetuning.epochs, config)
+        cur_lr_pt = adjust_learning_rate(pt_optimizer, init_lr_pt, epoch, config.train.epochs)
+        cur_lr_ft = adjust_learning_rate(ft_optimizer, init_lr_ft, epoch, config.finetuning.epochs)
         print(f"current pretrain lr: {cur_lr_pt}, finetune lr: {cur_lr_ft}")
         
         train_one_epoch(pt_train_loader, ft_train_loader, model, pt_criterion, ft_criterion, pt_optimizer, ft_optimizer, epoch, config)
@@ -249,9 +247,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
             #     sanity_check(model.state_dict(), model_prev_state_dct)
 
 
-def train_one_epoch(
-    train_loader_pt, train_loader_ft, model, criterion_pt, criterion_ft, optimizer_pt, optimizer_ft, epoch, config
-    ):
+def train_one_epoch(train_loader_pt, train_loader_ft, model, criterion_pt, criterion_ft, optimizer_pt, optimizer_ft, epoch, config):
     batch_time = AverageMeter('Time', ':6.3f')
     data_time = AverageMeter('Data', ':6.3f')
     losses_pt = AverageMeter('Loss PT', ':.4f')
@@ -298,7 +294,7 @@ def train_one_epoch(
         # fine-tuning
         model.eval()
         # compute outputs
-        ft_output = model(x1=ft_images, finetune=True)
+        ft_output = model(ft_images, finetuning=True)
         loss_ft = criterion_ft(ft_output, ft_target)
         
         # compute losses and measure accuracy
@@ -325,17 +321,16 @@ def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
         shutil.copyfile(filename, 'model_best.pth.tar')
 
 
-def adjust_learning_rate(optimizer, init_lr, epoch, total_epochs, config):
+def adjust_learning_rate(optimizer, init_lr, epoch, total_epochs):
     """Decay the learning rate based on schedule"""
-    if config.finetuning.schedule == "cosine":
-        cur_lr = init_lr * 0.5 * (1. + math.cos(math.pi * epoch / total_epochs))
-        for param_group in optimizer.param_groups:
-            if 'fix_lr' in param_group and param_group['fix_lr']:
-                param_group['lr'] = init_lr
-                return init_lr
-            else:
-                param_group['lr'] = cur_lr
-                return cur_lr
+    cur_lr = init_lr * 0.5 * (1. + math.cos(math.pi * epoch / total_epochs))
+    for param_group in optimizer.param_groups:
+        if 'fix_lr' in param_group and param_group['fix_lr']:
+            param_group['lr'] = init_lr
+            return init_lr
+        else:
+            param_group['lr'] = cur_lr
+            return cur_lr
 
 
 def get_loaders(traindir, config):
@@ -422,7 +417,7 @@ def validate(val_loader, model, criterion, config):
             target = target.cuda(config.expt.gpu, non_blocking=True)
             
             # compute output
-            output = model(images, finetune=True)
+            output = model(images, finetuning=True)
             loss = criterion(output, target)
             
             # measure accuracy and record loss
