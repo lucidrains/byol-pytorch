@@ -204,13 +204,17 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
             print(f"=> no checkpoint found at '{config.expt.ssl_model_checkpoint_path}'")
     
     cudnn.benchmark = True
+    layers_to_retain_ft = None
     layers_to_retain_pt = None
-    
     
     for epoch in range(config.train.start_epoch, config.train.epochs):
         if config.expt.distributed:
             pt_train_sampler.set_epoch(epoch)
             ft_train_sampler.set_epoch(epoch)
+
+        # if config.expt.rank == 0:
+        #     for name, param in model.named_parameters():
+        #         print(name, param.shape)
 
         # train for one epoch
         if epoch % 2 == 0:
@@ -221,7 +225,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
             layers_to_retain_ft = prepare_pretraining(model, config, layers_to_retain_pt=layers_to_retain_pt)
             print(layers_to_retain_ft)
 
-            pretrain(pt_train_loader, model, pt_criterion, pt_optimizer, epoch, config, test_mode=False)
+            pretrain(pt_train_loader, model, pt_criterion, pt_optimizer, epoch, config, test_mode=True)
             
         else:
             print(f"preparing finetuning at epoch {epoch}")
@@ -233,7 +237,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
 
             ft_optimizer = torch.optim.SGD(
                 ft_parameters, init_lr,
-                momentum=config.finetuning.momentum,
+                momentum=config.finetuning.momentum,  # todo: save momentum
                 weight_decay=config.finetuning.weight_decay
                 )
 
@@ -241,10 +245,10 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
             print(f"current lr: {cur_lr}")
 
             # train for one epoch
-            finetune(ft_train_loader, model, ft_criterion, ft_optimizer, epoch, config, test_mode=False)
+            finetune(ft_train_loader, model, ft_criterion, ft_optimizer, epoch, config, test_mode=True)
 
             # evaluate on validation set
-            validate(ft_test_loader, model, ft_criterion, config, test_mode=False)
+            validate(ft_test_loader, model, ft_criterion, config, test_mode=True)
         
         if not config.expt.multiprocessing_distributed or (config.expt.multiprocessing_distributed
                                                            and config.expt.rank % ngpus_per_node == 0):
@@ -373,12 +377,13 @@ def prepare_finetuning(model, config, layers_to_retain_ft=None):
     # save layers that are going to be removed for finetuning
     layers_to_retain_pt = model.state_dict()
     # layers_removed = []
-    # print("layers before: ", layers_to_retain_pt.keys())
+    print("layers before: ", layers_to_retain_pt.keys())
     for k in list(layers_to_retain_pt.keys()):
         if not k.startswith('module.encoder.fc'):
             # layers_removed.append(k)
             del layers_to_retain_pt[k]
-    # print("layers after: ", layers_to_retain_pt.keys())
+
+    print("layers after: ", layers_to_retain_pt.keys())
     
     # remove stored fc layers
     model.module.encoder.fc = nn.Linear(2048, 1000).cuda(config.expt.gpu)
@@ -399,10 +404,6 @@ def prepare_finetuning(model, config, layers_to_retain_ft=None):
             param.requires_grad = False
         else:
             param.requires_grad = True
-    
-    # if config.expt.rank == 0:
-    #     for name, param in model.named_parameters():
-    #         print(name, param.requires_grad)
     
     return layers_to_retain_pt
 
@@ -425,7 +426,7 @@ def prepare_pretraining(model, config, layers_to_retain_pt=None):
             nn.Linear(prev_dim, prev_dim, bias=False),
             nn.BatchNorm1d(prev_dim),
             nn.ReLU(inplace=True),  # second layer
-            nn.Linear(prev_dim, prev_dim),
+            nn.Linear(prev_dim, prev_dim),  # self.encoder.fc
             nn.BatchNorm1d(2048, affine=False)
             ).cuda(config.expt.gpu)  # output layer
         
@@ -444,13 +445,15 @@ def prepare_pretraining(model, config, layers_to_retain_pt=None):
             model.module.encoder.fc[6].weight.copy_(layers_to_retain_pt['module.encoder.fc.6.weight']).cuda(config.expt.gpu)
             
             model.module.encoder.fc[6].bias.copy_(layers_to_retain_pt['module.encoder.fc.6.bias']).cuda(config.expt.gpu)
-            del layers_to_retain_pt
+            # todo check if module.encoder.fc.7.running_mean should be retained, too
+            # del layers_to_retain_pt
         
         # for name, param in model.named_parameters():
         #     print(name, param.shape)
     
     for param in model.parameters():
         param.requires_grad = True
+        # todo: check self.encoder.fc[6].bias.requires_grad = False # hack: not use bias as it is followed by BN
         
     return layers_to_retain_ft
 
