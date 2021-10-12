@@ -55,3 +55,4 @@ wrapt==1.12.1
 youtube-dl==2021.4.7
 youtube-dlc==2020.11.11.post3
 torchlars==0.1.2
+pyyaml==5.4.1
