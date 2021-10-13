@@ -2,7 +2,6 @@
 # LICENSE file in the root directory of this source tree.
 
 # code taken from https://github.com/facebookresearch/simsiam
-
 import argparse
 import builtins
 import math
@@ -12,8 +11,6 @@ import random
 import shutil
 import time
 import warnings
-
-warnings.filterwarnings("ignore", category=UserWarning)
 
 import torch
 import torch.backends.cudnn as cudnn
@@ -26,6 +23,10 @@ import torch.utils.data
 import torch.utils.data.distributed
 import torchvision.models as models
 import yaml
+import jsonargparse
+from jsonargparse import ArgumentParser
+
+warnings.filterwarnings("ignore", category=UserWarning)
 
 try:
     # For execution in PyCharm
@@ -122,6 +123,8 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
         model = SimSiam(models.__dict__[config.model.model_type], config.simsiam.dim, config.simsiam.pred_dim)
     
     # infer learning rate before changing batch size
+    init_lr_pt = config.train.lr * config.train.batch_size / 256
+    init_lr_ft = config.finetuning.lr * config.finetuning.batch_size / 256
     
     if config.expt.distributed:
         # Apply SyncBN
@@ -136,6 +139,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
             # DistributedDataParallel, we need to divide the batch size
             # ourselves based on the total number of GPUs we have
             config.finetuning.batch_size = int(config.finetuning.batch_size / ngpus_per_node)
+            config.train.batch_size = int(config.train.batch_size / ngpus_per_node)
             config.workers = int((config.expt.workers + ngpus_per_node - 1) / ngpus_per_node)
             model = torch.nn.parallel.DistributedDataParallel(
                 model, device_ids=[config.expt.gpu],
@@ -174,12 +178,10 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
             'fix_lr': config.simsiam.fix_pred_lr
             }]
     
-    init_lr_pt = config.train.lr * config.train.batch_size / 256
-    init_lr_ft = config.finetuning.lr * config.finetuning.batch_size / 256
+    print(f"world size: {torch.distributed.get_world_size()}")
     print(f"finetuning bs: {config.finetuning.batch_size}")
-    print(f"finetuning lr: {config.finetuning.lr }")
+    print(f"finetuning lr: {config.finetuning.lr}")
     print(f"init_lr_ft: {init_lr_ft}")
-    
     
     pt_optimizer = torch.optim.SGD(
         optim_params_pt, init_lr_pt,
@@ -205,7 +207,8 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
                 checkpoint = torch.load(config.expt.ssl_model_checkpoint_path, map_location=loc)
             config.train.start_epoch = checkpoint['epoch']
             model.load_state_dict(checkpoint['state_dict'])
-            pt_optimizer.load_state_dict(checkpoint['optimizer'])
+            pt_optimizer.load_state_dict(checkpoint['optimizer_pt'])
+            ft_optimizer.load_state_dict(checkpoint['optimizer_ft'])
             print(f"=> loaded checkpoint '{config.expt.ssl_model_checkpoint_path}' (epoch {checkpoint['epoch']})")
         else:
             print(f"=> no checkpoint found at '{config.expt.ssl_model_checkpoint_path}'")
@@ -221,7 +224,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
         if config.expt.distributed:
             pt_train_sampler.set_epoch(epoch)
             ft_train_sampler.set_epoch(epoch)
-            
+        
         # train for one epoch
         print(f"preparing pretraining at epoch {epoch}")
         cur_lr_pt = adjust_learning_rate(pt_optimizer, init_lr_pt, epoch, config.train.epochs)
@@ -237,10 +240,11 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
                                                            and config.expt.rank % ngpus_per_node == 0):
             save_checkpoint(
                 {
-                    'epoch':      epoch + 1,
-                    'arch':       config.model.model_type,
-                    'state_dict': model.state_dict(),
-                    'optimizer':  pt_optimizer.state_dict(),
+                    'epoch':        epoch + 1,
+                    'arch':         config.model.model_type,
+                    'state_dict':   model.state_dict(),
+                    'optimizer_pt': pt_optimizer.state_dict(),
+                    'optimizer_ft': ft_optimizer.state_dict(),
                     }, is_best=False, filename=os.path.join(expt_dir, 'checkpoint_{:04d}.pth.tar'.format(epoch))
                 )
             # if epoch == config.train.start_epoch and model_prev_state_dct:
@@ -260,13 +264,13 @@ def train_one_epoch(train_loader_pt, train_loader_ft, model, criterion_pt, crite
         prefix=f"Epoch: [{epoch}]"
         )
     
-    # switch to train mode
-    model.train()
-    
     end = time.time()
     assert len(train_loader_pt) <= len(train_loader_ft), \
         'So since this seems to break, we should write code to run multiple finetune epoch per pretrain epoch'
     for i, ((pt_images, _), (ft_images, ft_target)) in enumerate(zip(train_loader_pt, train_loader_ft)):
+        
+        # switch to train mode
+        model.train()
         
         # measure data loading time
         data_time.update(time.time() - end)
@@ -275,8 +279,7 @@ def train_one_epoch(train_loader_pt, train_loader_ft, model, criterion_pt, crite
             pt_images[0] = pt_images[0].cuda(config.expt.gpu, non_blocking=True)
             pt_images[1] = pt_images[1].cuda(config.expt.gpu, non_blocking=True)
             ft_images = ft_images.cuda(config.expt.gpu, non_blocking=True)
-        
-        ft_target = ft_target.cuda(config.expt.gpu, non_blocking=True)
+            ft_target = ft_target.cuda(config.expt.gpu, non_blocking=True)
         
         # pre-training
         # compute outputs
@@ -439,66 +442,103 @@ def validate(val_loader, model, criterion, config):
     return top1.avg
 
 
+def _parse_args(config_parser, parser):
+    # Do we have a config file to parse?
+    args_config, remaining = config_parser.parse_known_args()
+    if args_config.config:
+        with open(args_config.config, 'r') as f:
+            cfg = yaml.safe_load(f)
+            parser.set_defaults(**cfg)
+    
+    # The main arg parser parses the rest of the args, the usual
+    # defaults will have been overridden if config file specified.
+    args = parser.parse_args(remaining)
+    
+    return args
+
+
 if __name__ == '__main__':
     user = os.environ.get('USER')
     
-    parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
-    parser.add_argument('--expt_name', default='pre-training-fix-lr-100-256', type=str, help='experiment name')
-    parser.add_argument('--epochs', default=100, type=int, metavar='N', help='number of total epochs to run')
-    parser.add_argument(
-        '--lr', '--learning-rate', default=0.05, type=float, metavar='LR',
-        help='initial (base) learning rate', dest='lr'
-        )
-    parser.add_argument('--ssl_model_checkpoint_path', default=None, type=str, help='pretrained model checkpoint path')
-    parser.add_argument(
-        '--expt_mode', default="ImageNet", choices=["ImageNet", "CIFAR10"],
-        help='Define which dataset to use to select the correct yaml file.'
-        )
-    args = parser.parse_args()
+    config_parser = argparse.ArgumentParser(description='Only used as a first parser for the config file path.')
+    config_parser.add_argument('--config', default="metassl/default_metassl_config.yaml", help='Select which yaml file to use depending on the selected experiment mode')
+    parser = ArgumentParser()
     
-    expt_name = args.expt_name
-    epochs = args.epochs
-    lr = args.lr
-    ssl_model_checkpoint_path = args.ssl_model_checkpoint_path
+    parser.add_argument('--expt', default="expt", type=str, metavar='N')
+    parser.add_argument('--expt.expt_name', default='pre-training-fix-lr-100-256', type=str, help='experiment name')
+    parser.add_argument('--expt.expt_mode', default='ImageNet', type=str, help='either ImageNet or CIFAR10')
+    parser.add_argument('--expt.save_model', action='store_false', help='save the model to disc or not (default: True)')
+    parser.add_argument('--expt.save_model_p', default=5, type=int, metavar='N', help='save model frequency in # of epochs')
+    parser.add_argument('--expt.ssl_model_checkpoint_path', type=str, help='ppath to the pre-trained model, resumes training if model with same config exists')
+    parser.add_argument('--expt.target_model_checkpoint_path', type=str, help='path to the downstream task model, resumes training if model with same config exists')
+    parser.add_argument('--expt.print_freq', default=10, type=int, metavar='N')
+    parser.add_argument('--expt.gpu', default=None, type=int, metavar='N', help='GPU ID to train on (if not distributed)')
+    parser.add_argument('--expt.multiprocessing_distributed', action='store_false', help='Use multi-processing distributed training to launch N processes per node, which has N GPUs. This is the fastest way to use PyTorch for either single node or multi node data parallel training (default: True)')
+    parser.add_argument('--expt.dist_backend', type=str, default='nccl', help='distributed backend')
+    parser.add_argument('--expt.dist_url', type=str, default='tcp://localhost:10001', help='url used to set up distributed training')
+    parser.add_argument('--expt.workers', default=32, type=int, metavar='N', help='number of data loading workers')
+    parser.add_argument('--expt.rank', default=0, type=int, metavar='N', help='node rank for distributed training')
+    parser.add_argument('--expt.world_size', default=1, type=int, metavar='N', help='number of nodes for distributed training')
+    parser.add_argument('--expt.eval_freq', default=10, type=int, metavar='N', help='every eval_freq iteration will the model be evaluated')
+    parser.add_argument('--expt.seed', default=123, type=int, metavar='N', help='random seed of numpy and torch')
+    parser.add_argument('--expt.evaluate', action='store_true', help='evaluate model on validation set once and terminate (default: False)')
+    
+    parser.add_argument('--train', default="train", type=str, metavar='N')
+    parser.add_argument('--train.batch_size', default=256, type=int, metavar='N', help='in distributed setting this is the total batch size, i.e. batch size = individual bs / number of GPUs')
+    parser.add_argument('--train.epochs', default=100, type=int, metavar='N', help='number of pre-training epochs')
+    parser.add_argument('--train.start_epoch', default=0, type=int, metavar='N', help='start training at epoch n')
+    parser.add_argument('--train.optimizer', type=str, default='sgd', help='optimizer type, options: sgd')
+    parser.add_argument('--train.schedule', type=str, default='cosine', help='learning rate schedule, not implemented')
+    parser.add_argument('--train.warmup', default=1000, type=int, metavar='N', help='0 (turned off) or higher (e.g. 1000 ~ 5 epochs at batch size 256 on CIFAR100), not implemented')
+    parser.add_argument('--train.weight_decay', default=0.0001, type=float, metavar='N')
+    parser.add_argument('--train.momentum', default=0.9, type=float, metavar='N', help='SGD momentum')
+    parser.add_argument('--train.lr', default=0.05, type=float, metavar='N', help='pre-training learning rate')
+    
+    parser.add_argument('--finetuning', default="finetuning", type=str, metavar='N')
+    parser.add_argument('--finetuning.batch_size', default=256, type=int, metavar='N', help='in distributed setting this is the total batch size, i.e. batch size = individual bs / number of GPUs')
+    parser.add_argument('--finetuning.epochs', default=100, type=int, metavar='N', help='number of pre-training epochs')
+    parser.add_argument('--finetuning.start_epoch', default=0, type=int, metavar='N', help='start training at epoch n')
+    parser.add_argument('--finetuning.optimizer', type=str, default='sgd', help='optimizer type, options: sgd')
+    parser.add_argument('--finetuning.schedule', type=str, default='cosine', help='learning rate schedule, not implemented')
+    parser.add_argument('--finetuning.warmup', default=1000, type=int, metavar='N', help='0 (turned off) or higher (e.g. 1000 ~ 5 epochs at batch size 256 on CIFAR100), not implemented')
+    parser.add_argument('--finetuning.weight_decay', default=0.0, type=float, metavar='N')
+    parser.add_argument('--finetuning.momentum', default=0.9, type=float, metavar='N', help='SGD momentum')
+    parser.add_argument('--finetuning.lr', default=100, type=float, metavar='N', help='finetuning learning rate')
+    
+    parser.add_argument('--model', default="model", type=str, metavar='N')
+    parser.add_argument('--model.model_type', type=str, default='resnet50', help='all torchvision ResNets')
+    parser.add_argument('--model.seed', type=int, default=123, help='the seed')
+    
+    parser.add_argument('--data', default="data", type=str, metavar='N')
+    parser.add_argument('--data.seed', type=int, default=123, help='the seed')
+    parser.add_argument('--data.dataset', type=str, default="ImageNet", help='supported datasets: CIFAR10, CIFAR100, ImageNet')
+    parser.add_argument('--data.data_dir', type=str, default=f"/home/{user}/workspace/data/metassl", help='supported datasets: CIFAR10, CIFAR100, ImageNet')
+    
+    parser.add_argument('--simsiam', default="simsiam", type=str, metavar='N')
+    parser.add_argument('--simsiam.dim', type=int, default=2048, help='the feature dimension')
+    parser.add_argument('--simsiam.pred_dim', type=int, default=512, help='the hidden dimension of the predictor')
+    parser.add_argument('--simsiam.fix_pred_lr', action="store_false", help='fix learning rate for the predictor (default: True')
+    
+    args = _parse_args(config_parser, parser)
     
     # Saving checkpoint and config pased on experiment mode
-    if args.expt_mode == "ImageNet":
+    if args.expt.expt_mode == "ImageNet":
         expt_dir = f"/home/{user}/workspace/experiments/metassl"
-    elif args.expt_mode == "CIFAR10":
+    elif args.expt.expt_mode == "CIFAR10":
         expt_dir = "experiments"
     else:
-        raise ValueError(f"Experiment mode {args.expt_mode} is undefined!")
-    expt_sub_dir = os.path.join(expt_dir, expt_name)
+        raise ValueError(f"Experiment mode {args.expt.expt_mode} is undefined!")
+    expt_sub_dir = os.path.join(expt_dir, args.expt.expt_name)
     
     expt_dir = pathlib.Path(expt_dir)
     
     if not os.path.exists(expt_sub_dir):
         os.makedirs(expt_sub_dir)
     
-    # Select which yaml file to use depending on the selected experiment mode
-    if args.expt_mode == "ImageNet":
-        config_path = "metassl/default_metassl_config.yaml"
-    elif args.expt_mode == "CIFAR10":
-        config_path = "metassl/default_metassl_config_cifar10.yaml"
-    else:
-        raise ValueError(f"Experiment mode {args.expt_mode} is undefined!")
-    with open(config_path, "r") as f:
-        config = yaml.safe_load(f)
-    
-    if args.expt_mode == "ImageNet":
-        config['data']['data_dir'] = f'/home/{user}/workspace/data/metassl'
-        config['expt']['expt_name'] = expt_name
-        config['expt']['ssl_model_checkpoint_path'] = ssl_model_checkpoint_path
-        config['train']['epochs'] = epochs
-        config['train']['lr'] = lr
-    
-    print(expt_name, ssl_model_checkpoint_path, epochs, lr)
-    print(f"batch size {config['train']['batch_size']}")
-    
     with open(os.path.join(expt_sub_dir, "config.yaml"), "w") as f:
-        yaml.dump(config, f)
-        print(f"copied config to {expt_sub_dir}")
+        yaml.dump(args, f)
+        print(f"copied config to {f.name}")
     
-    config = AttrDict(config)
+    config = AttrDict(jsonargparse.namespace_to_dict(args))
     
     main(config=config, expt_dir=expt_sub_dir)
