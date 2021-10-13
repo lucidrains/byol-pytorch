@@ -183,6 +183,10 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
     print(f"finetuning lr: {config.finetuning.lr}")
     print(f"init_lr_ft: {init_lr_ft}")
     
+    print(f"pre-training bs: {config.train.batch_size}")
+    print(f"pre-training lr: {config.train.lr}")
+    print(f"init_lr_pt: {init_lr_pt}")
+    
     pt_optimizer = torch.optim.SGD(
         optim_params_pt, init_lr_pt,
         momentum=config.train.momentum,
@@ -226,7 +230,6 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
             ft_train_sampler.set_epoch(epoch)
         
         # train for one epoch
-        print(f"preparing pretraining at epoch {epoch}")
         cur_lr_pt = adjust_learning_rate(pt_optimizer, init_lr_pt, epoch, config.train.epochs)
         cur_lr_ft = adjust_learning_rate(ft_optimizer, init_lr_ft, epoch, config.finetuning.epochs)
         print(f"current pretrain lr: {cur_lr_pt}, finetune lr: {cur_lr_ft}")
@@ -417,7 +420,7 @@ def validate(val_loader, model, criterion, config):
         for i, (images, target) in enumerate(val_loader):
             if config.expt.gpu is not None:
                 images = images.cuda(config.expt.gpu, non_blocking=True)
-            target = target.cuda(config.expt.gpu, non_blocking=True)
+                target = target.cuda(config.expt.gpu, non_blocking=True)
             
             # compute output
             output = model(images, finetuning=True)
@@ -466,7 +469,7 @@ if __name__ == '__main__':
     
     parser.add_argument('--expt', default="expt", type=str, metavar='N')
     parser.add_argument('--expt.expt_name', default='pre-training-fix-lr-100-256', type=str, help='experiment name')
-    parser.add_argument('--expt.expt_mode', default='ImageNet', type=str, help='either ImageNet or CIFAR10')
+    parser.add_argument('--expt.expt_mode', default='ImageNet', choices=["ImageNet", "CIFAR10"], help='Define which dataset to use to select the correct yaml file.')
     parser.add_argument('--expt.save_model', action='store_false', help='save the model to disc or not (default: True)')
     parser.add_argument('--expt.save_model_p', default=5, type=int, metavar='N', help='save model frequency in # of epochs')
     parser.add_argument('--expt.ssl_model_checkpoint_path', type=str, help='ppath to the pre-trained model, resumes training if model with same config exists')
@@ -484,7 +487,7 @@ if __name__ == '__main__':
     parser.add_argument('--expt.evaluate', action='store_true', help='evaluate model on validation set once and terminate (default: False)')
     
     parser.add_argument('--train', default="train", type=str, metavar='N')
-    parser.add_argument('--train.batch_size', default=256, type=int, metavar='N', help='in distributed setting this is the total batch size, i.e. batch size = individual bs / number of GPUs')
+    parser.add_argument('--train.batch_size', default=256, type=int, metavar='N', help='in distributed setting this is the total batch size, i.e. batch size = individual bs * number of GPUs')
     parser.add_argument('--train.epochs', default=100, type=int, metavar='N', help='number of pre-training epochs')
     parser.add_argument('--train.start_epoch', default=0, type=int, metavar='N', help='start training at epoch n')
     parser.add_argument('--train.optimizer', type=str, default='sgd', help='optimizer type, options: sgd')
@@ -495,7 +498,7 @@ if __name__ == '__main__':
     parser.add_argument('--train.lr', default=0.05, type=float, metavar='N', help='pre-training learning rate')
     
     parser.add_argument('--finetuning', default="finetuning", type=str, metavar='N')
-    parser.add_argument('--finetuning.batch_size', default=256, type=int, metavar='N', help='in distributed setting this is the total batch size, i.e. batch size = individual bs / number of GPUs')
+    parser.add_argument('--finetuning.batch_size', default=256, type=int, metavar='N', help='in distributed setting this is the total batch size, i.e. batch size = individual bs * number of GPUs')
     parser.add_argument('--finetuning.epochs', default=100, type=int, metavar='N', help='number of pre-training epochs')
     parser.add_argument('--finetuning.start_epoch', default=0, type=int, metavar='N', help='start training at epoch n')
     parser.add_argument('--finetuning.optimizer', type=str, default='sgd', help='optimizer type, options: sgd')

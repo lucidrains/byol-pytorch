@@ -3,7 +3,7 @@
 #######################################
 expt:
   expt_name:                   'pre-training-full-train-data-fix-lr-100-256'
-  expt_mode:                    'ImageNet'
+  expt_mode:                    'ImageNet'                    # Define which dataset to use to select the correct yaml file.
   save_model:                   True                          # save the model to disc
   save_model_p:                 5                             # save model frequency in # of epochs
 #  ssl_model_checkpoint_path:    "/home/ferreira/workspace/experiments/metassl/pre-training-full-train-data-fix-lr-100-256/checkpoint_0099.pth.tar"    # resumes training if model with same config exists
@@ -26,7 +26,7 @@ expt:
 ###     Training Configuration      ###
 #######################################
 train:
-  batch_size:       256                   # in distributed setting this is the total batch size, i.e. batch size = individual bs / number of GPUs
+  batch_size:       256                   # in distributed setting this is the total batch size, i.e. batch size = individual bs * number of GPUs
   epochs:           100                   # number of pre-training epochs
   start_epoch:      0                     # start training at epoch n
   optimizer:        "sgd"                 # optimizer type, options: sgd
@@ -38,7 +38,7 @@ train:
 
 
 finetuning:
-  batch_size:       256                  # in distributed setting this is the total batch size, i.e. batch size = individual bs / number of GPUs
+  batch_size:       256                  # in distributed setting this is the total batch size, i.e. batch size = individual bs * number of GPUs
   epochs:           90                    # number of finetuning epochs
   start_epoch:      0                     # start training at epoch n
   optimizer:        "sgd"                # optimizer type, options: lars adam adamW rmsprop adabelief sgd
