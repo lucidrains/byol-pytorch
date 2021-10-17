@@ -25,6 +25,7 @@ import torch.utils.data.distributed
 import torchvision.models as models
 import yaml
 from jsonargparse import ArgumentParser
+from torch.nn import functional as F
 from torch.utils.tensorboard import SummaryWriter
 
 warnings.filterwarnings("ignore", category=UserWarning)
@@ -238,7 +239,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
         cur_lr_ft = adjust_learning_rate(ft_optimizer, init_lr_ft, epoch, config.finetuning.epochs)
         print(f"current pretrain lr: {cur_lr_pt}, finetune lr: {cur_lr_ft}")
         
-        train_one_epoch(pt_train_loader, ft_train_loader, model, pt_criterion, ft_criterion, pt_optimizer, ft_optimizer, epoch, total_iter, config, writer)
+        train_one_epoch(pt_train_loader, ft_train_loader, model, pt_criterion, ft_criterion, pt_optimizer, ft_optimizer, epoch, total_iter, config, writer, advanced_stats=config.expt.advanced_stats)
         
         # evaluate on validation set
         validate(ft_test_loader, model, ft_criterion, config)
@@ -257,16 +258,28 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
                     )
 
 
-def train_one_epoch(train_loader_pt, train_loader_ft, model, criterion_pt, criterion_ft, optimizer_pt, optimizer_ft, epoch, total_iter, config, writer):
+def train_one_epoch(train_loader_pt, train_loader_ft, model, criterion_pt, criterion_ft, optimizer_pt, optimizer_ft, epoch, total_iter, config, writer, advanced_stats=False):
     batch_time = AverageMeter('Time', ':6.3f')
     data_time = AverageMeter('Data', ':6.3f')
     losses_pt = AverageMeter('Loss PT', ':.4f')
     losses_ft = AverageMeter('Loss FT', ':.4e')
     top1 = AverageMeter('Acc@1', ':6.2f')
     top5 = AverageMeter('Acc@5', ':6.2f')
+    
+    if advanced_stats:
+        cos_sim = AverageMeter('Cos. Sim. PT-FT', ':6.4f')
+        dot_prod = AverageMeter('Dot Product PT-FT', ':6.4f')
+        eucl_dis = AverageMeter('Eucl. Dist. PT-FT', ':6.4f')
+        norm_pt = AverageMeter('Norm PT', ':6.4f')
+        norm_ft = AverageMeter('Norm FT', ':6.4f')
+        # removed data_time and top5 due to brevity
+        meters = [batch_time, losses_pt, losses_ft, top1, cos_sim, dot_prod, eucl_dis, norm_pt, norm_ft]
+    else:
+        meters = [batch_time, data_time, losses_pt, losses_ft, top1, top5]
+    
     progress = ProgressMeter(
-        len(train_loader_pt),
-        [batch_time, data_time, losses_pt, losses_ft, top1, top5],
+        num_batches=len(train_loader_pt),
+        meters=meters,
         prefix=f"Epoch: [{epoch}]"
         )
     
@@ -275,12 +288,7 @@ def train_one_epoch(train_loader_pt, train_loader_ft, model, criterion_pt, crite
     for i, ((pt_images, _), (ft_images, ft_target)) in enumerate(zip(train_loader_pt, train_loader_ft)):
         
         total_iter += 1
-        
-        # switch to train mode
-        model.train()
-        
-        # measure data loading time
-        data_time.update(time.time() - end)
+        advanced_stats_meters = []
         
         if config.expt.gpu is not None:
             pt_images[0] = pt_images[0].cuda(config.expt.gpu, non_blocking=True)
@@ -288,34 +296,30 @@ def train_one_epoch(train_loader_pt, train_loader_ft, model, criterion_pt, crite
             ft_images = ft_images.cuda(config.expt.gpu, non_blocking=True)
             ft_target = ft_target.cuda(config.expt.gpu, non_blocking=True)
         
-        # pre-training
-        # compute outputs
-        p1, p2, z1, z2 = model(x1=pt_images[0], x2=pt_images[1])
+        loss_pt, backbone_grads_pt = pretrain(model, pt_images, criterion_pt, optimizer_pt, losses_pt, data_time, end, advanced_stats=advanced_stats)
+        loss_ft, acc1, acc5, backbone_grads_ft = finetune(model, ft_images, ft_target, criterion_ft, optimizer_ft, losses_ft, top1, top5, advanced_stats=advanced_stats)
         
-        # compute losses
-        loss_pt = -(criterion_pt(p1, z2).mean() + criterion_pt(p2, z1).mean()) * 0.5
-        losses_pt.update(loss_pt.item(), pt_images[0].size(0))
+        if advanced_stats:
+            cos_sim_val = F.cosine_similarity(backbone_grads_pt, backbone_grads_ft, dim=0)
+            cos_sim.update(cos_sim_val)
+            
+            dot_prod_val = torch.dot(backbone_grads_pt, backbone_grads_ft)
+            dot_prod.update(dot_prod_val)
+            
+            eucl_dis_val = torch.linalg.norm(backbone_grads_pt - backbone_grads_ft, 2)
+            eucl_dis.update(eucl_dis_val)
+            
+            norm_pt_val = torch.linalg.norm(backbone_grads_pt)
+            norm_pt.update(norm_pt_val)
+            
+            norm_ft_val = torch.linalg.norm(backbone_grads_ft)
+            norm_ft.update(norm_ft_val)
+            
+            advanced_stats_meters = [cos_sim, dot_prod, eucl_dis, norm_pt, norm_ft]
         
-        # compute gradient and do SGD step
-        optimizer_pt.zero_grad()
-        loss_pt.backward()
-        optimizer_pt.step()
-        
-        # fine-tuning
-        model.eval()
-        # compute outputs
-        ft_output = model(ft_images, finetuning=True)
-        loss_ft = criterion_ft(ft_output, ft_target)
-        
-        # compute losses and measure accuracy
-        acc1, acc5 = accuracy(ft_output, ft_target, topk=(1, 5))
-        losses_ft.update(loss_ft.item(), ft_images.size(0))
-        top1.update(acc1[0], ft_images.size(0))
-        top5.update(acc5[0], ft_images.size(0))
-        
-        optimizer_ft.zero_grad()
-        loss_ft.backward()
-        optimizer_ft.step()
+        # if i == 0 and config.expt.rank == 0 and advanced_stats:
+        #     print(backbone_grads_ft.shape)
+        #     print(backbone_grads_pt.shape)
         
         # measure elapsed time
         batch_time.update(time.time() - end)
@@ -325,10 +329,85 @@ def train_one_epoch(train_loader_pt, train_loader_ft, model, criterion_pt, crite
             progress.display(i)
         
         if config.expt.rank == 0:
-            write_to_summary_writer(total_iter, loss_pt, loss_ft, acc1, acc5, data_time, batch_time, optimizer_pt, optimizer_ft, top1, top5, writer)
+            write_to_summary_writer(total_iter, loss_pt, loss_ft, data_time, batch_time, optimizer_pt, optimizer_ft, top1, top5, advanced_stats_meters, writer)
     
     if config.expt.rank == 0:
         writer.close()
+
+
+def pretrain(model, pt_images, criterion_pt, optimizer_pt, losses_pt, data_time, end, advanced_stats=False):
+    # backbone_grads = np.empty(sum(p.numel() for p in model.parameters()))
+    backbone_grads = torch.Tensor().cuda()
+    # backbone_grads = OrderedDict()
+    
+    # switch to train mode
+    model.train()
+    
+    # measure data loading time
+    data_time.update(time.time() - end)
+    
+    # pre-training
+    # compute outputs
+    p1, p2, z1, z2 = model(x1=pt_images[0], x2=pt_images[1], finetuning=False)
+    
+    # compute losses
+    loss_pt = -(criterion_pt(p1, z2).mean() + criterion_pt(p2, z1).mean()) * 0.5
+    losses_pt.update(loss_pt.item(), pt_images[0].size(0))
+    
+    # compute gradient and do SGD step
+    optimizer_pt.zero_grad()
+    loss_pt.backward()
+    # step does not change .grad field of the parameters.
+    optimizer_pt.step()
+    
+    if advanced_stats:
+        for key, param in model.module.backbone.named_parameters():
+            backbone_grads = torch.cat([backbone_grads, param.grad.detach().clone().flatten()], dim=0)
+            # backbone_grads = np.concatenate((backbone_grads, param.grad.detach().clone().flatten().cpu()))
+            # backbone_grads[key] = param.grad.detach().clone().flatten().cpu()
+    
+    return loss_pt, backbone_grads
+
+
+def finetune(model, ft_images, ft_target, criterion_ft, optimizer_ft, losses_ft, top1, top5, advanced_stats=False):
+    backbone_grads = torch.Tensor().cuda()
+    # backbone_grads = OrderedDict()
+    
+    # fine-tuning
+    model.eval()
+    
+    optimizer_ft.zero_grad()
+    # in finetuning mode, we only optimize the classifier head's parameters
+    # -> turn on backbone params grad computation before forward is called
+    if advanced_stats:
+        model.module.backbone.requires_grad_(True)
+        # just to make sure:
+        model.module.classifier_head.requires_grad_(True)
+    
+    # compute outputs
+    ft_output = model(ft_images, finetuning=True)
+    loss_ft = criterion_ft(ft_output, ft_target)
+    loss_ft.backward()
+    
+    if advanced_stats:
+        for key, param in model.module.backbone.named_parameters():
+            backbone_grads = torch.cat([backbone_grads, param.grad.detach().clone().flatten()], dim=0)
+            # backbone_grads = np.concatenate((backbone_grads, param.grad.detach().clone().flatten().cpu()))
+            # backbone_grads[key] = param.grad.detach().clone().flatten().cpu()
+    
+    # compute losses and measure accuracy
+    acc1, acc5 = accuracy(ft_output, ft_target, topk=(1, 5))
+    losses_ft.update(loss_ft.item(), ft_images.size(0))
+    top1.update(acc1[0], ft_images.size(0))
+    top5.update(acc5[0], ft_images.size(0))
+    
+    optimizer_ft.step()
+    
+    # just to make sure to prevent grad leakage
+    for param in model.module.parameters():
+        param.grad = None
+    
+    return loss_ft, acc1, acc5, backbone_grads
 
 
 def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
@@ -455,11 +534,11 @@ def validate(val_loader, model, criterion, config):
     return top1.avg
 
 
-def write_to_summary_writer(total_iter, loss_pt, loss_ft, acc1, acc5, data_time, batch_time, optimizer_pt, optimizer_ft, top1, top5, writer):
+def write_to_summary_writer(total_iter, loss_pt, loss_ft, data_time, batch_time, optimizer_pt, optimizer_ft, top1, top5, advanced_stats_meters, writer):
     writer.add_scalar('Loss/pre-training', loss_pt.item(), total_iter)
     writer.add_scalar('Loss/fine-tuning', loss_ft.item(), total_iter)
-    writer.add_scalar('Accuracy/@1', acc1, total_iter)
-    writer.add_scalar('Accuracy/@5', acc5, total_iter)
+    writer.add_scalar('Accuracy/@1', top1.val, total_iter)
+    writer.add_scalar('Accuracy/@5', top5.val, total_iter)
     writer.add_scalar('Accuracy/@1 average', top1.avg, total_iter)
     writer.add_scalar('Accuracy/@5 average', top5.avg, total_iter)
     writer.add_scalar('Time/Data', data_time.val, total_iter)
@@ -467,6 +546,10 @@ def write_to_summary_writer(total_iter, loss_pt, loss_ft, acc1, acc5, data_time,
     # assuming only one param group
     writer.add_scalar('Learning rate/pre-training', optimizer_pt.param_groups[0]['lr'], total_iter)
     writer.add_scalar('Learning rate/fine-tuning', optimizer_ft.param_groups[0]['lr'], total_iter)
+    
+    for stat in advanced_stats_meters:
+        writer.add_scalar(f'Advanced Stats/{stat.name}', stat.val, total_iter)
+        writer.add_scalar(f'Advanced Stats/{stat.name} average', stat.avg, total_iter)
 
 
 def _parse_args(config_parser, parser):
@@ -509,6 +592,7 @@ if __name__ == '__main__':
     parser.add_argument('--expt.eval_freq', default=10, type=int, metavar='N', help='every eval_freq iteration will the model be evaluated')
     parser.add_argument('--expt.seed', default=123, type=int, metavar='N', help='random seed of numpy and torch')
     parser.add_argument('--expt.evaluate', action='store_true', help='evaluate model on validation set once and terminate (default: False)')
+    parser.add_argument('--expt.advanced_stats', action='store_true', help='compute advanced stats such as cosine similarity and dot product, only used in alternating mode (default: False)')
     
     parser.add_argument('--train', default="train", type=str, metavar='N')
     parser.add_argument('--train.batch_size', default=256, type=int, metavar='N', help='in distributed setting this is the total batch size, i.e. batch size = individual bs * number of GPUs')

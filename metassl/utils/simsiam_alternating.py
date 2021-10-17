@@ -28,15 +28,17 @@ class SimSiam(nn.Module):
                                           nn.Linear(prev_dim, prev_dim, bias=False),
                                           nn.BatchNorm1d(prev_dim),
                                           nn.ReLU(inplace=True),  # second layer
-                                          nn.Linear(prev_dim, dim),
-                                          nn.BatchNorm1d(dim, affine=False))  # output layer
-        self.encoder_head[6].bias.requires_grad = False # hack: not use bias as it is followed by BN
+                                          nn.Linear(prev_dim, dim),  # output layer
+                                          nn.BatchNorm1d(dim, affine=False)
+                                          )
+        self.encoder_head[6].bias.requires_grad = False  # hack: not use bias as it is followed by BN
 
         # build a 2-layer predictor
         self.predictor = nn.Sequential(nn.Linear(dim, pred_dim, bias=False),
                                         nn.BatchNorm1d(pred_dim),
                                         nn.ReLU(inplace=True), # hidden layer
-                                        nn.Linear(pred_dim, dim)) # output layer
+                                        nn.Linear(pred_dim, dim)  # output layer
+                                       )
 
         self.classifier_head = nn.Linear(prev_dim, num_classes)
 
