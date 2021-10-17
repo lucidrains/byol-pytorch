@@ -12,6 +12,7 @@ import shutil
 import time
 import warnings
 
+import jsonargparse
 import torch
 import torch.backends.cudnn as cudnn
 import torch.distributed as dist
@@ -23,8 +24,8 @@ import torch.utils.data
 import torch.utils.data.distributed
 import torchvision.models as models
 import yaml
-import jsonargparse
 from jsonargparse import ArgumentParser
+from torch.utils.tensorboard import SummaryWriter
 
 warnings.filterwarnings("ignore", category=UserWarning)
 
@@ -51,8 +52,6 @@ model_names = sorted(
 
 
 def main(config, expt_dir):
-    # args = parser.parse_args()
-    
     if config.expt.seed is not None:
         random.seed(config.expt.seed)
         torch.manual_seed(config.expt.seed)
@@ -223,6 +222,11 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
     pt_train_loader, pt_train_sampler, ft_train_loader, ft_train_sampler, ft_test_loader = get_loaders(traindir, config)
     
     cudnn.benchmark = True
+    total_iter = 0
+    
+    writer = None
+    if config.expt.rank == 0:
+        writer = SummaryWriter(log_dir=os.path.join(expt_dir, "tensorboard"))
     
     for epoch in range(config.train.start_epoch, config.train.epochs):
         if config.expt.distributed:
@@ -234,27 +238,26 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
         cur_lr_ft = adjust_learning_rate(ft_optimizer, init_lr_ft, epoch, config.finetuning.epochs)
         print(f"current pretrain lr: {cur_lr_pt}, finetune lr: {cur_lr_ft}")
         
-        train_one_epoch(pt_train_loader, ft_train_loader, model, pt_criterion, ft_criterion, pt_optimizer, ft_optimizer, epoch, config)
+        train_one_epoch(pt_train_loader, ft_train_loader, model, pt_criterion, ft_criterion, pt_optimizer, ft_optimizer, epoch, total_iter, config, writer)
         
         # evaluate on validation set
         validate(ft_test_loader, model, ft_criterion, config)
         
         if not config.expt.multiprocessing_distributed or (config.expt.multiprocessing_distributed
                                                            and config.expt.rank % ngpus_per_node == 0):
-            save_checkpoint(
-                {
-                    'epoch':        epoch + 1,
-                    'arch':         config.model.model_type,
-                    'state_dict':   model.state_dict(),
-                    'optimizer_pt': pt_optimizer.state_dict(),
-                    'optimizer_ft': ft_optimizer.state_dict(),
-                    }, is_best=False, filename=os.path.join(expt_dir, 'checkpoint_{:04d}.pth.tar'.format(epoch))
-                )
-            # if epoch == config.train.start_epoch and model_prev_state_dct:
-            #     sanity_check(model.state_dict(), model_prev_state_dct)
+            if epoch % config.expt.save_model_frequency == 0:
+                save_checkpoint(
+                    {
+                        'epoch':        epoch + 1,
+                        'arch':         config.model.model_type,
+                        'state_dict':   model.state_dict(),
+                        'optimizer_pt': pt_optimizer.state_dict(),
+                        'optimizer_ft': ft_optimizer.state_dict(),
+                        }, is_best=False, filename=os.path.join(expt_dir, 'checkpoint_{:04d}.pth.tar'.format(epoch))
+                    )
 
 
-def train_one_epoch(train_loader_pt, train_loader_ft, model, criterion_pt, criterion_ft, optimizer_pt, optimizer_ft, epoch, config):
+def train_one_epoch(train_loader_pt, train_loader_ft, model, criterion_pt, criterion_ft, optimizer_pt, optimizer_ft, epoch, total_iter, config, writer):
     batch_time = AverageMeter('Time', ':6.3f')
     data_time = AverageMeter('Data', ':6.3f')
     losses_pt = AverageMeter('Loss PT', ':.4f')
@@ -268,9 +271,10 @@ def train_one_epoch(train_loader_pt, train_loader_ft, model, criterion_pt, crite
         )
     
     end = time.time()
-    assert len(train_loader_pt) <= len(train_loader_ft), \
-        'So since this seems to break, we should write code to run multiple finetune epoch per pretrain epoch'
+    assert len(train_loader_pt) <= len(train_loader_ft), 'So since this seems to break, we should write code to run multiple finetune epoch per pretrain epoch'
     for i, ((pt_images, _), (ft_images, ft_target)) in enumerate(zip(train_loader_pt, train_loader_ft)):
+        
+        total_iter += 1
         
         # switch to train mode
         model.train()
@@ -319,6 +323,12 @@ def train_one_epoch(train_loader_pt, train_loader_ft, model, criterion_pt, crite
         
         if i % config.expt.print_freq == 0:
             progress.display(i)
+        
+        if config.expt.rank == 0:
+            write_to_summary_writer(total_iter, loss_pt, loss_ft, acc1, acc5, data_time, batch_time, optimizer_pt, optimizer_ft, top1, top5, writer)
+    
+    if config.expt.rank == 0:
+        writer.close()
 
 
 def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
@@ -445,6 +455,20 @@ def validate(val_loader, model, criterion, config):
     return top1.avg
 
 
+def write_to_summary_writer(total_iter, loss_pt, loss_ft, acc1, acc5, data_time, batch_time, optimizer_pt, optimizer_ft, top1, top5, writer):
+    writer.add_scalar('Loss/pre-training', loss_pt.item(), total_iter)
+    writer.add_scalar('Loss/fine-tuning', loss_ft.item(), total_iter)
+    writer.add_scalar('Accuracy/@1', acc1, total_iter)
+    writer.add_scalar('Accuracy/@5', acc5, total_iter)
+    writer.add_scalar('Accuracy/@1 average', top1.avg, total_iter)
+    writer.add_scalar('Accuracy/@5 average', top5.avg, total_iter)
+    writer.add_scalar('Time/Data', data_time.val, total_iter)
+    writer.add_scalar('Time/Batch', batch_time.val, total_iter)
+    # assuming only one param group
+    writer.add_scalar('Learning rate/pre-training', optimizer_pt.param_groups[0]['lr'], total_iter)
+    writer.add_scalar('Learning rate/fine-tuning', optimizer_ft.param_groups[0]['lr'], total_iter)
+
+
 def _parse_args(config_parser, parser):
     # Do we have a config file to parse?
     args_config, remaining = config_parser.parse_known_args()
@@ -471,7 +495,7 @@ if __name__ == '__main__':
     parser.add_argument('--expt.expt_name', default='pre-training-fix-lr-100-256', type=str, help='experiment name')
     parser.add_argument('--expt.expt_mode', default='ImageNet', choices=["ImageNet", "CIFAR10"], help='Define which dataset to use to select the correct yaml file.')
     parser.add_argument('--expt.save_model', action='store_false', help='save the model to disc or not (default: True)')
-    parser.add_argument('--expt.save_model_p', default=5, type=int, metavar='N', help='save model frequency in # of epochs')
+    parser.add_argument('--expt.save_model_frequency', default=5, type=int, metavar='N', help='save model frequency in # of epochs')
     parser.add_argument('--expt.ssl_model_checkpoint_path', type=str, help='ppath to the pre-trained model, resumes training if model with same config exists')
     parser.add_argument('--expt.target_model_checkpoint_path', type=str, help='path to the downstream task model, resumes training if model with same config exists')
     parser.add_argument('--expt.print_freq', default=10, type=int, metavar='N')
