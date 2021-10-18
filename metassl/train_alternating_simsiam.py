@@ -224,8 +224,8 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
     
     cudnn.benchmark = True
     total_iter = 0
-    
     writer = None
+    
     if config.expt.rank == 0:
         writer = SummaryWriter(log_dir=os.path.join(expt_dir, "tensorboard"))
     
@@ -239,13 +239,12 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
         cur_lr_ft = adjust_learning_rate(ft_optimizer, init_lr_ft, epoch, config.finetuning.epochs)
         print(f"current pretrain lr: {cur_lr_pt}, finetune lr: {cur_lr_ft}")
         
-        train_one_epoch(pt_train_loader, ft_train_loader, model, pt_criterion, ft_criterion, pt_optimizer, ft_optimizer, epoch, total_iter, config, writer, advanced_stats=config.expt.advanced_stats)
+        total_iter = train_one_epoch(pt_train_loader, ft_train_loader, model, pt_criterion, ft_criterion, pt_optimizer, ft_optimizer, epoch, total_iter, config, writer, advanced_stats=config.expt.advanced_stats)
         
         # evaluate on validation set
         validate(ft_test_loader, model, ft_criterion, config)
         
-        if not config.expt.multiprocessing_distributed or (config.expt.multiprocessing_distributed
-                                                           and config.expt.rank % ngpus_per_node == 0):
+        if not config.expt.multiprocessing_distributed or (config.expt.multiprocessing_distributed and config.expt.rank % ngpus_per_node == 0):
             if epoch % config.expt.save_model_frequency == 0:
                 save_checkpoint(
                     {
@@ -256,6 +255,9 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
                         'optimizer_ft': ft_optimizer.state_dict(),
                         }, is_best=False, filename=os.path.join(expt_dir, 'checkpoint_{:04d}.pth.tar'.format(epoch))
                     )
+    
+    if config.expt.rank == 0:
+        writer.close()
 
 
 def train_one_epoch(train_loader_pt, train_loader_ft, model, criterion_pt, criterion_ft, optimizer_pt, optimizer_ft, epoch, total_iter, config, writer, advanced_stats=False):
@@ -327,12 +329,10 @@ def train_one_epoch(train_loader_pt, train_loader_ft, model, criterion_pt, crite
         
         if i % config.expt.print_freq == 0:
             progress.display(i)
-        
         if config.expt.rank == 0:
             write_to_summary_writer(total_iter, loss_pt, loss_ft, data_time, batch_time, optimizer_pt, optimizer_ft, top1, top5, advanced_stats_meters, writer)
     
-    if config.expt.rank == 0:
-        writer.close()
+    return total_iter
 
 
 def pretrain(model, pt_images, criterion_pt, optimizer_pt, losses_pt, data_time, end, advanced_stats=False):
