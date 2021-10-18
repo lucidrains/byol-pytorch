@@ -596,7 +596,7 @@ if __name__ == '__main__':
     
     parser.add_argument('--train', default="train", type=str, metavar='N')
     parser.add_argument('--train.batch_size', default=256, type=int, metavar='N', help='in distributed setting this is the total batch size, i.e. batch size = individual bs * number of GPUs')
-    parser.add_argument('--train.epochs', default=100, type=int, metavar='N', help='number of pre-training epochs')
+    parser.add_argument('--train.epochs', default=200, type=int, metavar='N', help='number of pre-training epochs')
     parser.add_argument('--train.start_epoch', default=0, type=int, metavar='N', help='start training at epoch n')
     parser.add_argument('--train.optimizer', type=str, default='sgd', help='optimizer type, options: sgd')
     parser.add_argument('--train.schedule', type=str, default='cosine', help='learning rate schedule, not implemented')
@@ -607,7 +607,7 @@ if __name__ == '__main__':
     
     parser.add_argument('--finetuning', default="finetuning", type=str, metavar='N')
     parser.add_argument('--finetuning.batch_size', default=256, type=int, metavar='N', help='in distributed setting this is the total batch size, i.e. batch size = individual bs * number of GPUs')
-    parser.add_argument('--finetuning.epochs', default=100, type=int, metavar='N', help='number of pre-training epochs')
+    parser.add_argument('--finetuning.epochs', default=200, type=int, metavar='N', help='number of pre-training epochs')
     parser.add_argument('--finetuning.start_epoch', default=0, type=int, metavar='N', help='start training at epoch n')
     parser.add_argument('--finetuning.optimizer', type=str, default='sgd', help='optimizer type, options: sgd')
     parser.add_argument('--finetuning.schedule', type=str, default='cosine', help='learning rate schedule, not implemented')
