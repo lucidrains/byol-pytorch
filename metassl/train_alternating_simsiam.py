@@ -243,7 +243,9 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
         
         # evaluate on validation set
         if epoch % config.expt.eval_freq == 0:
-            validate(ft_test_loader, model, ft_criterion, config)
+            top1_avg = validate(ft_test_loader, model, ft_criterion, config)
+            if config.expt.rank == 0:
+                writer.add_scalar('Test/Accuracy@1', top1_avg, total_iter)
         
         if not config.expt.multiprocessing_distributed or (config.expt.multiprocessing_distributed and config.expt.rank % ngpus_per_node == 0):
             if epoch % config.expt.save_model_frequency == 0:
