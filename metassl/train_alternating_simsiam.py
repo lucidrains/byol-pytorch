@@ -242,7 +242,8 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
         total_iter = train_one_epoch(pt_train_loader, ft_train_loader, model, pt_criterion, ft_criterion, pt_optimizer, ft_optimizer, epoch, total_iter, config, writer, advanced_stats=config.expt.advanced_stats)
         
         # evaluate on validation set
-        validate(ft_test_loader, model, ft_criterion, config)
+        if epoch % config.expt.eval_freq == 0:
+            validate(ft_test_loader, model, ft_criterion, config)
         
         if not config.expt.multiprocessing_distributed or (config.expt.multiprocessing_distributed and config.expt.rank % ngpus_per_node == 0):
             if epoch % config.expt.save_model_frequency == 0:
@@ -589,7 +590,7 @@ if __name__ == '__main__':
     parser.add_argument('--expt.workers', default=32, type=int, metavar='N', help='number of data loading workers')
     parser.add_argument('--expt.rank', default=0, type=int, metavar='N', help='node rank for distributed training')
     parser.add_argument('--expt.world_size', default=1, type=int, metavar='N', help='number of nodes for distributed training')
-    parser.add_argument('--expt.eval_freq', default=10, type=int, metavar='N', help='every eval_freq iteration will the model be evaluated')
+    parser.add_argument('--expt.eval_freq', default=5, type=int, metavar='N', help='every eval_freq epoch will the model be evaluated')
     parser.add_argument('--expt.seed', default=123, type=int, metavar='N', help='random seed of numpy and torch')
     parser.add_argument('--expt.evaluate', action='store_true', help='evaluate model on validation set once and terminate (default: False)')
     parser.add_argument('--expt.advanced_stats', action='store_true', help='compute advanced stats such as cosine similarity and dot product, only used in alternating mode (default: False)')

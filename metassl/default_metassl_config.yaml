@@ -18,7 +18,7 @@ expt:
   workers:                      32                            # number of data loading workers
   rank:                         0                             # node rank for distributed training
   world_size:                   1                             # number of nodes for distributed training
-  eval_freq:                    10                            # every eval_freq iteration will the model be evaluated
+  eval_freq:                    5                             # every eval_freq epoch will the model be evaluated
   seed:                         123                           # random seed of numpy and torch
   evaluate:                     False                         # evaluate model on validation set once and terminate
   advanced_stats:               True                          # compute advanced stats such as cosine similarity and dot product, only used in alternating mode
