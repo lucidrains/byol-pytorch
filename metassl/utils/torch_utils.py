@@ -1,4 +1,6 @@
+import glob
 import math
+import os
 from typing import TypeVar, Optional, Iterator
 
 import torch
@@ -171,3 +173,10 @@ def knn_predict(
         )
     pred_labels = pred_scores.argsort(dim=-1, descending=True)
     return pred_labels
+
+
+def get_newest_model(path, suffix="*.pth.tar"):
+    file_list = glob.glob(os.path.join(path, suffix))
+    file_list = sorted(file_list, key=lambda x: x[:-4])
+    if file_list:
+        return file_list[-1]

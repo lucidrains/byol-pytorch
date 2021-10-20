@@ -27,6 +27,7 @@ import yaml
 from jsonargparse import ArgumentParser
 from torch.nn import functional as F
 from torch.utils.tensorboard import SummaryWriter
+from utils.torch_utils import get_newest_model
 
 warnings.filterwarnings("ignore", category=UserWarning)
 
@@ -166,8 +167,8 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
     ft_criterion = nn.CrossEntropyLoss().cuda(config.expt.gpu)
     
     optim_params_pt = [{
-        'params': model.module.backbone.parameters(),
-        'fix_lr': False
+            'params': model.module.backbone.parameters(),
+            'fix_lr': False
         },
         {
             'params': model.module.encoder_head.parameters(),
@@ -199,6 +200,11 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
         weight_decay=config.finetuning.weight_decay
         )
     
+    # in case a dumped model exist and ssl_model_checkpoint is not set, load that dumped model
+    newest_model = get_newest_model(expt_dir)
+    if newest_model and config.expt.ssl_model_checkpoint_path is None:
+        config.expt.ssl_model_checkpoint_path = newest_model
+        
     # optionally resume from a checkpoint
     if config.expt.ssl_model_checkpoint_path:
         if os.path.isfile(config.expt.ssl_model_checkpoint_path):
@@ -588,7 +594,7 @@ if __name__ == '__main__':
     parser.add_argument('--expt.gpu', default=None, type=int, metavar='N', help='GPU ID to train on (if not distributed)')
     parser.add_argument('--expt.multiprocessing_distributed', action='store_false', help='Use multi-processing distributed training to launch N processes per node, which has N GPUs. This is the fastest way to use PyTorch for either single node or multi node data parallel training (default: True)')
     parser.add_argument('--expt.dist_backend', type=str, default='nccl', help='distributed backend')
-    parser.add_argument('--expt.dist_url', type=str, default='tcp://localhost:10001', help='url used to set up distributed training')
+    parser.add_argument('--expt.dist_url', type=str, default='tcp://localhost:10005', help='url used to set up distributed training')
     parser.add_argument('--expt.workers', default=32, type=int, metavar='N', help='number of data loading workers')
     parser.add_argument('--expt.rank', default=0, type=int, metavar='N', help='node rank for distributed training')
     parser.add_argument('--expt.world_size', default=1, type=int, metavar='N', help='number of nodes for distributed training')
@@ -599,7 +605,7 @@ if __name__ == '__main__':
     
     parser.add_argument('--train', default="train", type=str, metavar='N')
     parser.add_argument('--train.batch_size', default=256, type=int, metavar='N', help='in distributed setting this is the total batch size, i.e. batch size = individual bs * number of GPUs')
-    parser.add_argument('--train.epochs', default=200, type=int, metavar='N', help='number of pre-training epochs')
+    parser.add_argument('--train.epochs', default=100, type=int, metavar='N', help='number of pre-training epochs')
     parser.add_argument('--train.start_epoch', default=0, type=int, metavar='N', help='start training at epoch n')
     parser.add_argument('--train.optimizer', type=str, default='sgd', help='optimizer type, options: sgd')
     parser.add_argument('--train.schedule', type=str, default='cosine', help='learning rate schedule, not implemented')
@@ -610,7 +616,7 @@ if __name__ == '__main__':
     
     parser.add_argument('--finetuning', default="finetuning", type=str, metavar='N')
     parser.add_argument('--finetuning.batch_size', default=256, type=int, metavar='N', help='in distributed setting this is the total batch size, i.e. batch size = individual bs * number of GPUs')
-    parser.add_argument('--finetuning.epochs', default=200, type=int, metavar='N', help='number of pre-training epochs')
+    parser.add_argument('--finetuning.epochs', default=100, type=int, metavar='N', help='number of pre-training epochs')
     parser.add_argument('--finetuning.start_epoch', default=0, type=int, metavar='N', help='start training at epoch n')
     parser.add_argument('--finetuning.optimizer', type=str, default='sgd', help='optimizer type, options: sgd')
     parser.add_argument('--finetuning.schedule', type=str, default='cosine', help='learning rate schedule, not implemented')

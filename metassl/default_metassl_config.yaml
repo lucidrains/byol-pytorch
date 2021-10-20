@@ -5,7 +5,7 @@ expt:
   expt_name:                   'pre-training-full-train-data-fix-lr-100-256'
   expt_mode:                    'ImageNet'                    # Define which dataset to use to select the correct yaml file.
   save_model:                   True                          # save the model to disc
-  save_model_frequency:         5                            # save model frequency in # of epochs
+  save_model_frequency:         1                            # save model frequency in # of epochs
 #  ssl_model_checkpoint_path:    "/home/ferreira/workspace/experiments/metassl/pre-training-full-train-data-fix-lr-100-256/checkpoint_0099.pth.tar"    # resumes training if model with same config exists
   ssl_model_checkpoint_path:    null                          # path to the pre-trained model, resumes training if model with same config exists
   target_model_checkpoint_path: null                          # path to the downstream task model, resumes training if model with same config exists
@@ -28,7 +28,7 @@ expt:
 #######################################
 train:
   batch_size:       256                   # in distributed setting this is the total batch size, i.e. batch size = individual bs * number of GPUs
-  epochs:           200                   # number of pre-training epochs
+  epochs:           100                   # number of pre-training epochs
   start_epoch:      0                     # start training at epoch n
   optimizer:        "sgd"                 # optimizer type, options: sgd
   schedule:         "cosine"              # learning rate schedule, not implemented
@@ -40,7 +40,7 @@ train:
 
 finetuning:
   batch_size:       256                  # in distributed setting this is the total batch size, i.e. batch size = individual bs * number of GPUs
-  epochs:           200                    # number of finetuning epochs
+  epochs:           90                    # number of finetuning epochs
   start_epoch:      0                     # start training at epoch n
   optimizer:        "sgd"                # optimizer type, options: lars adam adamW rmsprop adabelief sgd
   schedule:         "cosine"              # learning rate schedule, options: 'cosine' 'cosineW' 'plateau' 'step' 'const' 'cosineWarm' 'exponential' 'None' (BOHO case)
