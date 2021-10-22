@@ -2,7 +2,7 @@ import glob
 import math
 import os
 from typing import TypeVar, Optional, Iterator
-
+import shutil
 import torch
 import torch.distributed as dist
 from torch.utils.data import Sampler
@@ -180,3 +180,24 @@ def get_newest_model(path, suffix="*.pth.tar"):
     file_list = sorted(file_list, key=lambda x: x[:-4])
     if file_list:
         return file_list[-1]
+
+
+def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
+    torch.save(state, filename)
+    if is_best:
+        shutil.copyfile(filename, 'model_best.pth.tar')
+
+
+def check_and_save_checkpoint(config, ngpus_per_node, total_iter, epoch, model, pt_optimizer, ft_optimizer, expt_dir):
+    if not config.expt.multiprocessing_distributed or (config.expt.multiprocessing_distributed and config.expt.rank % ngpus_per_node == 0):
+        if epoch % config.expt.save_model_frequency == 0:
+            save_checkpoint(
+                {
+                    'total_iter':   total_iter,
+                    'epoch':        epoch + 1,
+                    'arch':         config.model.model_type,
+                    'state_dict':   model.state_dict(),
+                    'optimizer_pt': pt_optimizer.state_dict(),
+                    'optimizer_ft': ft_optimizer.state_dict(),
+                    }, is_best=False, filename=os.path.join(expt_dir, 'checkpoint_{:04d}.pth.tar'.format(epoch))
+                )

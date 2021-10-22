@@ -8,11 +8,11 @@ import math
 import os
 import pathlib
 import random
-import shutil
 import time
 import warnings
 
 import jsonargparse
+import numpy as np
 import torch
 import torch.backends.cudnn as cudnn
 import torch.distributed as dist
@@ -27,7 +27,8 @@ import yaml
 from jsonargparse import ArgumentParser
 from torch.nn import functional as F
 from torch.utils.tensorboard import SummaryWriter
-from utils.torch_utils import get_newest_model
+
+from utils.torch_utils import get_newest_model, check_and_save_checkpoint
 
 warnings.filterwarnings("ignore", category=UserWarning)
 
@@ -167,8 +168,8 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
     ft_criterion = nn.CrossEntropyLoss().cuda(config.expt.gpu)
     
     optim_params_pt = [{
-            'params': model.module.backbone.parameters(),
-            'fix_lr': False
+        'params': model.module.backbone.parameters(),
+        'fix_lr': False
         },
         {
             'params': model.module.encoder_head.parameters(),
@@ -204,7 +205,9 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
     newest_model = get_newest_model(expt_dir)
     if newest_model and config.expt.ssl_model_checkpoint_path is None:
         config.expt.ssl_model_checkpoint_path = newest_model
-        
+    
+    total_iter = 0
+    
     # optionally resume from a checkpoint
     if config.expt.ssl_model_checkpoint_path:
         if os.path.isfile(config.expt.ssl_model_checkpoint_path):
@@ -219,6 +222,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
             model.load_state_dict(checkpoint['state_dict'])
             pt_optimizer.load_state_dict(checkpoint['optimizer_pt'])
             ft_optimizer.load_state_dict(checkpoint['optimizer_ft'])
+            total_iter = checkpoint['total_iter']
             print(f"=> loaded checkpoint '{config.expt.ssl_model_checkpoint_path}' (epoch {checkpoint['epoch']})")
         else:
             print(f"=> no checkpoint found at '{config.expt.ssl_model_checkpoint_path}'")
@@ -229,7 +233,6 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
     pt_train_loader, pt_train_sampler, ft_train_loader, ft_train_sampler, ft_test_loader = get_loaders(traindir, config)
     
     cudnn.benchmark = True
-    total_iter = 0
     writer = None
     
     if config.expt.rank == 0:
@@ -252,18 +255,9 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
             top1_avg = validate(ft_test_loader, model, ft_criterion, config)
             if config.expt.rank == 0:
                 writer.add_scalar('Test/Accuracy@1', top1_avg, total_iter)
+                writer.flush()
         
-        if not config.expt.multiprocessing_distributed or (config.expt.multiprocessing_distributed and config.expt.rank % ngpus_per_node == 0):
-            if epoch % config.expt.save_model_frequency == 0:
-                save_checkpoint(
-                    {
-                        'epoch':        epoch + 1,
-                        'arch':         config.model.model_type,
-                        'state_dict':   model.state_dict(),
-                        'optimizer_pt': pt_optimizer.state_dict(),
-                        'optimizer_ft': ft_optimizer.state_dict(),
-                        }, is_best=False, filename=os.path.join(expt_dir, 'checkpoint_{:04d}.pth.tar'.format(epoch))
-                    )
+        check_and_save_checkpoint(config, ngpus_per_node, total_iter, epoch, model, pt_optimizer, ft_optimizer, expt_dir)
     
     if config.expt.rank == 0:
         writer.close()
@@ -419,12 +413,6 @@ def finetune(model, ft_images, ft_target, criterion_ft, optimizer_ft, losses_ft,
     return loss_ft, acc1, acc5, backbone_grads
 
 
-def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
-    torch.save(state, filename)
-    if is_best:
-        shutil.copyfile(filename, 'model_best.pth.tar')
-
-
 def adjust_learning_rate(optimizer, init_lr, epoch, total_epochs):
     """Decay the learning rate based on schedule"""
     cur_lr = init_lr * 0.5 * (1. + math.cos(math.pi * epoch / total_epochs))
@@ -559,6 +547,8 @@ def write_to_summary_writer(total_iter, loss_pt, loss_ft, data_time, batch_time,
     for stat in advanced_stats_meters:
         writer.add_scalar(f'Advanced Stats/{stat.name}', stat.val, total_iter)
         writer.add_scalar(f'Advanced Stats/{stat.name} average', stat.avg, total_iter)
+    
+    writer.flush()
 
 
 def _parse_args(config_parser, parser):
@@ -587,7 +577,7 @@ if __name__ == '__main__':
     parser.add_argument('--expt.expt_name', default='pre-training-fix-lr-100-256', type=str, help='experiment name')
     parser.add_argument('--expt.expt_mode', default='ImageNet', choices=["ImageNet", "CIFAR10"], help='Define which dataset to use to select the correct yaml file.')
     parser.add_argument('--expt.save_model', action='store_false', help='save the model to disc or not (default: True)')
-    parser.add_argument('--expt.save_model_frequency', default=5, type=int, metavar='N', help='save model frequency in # of epochs')
+    parser.add_argument('--expt.save_model_frequency', default=1, type=int, metavar='N', help='save model frequency in # of epochs')
     parser.add_argument('--expt.ssl_model_checkpoint_path', type=str, help='ppath to the pre-trained model, resumes training if model with same config exists')
     parser.add_argument('--expt.target_model_checkpoint_path', type=str, help='path to the downstream task model, resumes training if model with same config exists')
     parser.add_argument('--expt.print_freq', default=10, type=int, metavar='N')
@@ -602,6 +592,8 @@ if __name__ == '__main__':
     parser.add_argument('--expt.seed', default=123, type=int, metavar='N', help='random seed of numpy and torch')
     parser.add_argument('--expt.evaluate', action='store_true', help='evaluate model on validation set once and terminate (default: False)')
     parser.add_argument('--expt.advanced_stats', action='store_true', help='compute advanced stats such as cosine similarity and dot product, only used in alternating mode (default: False)')
+    
+    parser.add_argument('--expt.timeout', default=np.inf, type=int, metavar='N', help='time in seconds when ')
     
     parser.add_argument('--train', default="train", type=str, metavar='N')
     parser.add_argument('--train.batch_size', default=256, type=int, metavar='N', help='in distributed setting this is the total batch size, i.e. batch size = individual bs * number of GPUs')
