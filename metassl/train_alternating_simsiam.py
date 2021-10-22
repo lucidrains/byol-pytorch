@@ -27,7 +27,7 @@ from jsonargparse import ArgumentParser
 from torch.nn import functional as F
 from torch.utils.tensorboard import SummaryWriter
 
-from utils.torch_utils import get_newest_model, check_and_save_checkpoint
+from utils.torch_utils import get_newest_model, check_and_save_checkpoint, deactivate_bn
 
 warnings.filterwarnings("ignore", category=UserWarning)
 
@@ -123,6 +123,10 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
     else:
         model = SimSiam(models.__dict__[config.model.model_type], config.simsiam.dim, config.simsiam.pred_dim)
     
+    if config.model.turn_off_bn:
+        print("Turning off BatchNorm in entire model.")
+        deactivate_bn(model)
+    
     # infer learning rate before changing batch size
     init_lr_pt = config.train.lr * config.train.batch_size / 256
     init_lr_ft = config.finetuning.lr * config.finetuning.batch_size / 256
@@ -160,7 +164,6 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
         # AllGather implementation (batch shuffle, queue update, etc.) in
         # this code only supports DistributedDataParallel.
         raise NotImplementedError("Only DistributedDataParallel is supported.")
-    # print(model) # print model after SyncBatchNorm
     
     # define loss function (criterion) and optimizer
     pt_criterion = nn.CosineSimilarity(dim=1).cuda(config.expt.gpu)
@@ -614,6 +617,7 @@ if __name__ == '__main__':
     parser.add_argument('--model', default="model", type=str, metavar='N')
     parser.add_argument('--model.model_type', type=str, default='resnet50', help='all torchvision ResNets')
     parser.add_argument('--model.seed', type=int, default=123, help='the seed')
+    parser.add_argument('--model.turn_off_bn', action='store_true', help='turns off all batch norm instances in the model')
     
     parser.add_argument('--data', default="data", type=str, metavar='N')
     parser.add_argument('--data.seed', type=int, default=123, help='the seed')
