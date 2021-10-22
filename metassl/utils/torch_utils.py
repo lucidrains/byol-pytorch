@@ -1,8 +1,9 @@
 import glob
 import math
 import os
-from typing import TypeVar, Optional, Iterator
 import shutil
+from typing import TypeVar, Optional, Iterator
+
 import torch
 import torch.distributed as dist
 from torch.utils.data import Sampler
@@ -180,6 +181,14 @@ def get_newest_model(path, suffix="*.pth.tar"):
     file_list = sorted(file_list, key=lambda x: x[:-4])
     if file_list:
         return file_list[-1]
+
+
+def deactivate_bn(model):
+    for child_name, child in model.named_children():
+        if isinstance(child, torch.nn.BatchNorm1d) or isinstance(child, torch.nn.BatchNorm2d):
+            setattr(model, child_name, torch.nn.Identity())
+        else:
+            deactivate_bn(child)
 
 
 def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
