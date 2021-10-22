@@ -12,7 +12,6 @@ import time
 import warnings
 
 import jsonargparse
-import numpy as np
 import torch
 import torch.backends.cudnn as cudnn
 import torch.distributed as dist
@@ -255,7 +254,6 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
             top1_avg = validate(ft_test_loader, model, ft_criterion, config)
             if config.expt.rank == 0:
                 writer.add_scalar('Test/Accuracy@1', top1_avg, total_iter)
-                writer.flush()
         
         check_and_save_checkpoint(config, ngpus_per_node, total_iter, epoch, model, pt_optimizer, ft_optimizer, expt_dir)
     
@@ -547,8 +545,6 @@ def write_to_summary_writer(total_iter, loss_pt, loss_ft, data_time, batch_time,
     for stat in advanced_stats_meters:
         writer.add_scalar(f'Advanced Stats/{stat.name}', stat.val, total_iter)
         writer.add_scalar(f'Advanced Stats/{stat.name} average', stat.avg, total_iter)
-    
-    writer.flush()
 
 
 def _parse_args(config_parser, parser):
@@ -588,12 +584,10 @@ if __name__ == '__main__':
     parser.add_argument('--expt.workers', default=32, type=int, metavar='N', help='number of data loading workers')
     parser.add_argument('--expt.rank', default=0, type=int, metavar='N', help='node rank for distributed training')
     parser.add_argument('--expt.world_size', default=1, type=int, metavar='N', help='number of nodes for distributed training')
-    parser.add_argument('--expt.eval_freq', default=5, type=int, metavar='N', help='every eval_freq epoch will the model be evaluated')
+    parser.add_argument('--expt.eval_freq', default=10, type=int, metavar='N', help='every eval_freq epoch will the model be evaluated')
     parser.add_argument('--expt.seed', default=123, type=int, metavar='N', help='random seed of numpy and torch')
     parser.add_argument('--expt.evaluate', action='store_true', help='evaluate model on validation set once and terminate (default: False)')
     parser.add_argument('--expt.advanced_stats', action='store_true', help='compute advanced stats such as cosine similarity and dot product, only used in alternating mode (default: False)')
-    
-    parser.add_argument('--expt.timeout', default=np.inf, type=int, metavar='N', help='time in seconds when ')
     
     parser.add_argument('--train', default="train", type=str, metavar='N')
     parser.add_argument('--train.batch_size', default=256, type=int, metavar='N', help='in distributed setting this is the total batch size, i.e. batch size = individual bs * number of GPUs')
