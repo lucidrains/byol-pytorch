@@ -128,10 +128,6 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
         print("Turning off BatchNorm in entire model.")
         deactivate_bn(model)
     
-    if config.model.turn_off_bn:
-        print("Turning off BatchNorm in entire model.")
-        deactivate_bn(model)
-    
     # infer learning rate before changing batch size
     init_lr_pt = config.train.lr * config.train.batch_size / 256
     init_lr_ft = config.finetuning.lr * config.finetuning.batch_size / 256
