@@ -12,6 +12,7 @@ import time
 import warnings
 
 import jsonargparse
+import numpy as np
 import torch
 import torch.backends.cudnn as cudnn
 import torch.distributed as dist
@@ -251,7 +252,10 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
         cur_lr_ft = adjust_learning_rate(optimizer_ft, init_lr_ft, epoch, config.finetuning.epochs)
         print(f"current pretrain lr: {cur_lr_pt}, finetune lr: {cur_lr_ft}")
         
-        total_iter = train_one_epoch(pt_train_loader, ft_train_loader, model, pt_criterion, ft_criterion, optimizer_pt, optimizer_ft, epoch, total_iter, config, writer, advanced_stats=config.expt.advanced_stats)
+        warmup = config.train.warmup > epoch
+        print(f"Warmup status: {warmup}")
+        
+        total_iter = train_one_epoch(pt_train_loader, ft_train_loader, model, pt_criterion, ft_criterion, optimizer_pt, optimizer_ft, epoch, total_iter, config, writer, advanced_stats=config.expt.advanced_stats, warmup=warmup)
         
         # evaluate on validation set
         if epoch % config.expt.eval_freq == 0:
@@ -265,7 +269,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
         writer.close()
 
 
-def train_one_epoch(train_loader_pt, train_loader_ft, model, criterion_pt, criterion_ft, optimizer_pt, optimizer_ft, epoch, total_iter, config, writer, advanced_stats=False):
+def train_one_epoch(train_loader_pt, train_loader_ft, model, criterion_pt, criterion_ft, optimizer_pt, optimizer_ft, epoch, total_iter, config, writer, advanced_stats=False, warmup=False):
     batch_time = AverageMeter('Time', ':6.3f')
     data_time = AverageMeter('Data', ':6.3f')
     losses_pt = AverageMeter('Loss PT', ':.4f')
@@ -294,6 +298,9 @@ def train_one_epoch(train_loader_pt, train_loader_ft, model, criterion_pt, crite
     assert len(train_loader_pt) <= len(train_loader_ft), 'So since this seems to break, we should write code to run multiple finetune epoch per pretrain epoch'
     for i, ((pt_images, _), (ft_images, ft_target)) in enumerate(zip(train_loader_pt, train_loader_ft)):
         
+        if i > 5:
+            break
+        
         total_iter += 1
         advanced_stats_meters = []
         
@@ -304,31 +311,29 @@ def train_one_epoch(train_loader_pt, train_loader_ft, model, criterion_pt, crite
             ft_target = ft_target.cuda(config.expt.gpu, non_blocking=True)
         
         loss_pt, backbone_grads_pt = pretrain(model, pt_images, criterion_pt, optimizer_pt, losses_pt, data_time, end, advanced_stats=advanced_stats)
-        loss_ft, acc1, acc5, backbone_grads_ft = finetune(model, ft_images, ft_target, criterion_ft, optimizer_ft, losses_ft, top1, top5, advanced_stats=advanced_stats)
-        
-        # print(backbone_grads_pt)
-        
+    
+        if not warmup:
+            loss_ft, backbone_grads_ft = finetune(model, ft_images, ft_target, criterion_ft, optimizer_ft, losses_ft, top1, top5, advanced_stats=advanced_stats)
+        else:
+            losses_ft.update(np.inf)
+            loss_ft = np.inf
+            
         if advanced_stats:
-            cos_sim_val = F.cosine_similarity(backbone_grads_pt, backbone_grads_ft, dim=0)
-            cos_sim.update(cos_sim_val)
-            
-            dot_prod_val = torch.dot(backbone_grads_pt, backbone_grads_ft)
-            dot_prod.update(dot_prod_val)
-            
-            eucl_dis_val = torch.linalg.norm(backbone_grads_pt - backbone_grads_ft, 2)
-            eucl_dis.update(eucl_dis_val)
-            
-            norm_pt_val = torch.linalg.norm(backbone_grads_pt, 2)
-            norm_pt.update(norm_pt_val)
-            
-            norm_ft_val = torch.linalg.norm(backbone_grads_ft, 2)
-            norm_ft.update(norm_ft_val)
+            if not warmup:
+                cos_sim.update(F.cosine_similarity(backbone_grads_pt, backbone_grads_ft, dim=0))
+                dot_prod.update(torch.dot(backbone_grads_pt, backbone_grads_ft))
+                eucl_dis.update(torch.linalg.norm(backbone_grads_pt - backbone_grads_ft, 2))
+                norm_pt.update(torch.linalg.norm(backbone_grads_pt, 2))
+                norm_ft.update(torch.linalg.norm(backbone_grads_ft, 2))
+            else:
+                # no resetting needed, as meters are freshly initialized at each epoch
+                cos_sim.update(0.)
+                dot_prod.update(0.)
+                eucl_dis.update(0.)
+                norm_pt.update(torch.linalg.norm(backbone_grads_pt, 2))
+                norm_ft.update(0.)
             
             advanced_stats_meters = [cos_sim, dot_prod, eucl_dis, norm_pt, norm_ft]
-        
-        # if i == 0 and config.expt.rank == 0 and advanced_stats:
-        #     print(backbone_grads_ft.shape)
-        #     print(backbone_grads_pt.shape)
         
         # measure elapsed time
         batch_time.update(time.time() - end)
@@ -346,7 +351,7 @@ def pretrain(model, pt_images, criterion_pt, optimizer_pt, losses_pt, data_time,
     # backbone_grads = np.empty(sum(p.numel() for p in model.parameters()))
     backbone_grads = torch.Tensor().cuda()
     # backbone_grads = OrderedDict()
-
+    
     model.requires_grad_(True)
     
     # switch to train mode
@@ -392,7 +397,7 @@ def finetune(model, ft_images, ft_target, criterion_ft, optimizer_ft, losses_ft,
         model.module.backbone.requires_grad_(True)
     else:
         model.module.backbone.requires_grad_(False)
-
+    
     model.module.classifier_head.requires_grad_(True)
     
     # compute outputs
@@ -419,7 +424,7 @@ def finetune(model, ft_images, ft_target, criterion_ft, optimizer_ft, losses_ft,
     for param in model.module.parameters():
         param.grad = None
     
-    return loss_ft, acc1, acc5, backbone_grads
+    return loss_ft, backbone_grads
 
 
 def adjust_learning_rate(optimizer, init_lr, epoch, total_epochs):
@@ -542,7 +547,10 @@ def validate(val_loader, model, criterion, config):
 
 def write_to_summary_writer(total_iter, loss_pt, loss_ft, data_time, batch_time, optimizer_pt, optimizer_ft, top1, top5, advanced_stats_meters, writer):
     writer.add_scalar('Loss/pre-training', loss_pt.item(), total_iter)
-    writer.add_scalar('Loss/fine-tuning', loss_ft.item(), total_iter)
+    if isinstance(loss_ft, float):
+        writer.add_scalar('Loss/fine-tuning', loss_ft, total_iter)
+    else:
+        writer.add_scalar('Loss/fine-tuning', loss_ft.item(), total_iter)
     writer.add_scalar('Accuracy/@1', top1.val, total_iter)
     writer.add_scalar('Accuracy/@5', top5.val, total_iter)
     writer.add_scalar('Accuracy/@1 average', top1.avg, total_iter)
@@ -606,11 +614,10 @@ if __name__ == '__main__':
     parser.add_argument('--train.start_epoch', default=0, type=int, metavar='N', help='start training at epoch n')
     parser.add_argument('--train.optimizer', type=str, default='sgd', help='optimizer type, options: sgd')
     parser.add_argument('--train.schedule', type=str, default='cosine', help='learning rate schedule, not implemented')
-    parser.add_argument('--train.warmup', default=1000, type=int, metavar='N', help='0 (turned off) or higher (e.g. 1000 ~ 5 epochs at batch size 256 on CIFAR100), not implemented')
+    parser.add_argument('--train.warmup', default=0, type=int, metavar='N', help='denotes the number of epochs that we only pre-train without finetuning afterwards; warmup is turned off when set to 0')
     parser.add_argument('--train.weight_decay', default=0.0001, type=float, metavar='N')
     parser.add_argument('--train.momentum', default=0.9, type=float, metavar='N', help='SGD momentum')
     parser.add_argument('--train.lr', default=0.05, type=float, metavar='N', help='pre-training learning rate')
-    # parser.add_argument('--train.lr', default=0.0001, type=float, metavar='N', help='pre-training learning rate')
     
     parser.add_argument('--finetuning', default="finetuning", type=str, metavar='N')
     parser.add_argument('--finetuning.batch_size', default=256, type=int, metavar='N', help='in distributed setting this is the total batch size, i.e. batch size = individual bs * number of GPUs')
@@ -618,11 +625,9 @@ if __name__ == '__main__':
     parser.add_argument('--finetuning.start_epoch', default=0, type=int, metavar='N', help='start training at epoch n')
     parser.add_argument('--finetuning.optimizer', type=str, default='sgd', help='optimizer type, options: sgd')
     parser.add_argument('--finetuning.schedule', type=str, default='cosine', help='learning rate schedule, not implemented')
-    parser.add_argument('--finetuning.warmup', default=1000, type=int, metavar='N', help='0 (turned off) or higher (e.g. 1000 ~ 5 epochs at batch size 256 on CIFAR100), not implemented')
     parser.add_argument('--finetuning.weight_decay', default=0.0, type=float, metavar='N')
     parser.add_argument('--finetuning.momentum', default=0.9, type=float, metavar='N', help='SGD momentum')
     parser.add_argument('--finetuning.lr', default=100, type=float, metavar='N', help='finetuning learning rate')
-    # parser.add_argument('--finetuning.lr', default=0.0001, type=float, metavar='N', help='finetuning learning rate')
     
     parser.add_argument('--model', default="model", type=str, metavar='N')
     parser.add_argument('--model.model_type', type=str, default='resnet50', help='all torchvision ResNets')
