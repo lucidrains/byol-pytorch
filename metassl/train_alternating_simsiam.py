@@ -298,9 +298,6 @@ def train_one_epoch(train_loader_pt, train_loader_ft, model, criterion_pt, crite
     assert len(train_loader_pt) <= len(train_loader_ft), 'So since this seems to break, we should write code to run multiple finetune epoch per pretrain epoch'
     for i, ((pt_images, _), (ft_images, ft_target)) in enumerate(zip(train_loader_pt, train_loader_ft)):
         
-        if i > 5:
-            break
-        
         total_iter += 1
         advanced_stats_meters = []
         
