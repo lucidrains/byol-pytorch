@@ -41,6 +41,10 @@ class SimSiam(nn.Module):
                                        )
 
         self.classifier_head = nn.Linear(prev_dim, num_classes)
+        
+        # from facebook SimSiam code
+        self.classifier_head.weight.data.normal_(mean=0.0, std=0.01)
+        self.classifier_head.bias.data.zero_()
 
     def forward(self, x1, x2=None, finetuning=False):
         """

@@ -115,6 +115,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
     for name, param in model.named_parameters():
         if name not in ['fc.weight', 'fc.bias']:
             param.requires_grad = False
+
     # init the fc layer
     model.fc.weight.data.normal_(mean=0.0, std=0.01)
     model.fc.bias.data.zero_()
@@ -127,17 +128,30 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
             
             # rename moco pre-trained keys
             state_dict = checkpoint['state_dict']
+            
+            has_encoder = False
+            has_backbone = False
+            
             for k in list(state_dict.keys()):
                 # retain only encoder up to before the embedding layer
-                if k.startswith('module.encoder') and not k.startswith('module.encoder.fc'):
+                if k.startswith('module.encoder.') and not k.startswith('module.encoder.fc'):
                     # remove prefix
                     state_dict[k[len("module.encoder."):]] = state_dict[k]
+                    has_encoder = True
+
+                if k.startswith('module.backbone') and not k.startswith('module.backbone.fc'):
+                    # remove prefix
+                    state_dict[k[len("module.backbone."):]] = state_dict[k]
+                    has_backbone = True
+                    
                 # delete renamed or unused k
                 del state_dict[k]
+                
+            assert has_backbone != has_encoder
             
             config.finetuning.start_epoch = 0
             msg = model.load_state_dict(state_dict, strict=False)
-            assert set(msg.missing_keys) == {"fc.weight", "fc.bias"}
+            assert set(msg.missing_keys) == {"fc.weight", "fc.bias"}, f"{msg}"
             
             print(f"=> loaded pre-trained model '{config.expt.ssl_model_checkpoint_path}'")
         else:
@@ -305,6 +319,9 @@ def train(train_loader, model, criterion, optimizer, epoch, config):
     for i, (images, target) in enumerate(train_loader):
         # measure data loading time
         data_time.update(time.time() - end)
+        
+        if i == 0:
+            print(f"batch size per gpu {len(images)}")
         
         if config.expt.gpu is not None:
             images = images.cuda(config.expt.gpu, non_blocking=True)
