@@ -312,16 +312,16 @@ def train_one_epoch(
     
     if advanced_stats:
         if layer_wise_stats:
-            cos_sim_avg = AverageMeter('Cos. Sim. PT-FT Average', ':6.4f')
-            cos_sim_std = AverageMeter('Cos. Sim. PT-FT Std.', ':6.4f')
-            dot_prod_avg = AverageMeter('Dot Product PT-FT Average', ':6.4f')
-            dot_prod_std = AverageMeter('Dot Product PT-FT Std.', ':6.4f')
-            eucl_dis_avg = AverageMeter('Eucl. Dist. PT-FT Average', ':6.4f')
-            eucl_dis_std = AverageMeter('Eucl. Dist. PT-FT Std.', ':6.4f')
-            norm_pt_avg = AverageMeter('Norm PT Average', ':6.4f')
-            norm_pt_std = AverageMeter('Norm PT Std.', ':6.4f')
-            norm_ft_avg = AverageMeter('Norm FT Average', ':6.4f')
-            norm_ft_std = AverageMeter('Norm FT Std.', ':6.4f')
+            cos_sim_avg = AverageMeter('Cos. Sim. PT-FT layer-wise average', ':6.4f')
+            cos_sim_std = AverageMeter('Cos. Sim. PT-FT layer-wise std.', ':6.4f')
+            dot_prod_avg = AverageMeter('Dot Product PT-FT layer-wise average', ':6.4f')
+            dot_prod_std = AverageMeter('Dot Product PT-FT layer-wise std.', ':6.4f')
+            eucl_dis_avg = AverageMeter('Eucl. Dist. PT-FT layer-wise average', ':6.4f')
+            eucl_dis_std = AverageMeter('Eucl. Dist. PT-FT layer-wise std.', ':6.4f')
+            norm_pt_avg = AverageMeter('Norm PT layer-wise average', ':6.4f')
+            norm_pt_std = AverageMeter('Norm PT layer-wise std.', ':6.4f')
+            norm_ft_avg = AverageMeter('Norm FT layer-wise average', ':6.4f')
+            norm_ft_std = AverageMeter('Norm FT layer-wise std.', ':6.4f')
             meters = [batch_time, losses_pt, losses_ft, top1, cos_sim_avg, cos_sim_std, dot_prod_avg, dot_prod_std, eucl_dis_avg, eucl_dis_std, norm_pt_avg, norm_pt_std, norm_ft_avg, norm_ft_std]
         else:
             cos_sim = AverageMeter('Cos. Sim. PT-FT', ':6.4f')
@@ -680,15 +680,15 @@ def calc_layer_wise_stats(metric, backbone_grads_pt, backbone_grads_ft=None, met
         for (k1, v1), (k2, v2) in zip(backbone_grads_pt.items(), backbone_grads_ft.items()):
             if k1 == k2 and "bn" not in k1:
                 if metric_type == "euclidean":
-                    metric_vals.append(metric(v1 - v2, 2).numpy())
+                    metric_vals.append(metric(v1 - v2, 2).cpu().numpy())
                 elif metric_type == "dot":
-                    metric_vals.append(metric(v1, v2))
+                    metric_vals.append(metric(v1, v2).cpu().numpy())
                 elif metric_type == "cosine":
-                    metric_vals.append(metric(v1, v2, dim=0).numpy())
+                    metric_vals.append(metric(v1, v2, dim=0).cpu().numpy())
     else:
         for k1, v1 in backbone_grads_pt.items():
             if metric_type == "norm":
-                metric_vals.append(metric(v1, 2).numpy())
+                metric_vals.append(metric(v1, 2).cpu().numpy())
 
     return np.mean(metric_vals), np.std(metric_vals)
 
