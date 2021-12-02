@@ -82,7 +82,7 @@ dependencies:
   - zstd=1.4.9=haebb681_0
   - pip:
     - absl-py==0.14.1
-    - apex==0.1
+#    - apex==0.1
     - cachetools==4.2.4
     - charset-normalizer==2.0.7
     - cloudpickle==2.0.0
@@ -110,6 +110,6 @@ dependencies:
     - tensorboard==2.7.0
     - tensorboard-data-server==0.6.1
     - tensorboard-plugin-wit==1.8.0
-    - torchlars==0.1.2
+#    - torchlars==0.1.2
     - urllib3==1.26.7
     - werkzeug==2.0.2

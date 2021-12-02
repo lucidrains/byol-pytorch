@@ -1,12 +1,16 @@
 import glob
+import io
 import math
 import os
 import shutil
 from typing import TypeVar, Optional, Iterator
 
+import PIL.Image
 import torch
 import torch.distributed as dist
+from matplotlib import pyplot as plt
 from torch.utils.data import Sampler
+from torchvision.transforms import ToTensor
 
 
 def count_parameters(parameters):
@@ -197,16 +201,32 @@ def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
         shutil.copyfile(filename, 'model_best.pth.tar')
 
 
-def check_and_save_checkpoint(config, ngpus_per_node, total_iter, epoch, model, pt_optimizer, ft_optimizer, expt_dir):
+def check_and_save_checkpoint(config, ngpus_per_node, total_iter, epoch, model, optimizer_pt, optimizer_ft, expt_dir, optimizer_aug=None):
     if not config.expt.multiprocessing_distributed or (config.expt.multiprocessing_distributed and config.expt.rank % ngpus_per_node == 0):
         if epoch % config.expt.save_model_frequency == 0:
-            save_checkpoint(
-                {
-                    'total_iter':   total_iter,
-                    'epoch':        epoch + 1,
-                    'arch':         config.model.model_type,
-                    'state_dict':   model.state_dict(),
-                    'optimizer_pt': pt_optimizer.state_dict(),
-                    'optimizer_ft': ft_optimizer.state_dict(),
-                    }, is_best=False, filename=os.path.join(expt_dir, 'checkpoint_{:04d}.pth.tar'.format(epoch))
-                )
+            save_dct = {
+                'total_iter':   total_iter,
+                'epoch':        epoch + 1,
+                'arch':         config.model.model_type,
+                'state_dict':   model.state_dict(),
+                'optimizer_pt': optimizer_pt.state_dict(),
+                'optimizer_ft': optimizer_ft.state_dict(),
+                }
+            if optimizer_aug is not None:
+                save_dct['optimizer_aug'] = optimizer_aug.state_dict()
+            
+            save_checkpoint(save_dct, is_best=False, filename=os.path.join(expt_dir, 'checkpoint_{:04d}.pth.tar'.format(epoch)))
+
+
+def hist_to_image(hist_dict, title=None):
+    plt.figure()
+    plt.bar(hist_dict.keys(), hist_dict.values(), width=0.05)
+    if title:
+        plt.title(title)
+    buf = io.BytesIO()
+    plt.savefig(buf, format='jpeg')
+    buf.seek(0)
+    image = PIL.Image.open(buf)
+    image = ToTensor()(image)
+    plt.close()
+    return image

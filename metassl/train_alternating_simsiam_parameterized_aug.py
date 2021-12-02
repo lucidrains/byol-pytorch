@@ -11,8 +11,7 @@ import random
 import time
 import warnings
 
-from collections import OrderedDict
-
+from utils.torch_utils import hist_to_image
 import jsonargparse
 import numpy as np
 import torch
@@ -25,6 +24,7 @@ import torch.optim
 import torch.utils.data
 import torch.utils.data.distributed
 import torchvision.models as models
+import torchvision.transforms as transforms
 import yaml
 from jsonargparse import ArgumentParser
 from torch.nn import functional as F
@@ -207,6 +207,12 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
         weight_decay=config.finetuning.weight_decay
         )
     
+    color_jitter_strengths = [0.1, 0.2, 0.3, 0.4, 0.5]
+    aug_w = torch.zeros(len(color_jitter_strengths), requires_grad=True)
+    bound = 1./math.sqrt(aug_w.size(0))
+    nn.init.uniform(aug_w, -bound, bound)
+    aug_w.grad = torch.zeros_like(aug_w)
+    
     # in case a dumped model exist and ssl_model_checkpoint is not set, load that dumped model
     newest_model = get_newest_model(expt_dir)
     if newest_model and config.expt.ssl_model_checkpoint_path is None:
@@ -228,6 +234,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
             model.load_state_dict(checkpoint['state_dict'])
             optimizer_pt.load_state_dict(checkpoint['optimizer_pt'])
             optimizer_ft.load_state_dict(checkpoint['optimizer_ft'])
+            # optimizer_aug.load_state_dict(checkpoint['optimizer_aug'])
             total_iter = checkpoint['total_iter']
             print(f"=> loaded checkpoint '{config.expt.ssl_model_checkpoint_path}' (epoch {checkpoint['epoch']})")
         else:
@@ -243,6 +250,8 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
     
     if config.expt.rank == 0:
         writer = SummaryWriter(log_dir=os.path.join(expt_dir, "tensorboard"))
+    
+    color_jitter_strength_hist = {k: 0 for k in color_jitter_strengths}
     
     for epoch in range(config.train.start_epoch, config.train.epochs):
         
@@ -266,13 +275,15 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
             criterion_ft=criterion_ft,
             optimizer_pt=optimizer_pt,
             optimizer_ft=optimizer_ft,
+            color_jitter_strength_hist=color_jitter_strength_hist,
+            aug_w=aug_w,
+            color_jitter_strengths=color_jitter_strengths,
             epoch=epoch,
             total_iter=total_iter,
             config=config,
             writer=writer,
             advanced_stats=config.expt.advanced_stats,
-            warmup=warmup,
-            layer_wise_stats=config.expt.layer_wise_stats
+            warmup=warmup
             )
         
         # evaluate on validation set
@@ -295,13 +306,15 @@ def train_one_epoch(
     criterion_ft,
     optimizer_pt,
     optimizer_ft,
+    color_jitter_strength_hist,
+    aug_w,
+    color_jitter_strengths,
     epoch,
     total_iter,
     config,
     writer,
     advanced_stats=False,
-    warmup=False,
-    layer_wise_stats=False
+    warmup=False
     ):
     batch_time = AverageMeter('Time', ':6.3f')
     data_time = AverageMeter('Data', ':6.3f')
@@ -311,26 +324,13 @@ def train_one_epoch(
     top5 = AverageMeter('Acc@5', ':6.2f')
     
     if advanced_stats:
-        if layer_wise_stats:
-            cos_sim_avg = AverageMeter('Cos. Sim. PT-FT Average', ':6.4f')
-            cos_sim_std = AverageMeter('Cos. Sim. PT-FT Std.', ':6.4f')
-            dot_prod_avg = AverageMeter('Dot Product PT-FT Average', ':6.4f')
-            dot_prod_std = AverageMeter('Dot Product PT-FT Std.', ':6.4f')
-            eucl_dis_avg = AverageMeter('Eucl. Dist. PT-FT Average', ':6.4f')
-            eucl_dis_std = AverageMeter('Eucl. Dist. PT-FT Std.', ':6.4f')
-            norm_pt_avg = AverageMeter('Norm PT Average', ':6.4f')
-            norm_pt_std = AverageMeter('Norm PT Std.', ':6.4f')
-            norm_ft_avg = AverageMeter('Norm FT Average', ':6.4f')
-            norm_ft_std = AverageMeter('Norm FT Std.', ':6.4f')
-            meters = [batch_time, losses_pt, losses_ft, top1, cos_sim_avg, cos_sim_std, dot_prod_avg, dot_prod_std, eucl_dis_avg, eucl_dis_std, norm_pt_avg, norm_pt_std, norm_ft_avg, norm_ft_std]
-        else:
-            cos_sim = AverageMeter('Cos. Sim. PT-FT', ':6.4f')
-            dot_prod = AverageMeter('Dot Product PT-FT', ':6.4f')
-            eucl_dis = AverageMeter('Eucl. Dist. PT-FT', ':6.4f')
-            norm_pt = AverageMeter('Norm PT', ':6.4f')
-            norm_ft = AverageMeter('Norm FT', ':6.4f')
-            # removed data_time and top5 due to brevity
-            meters = [batch_time, losses_pt, losses_ft, top1, cos_sim, dot_prod, eucl_dis, norm_pt, norm_ft]
+        cos_sim_ema_meter = ExponentialMovingAverageMeter('Cos. Sim. PT-FT', window=100, alpha=2, fmt=':6.4f')
+        dot_prod_meter = AverageMeter('Dot Product PT-FT', ':6.4f')
+        eucl_dis_meter = AverageMeter('Eucl. Dist. PT-FT', ':6.4f')
+        norm_pt_meter = AverageMeter('Norm PT', ':6.4f')
+        norm_ft_meter = AverageMeter('Norm FT', ':6.4f')
+        norm_aug_grad_meter = AverageMeter('Norm Aug. gradient', ':6.4f')
+        meters = [batch_time, losses_pt, losses_ft, norm_aug_grad_meter, top1, cos_sim_ema_meter, dot_prod_meter, eucl_dis_meter, norm_pt_meter, norm_ft_meter]
     else:
         meters = [batch_time, data_time, losses_pt, losses_ft, top1, top5]
     
@@ -347,66 +347,52 @@ def train_one_epoch(
         total_iter += 1
         advanced_stats_meters = []
         
+        probs = torch.softmax(aug_w, dim=0)
+        i_color_jitter = torch.multinomial(probs, 1).item()
+        color_jitter_strength = color_jitter_strengths[i_color_jitter]
+        color_jitter_strength_hist[color_jitter_strength] += 1
+        
+        # print(f"Sampled color jitter strength: {color_jitter_strength}")
+        color_jitter_transform = transforms.ColorJitter(0.4 * color_jitter_strength, 0.4 * color_jitter_strength, 0.4 * color_jitter_strength, 0.1 * color_jitter_strength)
+        
         if config.expt.gpu is not None:
             images_pt[0] = images_pt[0].cuda(config.expt.gpu, non_blocking=True)
             images_pt[1] = images_pt[1].cuda(config.expt.gpu, non_blocking=True)
             images_ft = images_ft.cuda(config.expt.gpu, non_blocking=True)
             target_ft = target_ft.cuda(config.expt.gpu, non_blocking=True)
         
-        loss_pt, backbone_grads_pt = pretrain(model, images_pt, criterion_pt, optimizer_pt, losses_pt, data_time, end, advanced_stats=advanced_stats, layer_wise_stats=layer_wise_stats)
+        images_pt[0] = color_jitter_transform(images_pt[0])
+        images_pt[1] = color_jitter_transform(images_pt[1])
+        
+        loss_pt, backbone_grads_pt = pretrain(model, images_pt, criterion_pt, optimizer_pt, losses_pt, data_time, end, advanced_stats=advanced_stats)
         
         if not warmup:
-            loss_ft, backbone_grads_ft = finetune(model, images_ft, target_ft, criterion_ft, optimizer_ft, losses_ft, top1, top5, advanced_stats=advanced_stats, layer_wise_stats=layer_wise_stats)
+            loss_ft, backbone_grads_ft = finetune(model, images_ft, target_ft, criterion_ft, optimizer_ft, losses_ft, top1, top5, advanced_stats=advanced_stats)
         else:
             losses_ft.update(np.inf)
             loss_ft = np.inf
         
         if advanced_stats:
             if not warmup:
-                if layer_wise_stats:
-                    mean, std = calc_layer_wise_stats(F.cosine_similarity, backbone_grads_pt, backbone_grads_ft, metric_type="cosine")
-                    cos_sim_avg.update(mean), cos_sim_std.update(std)
-                    
-                    mean, std = calc_layer_wise_stats(torch.dot, backbone_grads_pt, backbone_grads_ft, metric_type="dot")
-                    dot_prod_avg.update(mean), dot_prod_std.update(std)
-                    
-                    mean, std = calc_layer_wise_stats(torch.linalg.norm, backbone_grads_pt, backbone_grads_ft, metric_type="euclidean")
-                    eucl_dis_avg.update(mean), eucl_dis_std.update(std)
-                    
-                    mean, std = calc_layer_wise_stats(torch.linalg.norm, backbone_grads_pt, metric_type="norm")
-                    norm_pt_avg.update(mean), norm_pt_std.update(std)
-                    
-                    mean, std = calc_layer_wise_stats(torch.linalg.norm, backbone_grads_ft, metric_type="norm")
-                    norm_ft_avg.update(mean), norm_ft_std.update(std)
+                cos_sim_ema_meter.update(F.cosine_similarity(backbone_grads_pt, backbone_grads_ft, dim=0).cuda(config.expt.gpu, non_blocking=True))
+                dot_prod_meter.update(torch.dot(backbone_grads_pt, backbone_grads_ft))
+                eucl_dis_meter.update(torch.linalg.norm(backbone_grads_pt - backbone_grads_ft, 2))
+                norm_pt_meter.update(torch.linalg.norm(backbone_grads_pt, 2))
+                norm_ft_meter.update(torch.linalg.norm(backbone_grads_ft, 2))
                 
-                else:
-                    cos_sim.update(F.cosine_similarity(backbone_grads_pt, backbone_grads_ft, dim=0))
-                    dot_prod.update(torch.dot(backbone_grads_pt, backbone_grads_ft))
-                    eucl_dis.update(torch.linalg.norm(backbone_grads_pt - backbone_grads_ft, 2))
-                    norm_pt.update(torch.linalg.norm(backbone_grads_pt, 2))
-                    norm_ft.update(torch.linalg.norm(backbone_grads_ft, 2))
+                aug_w.grad.data[i_color_jitter] = -cos_sim_ema_meter.ema
+                norm_aug_grad_meter.update(torch.linalg.norm(aug_w.grad.data, 2))
+            
             else:
                 # no resetting needed, as meters are freshly initialized at each epoch
-                if layer_wise_stats:
-                    cos_sim_avg.update(0.), cos_sim_std.update(0.)
-                    dot_prod_avg.update(0.), dot_prod_std.update(0.)
-                    eucl_dis_avg.update(0.), eucl_dis_std.update(0.)
-                    
-                    mean, std = calc_layer_wise_stats(torch.linalg.norm, backbone_grads_pt)
-                    norm_pt_avg.update(mean), norm_pt_std.update(std)
-                    
-                    norm_ft_avg.update(0.), norm_ft_std.update(0.)
-                else:
-                    cos_sim.update(0.)
-                    dot_prod.update(0.)
-                    eucl_dis.update(0.)
-                    norm_pt.update(torch.linalg.norm(backbone_grads_pt, 2))
-                    norm_ft.update(0.)
-        
-        if advanced_stats and layer_wise_stats:
-            advanced_stats_meters = [cos_sim_avg, cos_sim_std, dot_prod_avg, dot_prod_std, eucl_dis_avg, eucl_dis_std, norm_pt_avg, norm_pt_std, norm_ft_avg, norm_ft_std]
-        elif advanced_stats:
-            advanced_stats_meters = [cos_sim, dot_prod, eucl_dis, norm_pt, norm_ft]
+                cos_sim_ema_meter.update(0.)
+                dot_prod_meter.update(0.)
+                eucl_dis_meter.update(0.)
+                norm_pt_meter.update(torch.linalg.norm(backbone_grads_pt, 2))
+                norm_ft_meter.update(0.)
+                norm_aug_grad_meter.update(0.)
+            
+            advanced_stats_meters = [cos_sim_ema_meter, dot_prod_meter, eucl_dis_meter, norm_pt_meter, norm_ft_meter, norm_aug_grad_meter]
         
         # measure elapsed time
         batch_time.update(time.time() - end)
@@ -414,18 +400,20 @@ def train_one_epoch(
         
         if i % config.expt.print_freq == 0:
             progress.display(i)
+            # print(f"Color jitter strengths counts: {color_jitter_strength_hist}")
         if config.expt.rank == 0:
             write_to_summary_writer(total_iter, loss_pt, loss_ft, data_time, batch_time, optimizer_pt, optimizer_ft, top1, top5, advanced_stats_meters, writer)
-    
+        # expensive stats
+        if config.expt.rank == 0 and i % (config.expt.print_freq * 100) == 0:
+            img = hist_to_image(color_jitter_strength_hist, "Color Jitter Strength Counts")
+            writer.add_image(tag="Advanced Stats/color jitter strength", img_tensor=img, global_step=total_iter)
+        
     return total_iter
 
 
-def pretrain(model, images_pt, criterion_pt, optimizer_pt, losses_pt, data_time, end, advanced_stats=False, layer_wise_stats=False):
+def pretrain(model, images_pt, criterion_pt, optimizer_pt, losses_pt, data_time, end, advanced_stats=False):
     # backbone_grads = np.empty(sum(p.numel() for p in model.parameters()))
-    if layer_wise_stats:
-        backbone_grads = OrderedDict()
-    else:
-        backbone_grads = torch.Tensor().cuda()
+    backbone_grads = torch.Tensor().cuda()
     # backbone_grads = OrderedDict()
     
     model.requires_grad_(True)
@@ -452,21 +440,15 @@ def pretrain(model, images_pt, criterion_pt, optimizer_pt, losses_pt, data_time,
     
     if advanced_stats:
         for key, param in model.module.backbone.named_parameters():
-            if layer_wise_stats:
-                backbone_grads[key] = torch.tensor(param.grad.detach().clone().flatten())
-            else:
-                backbone_grads = torch.cat([backbone_grads, param.grad.detach().clone().flatten()], dim=0)
+            backbone_grads = torch.cat([backbone_grads, param.grad.detach().clone().flatten()], dim=0)
             # backbone_grads = np.concatenate((backbone_grads, param.grad.detach().clone().flatten().cpu()))
             # backbone_grads[key] = param.grad.detach().clone().flatten().cpu()
     
     return loss_pt, backbone_grads
 
 
-def finetune(model, images_ft, target_ft, criterion_ft, optimizer_ft, losses_ft, top1, top5, advanced_stats=False, layer_wise_stats=False):
-    if layer_wise_stats:
-        backbone_grads = OrderedDict()
-    else:
-        backbone_grads = torch.Tensor().cuda()
+def finetune(model, images_ft, target_ft, criterion_ft, optimizer_ft, losses_ft, top1, top5, advanced_stats=False):
+    backbone_grads = torch.Tensor().cuda()
     # backbone_grads = OrderedDict()
     
     # fine-tuning
@@ -489,10 +471,7 @@ def finetune(model, images_ft, target_ft, criterion_ft, optimizer_ft, losses_ft,
     
     if advanced_stats:
         for key, param in model.module.backbone.named_parameters():
-            if layer_wise_stats:
-                backbone_grads[key] = torch.tensor(param.grad.detach().clone().flatten())
-            else:
-                backbone_grads = torch.cat([backbone_grads, param.grad.detach().clone().flatten()], dim=0)
+            backbone_grads = torch.cat([backbone_grads, param.grad.detach().clone().flatten()], dim=0)
             # backbone_grads = np.concatenate((backbone_grads, param.grad.detach().clone().flatten().cpu()))
             # backbone_grads[key] = param.grad.detach().clone().flatten().cpu()
     
@@ -645,7 +624,7 @@ def write_to_summary_writer(total_iter, loss_pt, loss_ft, data_time, batch_time,
     # assuming only one param group
     writer.add_scalar('Learning rate/pre-training', optimizer_pt.param_groups[0]['lr'], total_iter)
     writer.add_scalar('Learning rate/fine-tuning', optimizer_ft.param_groups[0]['lr'], total_iter)
-
+    
     for stat in advanced_stats_meters:
         if isinstance(stat, ExponentialMovingAverageMeter):
             writer.add_scalar(f'Advanced Stats/{stat.name}', stat.val, total_iter)
@@ -670,27 +649,6 @@ def _parse_args(config_parser, parser):
     args = parser.parse_args(remaining)
     
     return args
-
-
-def calc_layer_wise_stats(metric, backbone_grads_pt, backbone_grads_ft=None, metric_type="cosine"):
-    allowed_types = ["cosine", "euclidean", "norm", "dot"]
-    assert metric_type in allowed_types, f"metric_type must be one of {allowed_types}"
-    metric_vals = []
-    if backbone_grads_ft:
-        for (k1, v1), (k2, v2) in zip(backbone_grads_pt.items(), backbone_grads_ft.items()):
-            if k1 == k2 and "bn" not in k1:
-                if metric_type == "euclidean":
-                    metric_vals.append(metric(v1 - v2, 2).numpy())
-                elif metric_type == "dot":
-                    metric_vals.append(metric(v1, v2))
-                elif metric_type == "cosine":
-                    metric_vals.append(metric(v1, v2, dim=0).numpy())
-    else:
-        for k1, v1 in backbone_grads_pt.items():
-            if metric_type == "norm":
-                metric_vals.append(metric(v1, 2).numpy())
-
-    return np.mean(metric_vals), np.std(metric_vals)
 
 
 if __name__ == '__main__':
@@ -719,7 +677,6 @@ if __name__ == '__main__':
     parser.add_argument('--expt.seed', default=123, type=int, metavar='N', help='random seed of numpy and torch')
     parser.add_argument('--expt.evaluate', action='store_true', help='evaluate model on validation set once and terminate (default: False)')
     parser.add_argument('--expt.advanced_stats', action='store_false', help='compute advanced stats such as cosine similarity and dot product, only used in alternating mode (default: True)')
-    parser.add_argument('--expt.layer_wise_stats', action='store_true', help='compute the advanced stats for each layer separately and then plot the average and deviation.')
     
     parser.add_argument('--train', default="train", type=str, metavar='N')
     parser.add_argument('--train.batch_size', default=256, type=int, metavar='N', help='in distributed setting this is the total batch size, i.e. batch size = individual bs * number of GPUs')
