@@ -392,7 +392,7 @@ def train_one_epoch(
                     dot_prod_avg.update(0.), dot_prod_std.update(0.)
                     eucl_dis_avg.update(0.), eucl_dis_std.update(0.)
                     
-                    mean, std = calc_layer_wise_stats(torch.linalg.norm, backbone_grads_pt)
+                    mean, std = calc_layer_wise_stats(torch.linalg.norm, backbone_grads_pt, metric_type="norm")
                     norm_pt_avg.update(mean), norm_pt_std.update(std)
                     
                     norm_ft_avg.update(0.), norm_ft_std.update(0.)
