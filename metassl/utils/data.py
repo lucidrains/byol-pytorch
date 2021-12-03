@@ -78,10 +78,10 @@ def get_train_valid_loader(
         if not get_fine_tuning_loaders:
             if parameterize_augmentation:
                 # rest is done outside
-                train_transform = TwoCropsTransform(
-                    transforms.Compose([transforms.ToTensor()])
-                    )
-                
+                train_transform = transforms.Compose([
+                    transforms.RandomResizedCrop(size=32, scale=(0.2, 1.)),
+                    transforms.ToTensor(),
+                    ])
             else:
                 train_transform = TwoCropsTransform(
                     transforms.Compose(
@@ -95,7 +95,6 @@ def get_train_valid_loader(
                             ]
                         )
                     )
-
 
             valid_transform = TwoCropsTransform(
                 transforms.Compose([
@@ -139,9 +138,10 @@ def get_train_valid_loader(
             # MoCo v2's aug: similar to SimCLR https://arxiv.org/abs/2002.05709
             if parameterize_augmentation:
                 # rest is done outside
-                train_transform = TwoCropsTransform(
-                    transforms.Compose([transforms.ToTensor()])
-                    )
+                train_transform = transforms.Compose([
+                    transforms.RandomResizedCrop(224, scale=(0.2, 1.)),
+                    transforms.ToTensor(),
+                    ])
             else:
                 train_transform = TwoCropsTransform(
                     transforms.Compose(
@@ -187,7 +187,7 @@ def get_train_valid_loader(
         # not supported
         raise ValueError('invalid dataset name=%s' % dataset)
 
-    # print(train_transform)
+    print(train_transform)
     
     if dataset_name == "ImageNet":
         # hardcoded for now

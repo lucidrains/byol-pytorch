@@ -24,6 +24,7 @@ import torch.optim
 import torch.utils.data
 import torch.utils.data.distributed
 import torchvision.models as models
+import torchvision.transforms
 import torchvision.transforms as transforms
 import yaml
 from jsonargparse import ArgumentParser
@@ -347,6 +348,8 @@ def train_one_epoch(
         norm_pt_std_meter = AverageMeter('Norm PT layer-wise std.', ':6.4f')
         norm_ft_avg_meter = AverageMeter('Norm FT layer-wise average', ':6.4f')
         norm_ft_std_meter = AverageMeter('Norm FT layer-wise std.', ':6.4f')
+
+        norm_aug_grad_meter = AverageMeter('Norm Aug. gradient', ':6.4f')
         
         meters = [batch_time_meter, losses_pt_meter, losses_ft_meter, top1_meter, cos_sim_ema_meter, cos_sim_std_meter, dot_prod_avg_meter, dot_prod_std_meter, eucl_dis_avg_meter, eucl_dis_std_meter, norm_pt_avg_meter, norm_pt_std_meter, norm_ft_avg_meter, norm_ft_std_meter]
     else:
@@ -378,25 +381,32 @@ def train_one_epoch(
         color_jitter_strength = color_jitter_strengths[i_color_jitter]
         color_jitter_strength_hist[color_jitter_strength] += 1
         
+        kernel_h = images_pt.shape[2] // 10
+        kernel_w = images_pt.shape[3] // 10
+        
+        if kernel_h % 2 == 0:
+            kernel_h -= 1
+        if kernel_w % 2 == 0:
+            kernel_w -= 1
+            
         # todo: could be made more efficient by simply replacing colorjitter in composed list
         parameterized_transform = TwoCropsTransform(
             transforms.Compose(
                 [
-                    transforms.RandomResizedCrop(224, scale=(0.2, 1.)),
+                    # transforms.RandomResizedCrop(224, scale=(0.2, 1.)), # done in dataloader
+                    # transforms.ToPILImage(),  # following GaussianBlur expects PIL image not tensor (and torchvision GB parameterizes the kernel size)
                     transforms.RandomApply([transforms.ColorJitter(0.4 * color_jitter_strength, 0.4 * color_jitter_strength, 0.4 * color_jitter_strength, 0.1 * color_jitter_strength)], p=0.8),
                     transforms.RandomGrayscale(p=0.2),
-                    transforms.RandomApply([GaussianBlur([.1, 2.])], p=0.5),
+                    transforms.RandomApply([torchvision.transforms.GaussianBlur([kernel_h, kernel_w], [.1, 2.])], p=0.5),
+                    # transforms.RandomApply([GaussianBlur([.1, 2.])], p=0.5),
                     transforms.RandomHorizontalFlip(),
-                    transforms.ToTensor(),
                     normalize_imagenet
                     ]
                 )
             )
-        images_pt = parameterized_transform(images_pt)
-        
+
         if config.expt.gpu is not None:
-            images_pt[0] = images_pt[0].cuda(config.expt.gpu, non_blocking=True)
-            images_pt[1] = images_pt[1].cuda(config.expt.gpu, non_blocking=True)
+            images_pt = parameterized_transform(images_pt.cuda(config.expt.gpu, non_blocking=True))
             images_ft = images_ft.cuda(config.expt.gpu, non_blocking=True)
             target_ft = target_ft.cuda(config.expt.gpu, non_blocking=True)
         
