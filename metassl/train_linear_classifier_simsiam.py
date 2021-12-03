@@ -30,6 +30,7 @@ import yaml
 from metassl.utils.data import get_train_valid_loader, get_test_loader
 from utils.config import AttrDict
 from utils.meters import AverageMeter, ProgressMeter
+from utils.torch_utils import accuracy, validate
 
 model_names = sorted(
     name for name in models.__dict__
@@ -115,7 +116,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
     for name, param in model.named_parameters():
         if name not in ['fc.weight', 'fc.bias']:
             param.requires_grad = False
-
+    
     # init the fc layer
     model.fc.weight.data.normal_(mean=0.0, std=0.01)
     model.fc.bias.data.zero_()
@@ -138,15 +139,15 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
                     # remove prefix
                     state_dict[k[len("module.encoder."):]] = state_dict[k]
                     has_encoder = True
-
+                
                 if k.startswith('module.backbone') and not k.startswith('module.backbone.fc'):
                     # remove prefix
                     state_dict[k[len("module.backbone."):]] = state_dict[k]
                     has_backbone = True
-                    
+                
                 # delete renamed or unused k
                 del state_dict[k]
-                
+            
             assert has_backbone != has_encoder
             
             config.finetuning.start_epoch = 0
@@ -283,11 +284,11 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
                                                            and config.expt.rank % ngpus_per_node == 0):
             save_checkpoint(
                 {
-                    'epoch': epoch + 1,
-                    'arch': config.model.model_type,
+                    'epoch':      epoch + 1,
+                    'arch':       config.model.model_type,
                     'state_dict': model.state_dict(),
-                    'best_acc1': best_acc1,
-                    'optimizer': optimizer.state_dict(),
+                    'best_acc1':  best_acc1,
+                    'optimizer':  optimizer.state_dict(),
                     }, is_best, filename=os.path.join(expt_dir, f'lin_class_checkpoint_{epoch:04d}.pth.tar')
                 )
             if epoch == config.train.start_epoch:
@@ -350,50 +351,6 @@ def train(train_loader, model, criterion, optimizer, epoch, config):
             progress.display(i)
 
 
-def validate(val_loader, model, criterion, config):
-    batch_time = AverageMeter('Time', ':6.3f')
-    losses = AverageMeter('Loss', ':.4e')
-    top1 = AverageMeter('Acc@1', ':6.2f')
-    top5 = AverageMeter('Acc@5', ':6.2f')
-    progress = ProgressMeter(
-        len(val_loader),
-        [batch_time, losses, top1, top5],
-        prefix='Test: '
-        )
-    
-    # switch to evaluate mode
-    model.eval()
-    
-    with torch.no_grad():
-        end = time.time()
-        for i, (images, target) in enumerate(val_loader):
-            if config.expt.gpu is not None:
-                images = images.cuda(config.expt.gpu, non_blocking=True)
-            target = target.cuda(config.expt.gpu, non_blocking=True)
-            
-            # compute output
-            output = model(images)
-            loss = criterion(output, target)
-            
-            # measure accuracy and record loss
-            acc1, acc5 = accuracy(output, target, topk=(1, 5))
-            losses.update(loss.item(), images.size(0))
-            top1.update(acc1[0], images.size(0))
-            top5.update(acc5[0], images.size(0))
-            
-            # measure elapsed time
-            batch_time.update(time.time() - end)
-            end = time.time()
-            
-            if i % config.expt.print_freq == 0:
-                progress.display(i)
-        
-        # TODO: this should also be done with the ProgressMeter
-        print(f' * Acc@1 {top1.avg:.3f} Acc@5 {top5.avg:.3f}')
-    
-    return top1.avg
-
-
 def save_checkpoint(state, is_best, filename='lin_class_checkpoint.pth.tar'):
     torch.save(state, filename)
     if is_best:
@@ -431,23 +388,6 @@ def adjust_learning_rate(optimizer, init_lr, epoch, total_epochs, config):
         param_group['lr'] = cur_lr
     
     return cur_lr
-
-
-def accuracy(output, target, topk=(1,)):
-    """Computes the accuracy over the k top predictions for the specified values of k"""
-    with torch.no_grad():
-        maxk = max(topk)
-        batch_size = target.size(0)
-        
-        _, pred = output.topk(maxk, 1, True, True)
-        pred = pred.t()
-        correct = pred.eq(target.view(1, -1).expand_as(pred))
-        
-        res = []
-        for k in topk:
-            correct_k = correct[:k].reshape(-1).float().sum(0, keepdim=True)
-            res.append(correct_k.mul_(100.0 / batch_size))
-        return res
 
 
 if __name__ == '__main__':

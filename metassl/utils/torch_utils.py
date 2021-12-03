@@ -3,14 +3,19 @@ import io
 import math
 import os
 import shutil
+import time
 from typing import TypeVar, Optional, Iterator
 
 import PIL.Image
+import numpy as np
 import torch
 import torch.distributed as dist
 from matplotlib import pyplot as plt
+from torch.nn import functional as F
 from torch.utils.data import Sampler
 from torchvision.transforms import ToTensor
+
+from metassl.utils.meters import AverageMeter, ProgressMeter
 
 
 def count_parameters(parameters):
@@ -230,3 +235,120 @@ def hist_to_image(hist_dict, title=None):
     image = ToTensor()(image)
     plt.close()
     return image
+
+
+def calc_all_layer_wise_stats(
+    backbone_grads_pt, backbone_grads_ft,
+    cos_sim_ema_meter, cos_sim_std_meter,
+    dot_prod_avg_meter, dot_prod_std_meter,
+    eucl_dis_avg_meter, eucl_dis_std_meter,
+    norm_pt_avg_meter, norm_pt_std_meter,
+    norm_ft_avg_meter, norm_ft_std_meter,
+    warmup=False
+    ):
+    if not warmup:
+        mean, std = calc_layer_wise_stats(backbone_grads_pt, backbone_grads_ft, metric_type="cosine")
+        cos_sim_ema_meter.update(mean), cos_sim_std_meter.update(std)
+        
+        mean, std = calc_layer_wise_stats(backbone_grads_pt, backbone_grads_ft, metric_type="dot")
+        dot_prod_avg_meter.update(mean), dot_prod_std_meter.update(std)
+        
+        mean, std = calc_layer_wise_stats(backbone_grads_pt, backbone_grads_ft, metric_type="euclidean")
+        eucl_dis_avg_meter.update(mean), eucl_dis_std_meter.update(std)
+        
+        mean, std = calc_layer_wise_stats(backbone_grads_pt, metric_type="norm")
+        norm_pt_avg_meter.update(mean), norm_pt_std_meter.update(std)
+        
+        mean, std = calc_layer_wise_stats(backbone_grads_ft, metric_type="norm")
+        norm_ft_avg_meter.update(mean), norm_ft_std_meter.update(std)
+    else:
+        cos_sim_ema_meter.update(0.), cos_sim_std_meter.update(0.)
+        dot_prod_avg_meter.update(0.), dot_prod_std_meter.update(0.)
+        eucl_dis_avg_meter.update(0.), eucl_dis_std_meter.update(0.)
+        
+        mean, std = calc_layer_wise_stats(torch.linalg.norm, backbone_grads_pt, metric_type="norm")
+        norm_pt_avg_meter.update(mean), norm_pt_std_meter.update(std)
+        
+        norm_ft_avg_meter.update(0.), norm_ft_std_meter.update(0.)
+
+
+def calc_layer_wise_stats(backbone_grads_pt, backbone_grads_ft=None, metric_type="cosine"):
+    allowed_types = ["cosine", "euclidean", "norm", "dot"]
+    assert metric_type in allowed_types, f"metric_type must be one of {allowed_types}"
+    metric_vals = []
+    if backbone_grads_ft:
+        for (k1, v1), (k2, v2) in zip(backbone_grads_pt.items(), backbone_grads_ft.items()):
+            if k1 == k2 and "bn" not in k1:
+                if metric_type == "euclidean":
+                    metric_vals.append(torch.linalg.norm(v1 - v2, 2).cpu().numpy())
+                elif metric_type == "dot":
+                    metric_vals.append(torch.dot(v1, v2).cpu().numpy())
+                elif metric_type == "cosine":
+                    metric_vals.append(F.cosine_similarity(v1, v2, dim=0).cpu().numpy())
+    else:
+        for k1, v1 in backbone_grads_pt.items():
+            if metric_type == "norm":
+                metric_vals.append(torch.linalg.norm(v1, 2).cpu().numpy())
+    
+    return np.mean(metric_vals), np.std(metric_vals)
+
+
+def validate(val_loader, model, criterion, config, finetuning=False):
+    batch_time = AverageMeter('Time', ':6.3f')
+    losses = AverageMeter('Loss', ':.4e')
+    top1 = AverageMeter('Acc@1', ':6.2f')
+    top5 = AverageMeter('Acc@5', ':6.2f')
+    progress = ProgressMeter(
+        len(val_loader),
+        [batch_time, losses, top1, top5],
+        prefix='Test: '
+        )
+    
+    # switch to evaluate mode
+    model.eval()
+    
+    with torch.no_grad():
+        end = time.time()
+        for i, (images, target) in enumerate(val_loader):
+            if config.expt.gpu is not None:
+                images = images.cuda(config.expt.gpu, non_blocking=True)
+                target = target.cuda(config.expt.gpu, non_blocking=True)
+            
+            # compute output
+            output = model(images, finetuning=finetuning)
+            loss = criterion(output, target)
+            
+            # measure accuracy and record loss
+            acc1, acc5 = accuracy(output, target, topk=(1, 5))
+            losses.update(loss.item(), images.size(0))
+            top1.update(acc1[0], images.size(0))
+            top5.update(acc5[0], images.size(0))
+            
+            # measure elapsed time
+            batch_time.update(time.time() - end)
+            end = time.time()
+            
+            if i % config.expt.print_freq == 0:
+                progress.display(i)
+        
+        # TODO: this should also be done with the ProgressMeter
+        print(f' * Acc@1 {top1.avg:.3f} Acc@5 {top5.avg:.3f}')
+    
+    return top1.avg
+
+
+def accuracy(output, target, topk=(1,)):
+    """Computes the accuracy over the k top predictions for the specified values of k"""
+    with torch.no_grad():
+        maxk = max(topk)
+        batch_size = target.size(0)
+        
+        _, pred = output.topk(maxk, 1, True, True)
+        pred = pred.t()
+        correct = pred.eq(target.view(1, -1).expand_as(pred))
+        
+        res = []
+        for k in topk:
+            correct_k = correct[:k].reshape(-1).float().sum(0, keepdim=True)
+            res.append(correct_k.mul_(100.0 / batch_size))
+        return res

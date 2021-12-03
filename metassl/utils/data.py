@@ -173,7 +173,7 @@ def get_train_valid_loader(
         # not supported
         raise ValueError('invalid dataset name=%s' % dataset)
 
-    print(train_transform)
+    # print(train_transform)
     
     if dataset_name == "ImageNet":
         # hardcoded for now
