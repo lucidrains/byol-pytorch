@@ -407,6 +407,8 @@ def train_one_epoch(
 
         if config.expt.gpu is not None:
             images_pt = parameterized_transform(images_pt.cuda(config.expt.gpu, non_blocking=True))
+            images_pt[0] = images_pt[0].contiguous()
+            images_pt[1] = images_pt[1].contiguous()
             images_ft = images_ft.cuda(config.expt.gpu, non_blocking=True)
             target_ft = target_ft.cuda(config.expt.gpu, non_blocking=True)
         
