@@ -186,15 +186,12 @@ def get_train_valid_loader(
     else:
         # not supported
         raise ValueError('invalid dataset name=%s' % dataset)
-
-    print(train_transform)
     
     if dataset_name == "ImageNet":
         # hardcoded for now
         root = "/data/datasets/ImageNet/imagenet-pytorch"
         # root = "/data/datasets/ILSVRC2012"
-        # print("---------------------using new ImageNet----------------------")
-        # root = "/data/datasets/ImageNet/imagenet-pytorch/imagenet-pytorch-2-dont-use"
+
         # load the dataset
         train_dataset = ImageNet(
             root=root, split='train',
@@ -216,16 +213,6 @@ def get_train_valid_loader(
     else:
         # not supported
         raise ValueError('invalid dataset name=%s' % dataset)
-        # # load the dataset
-        # train_dataset = dataset(
-        #     root=data_dir, train=True,
-        #     download=download, transform=train_transform,
-        #     )
-        #
-        # valid_dataset = dataset(
-        #     root=data_dir, train=True,
-        #     download=download, transform=valid_transform,
-        #     )
     
     num_train = len(train_dataset)
     indices = list(range(num_train))
