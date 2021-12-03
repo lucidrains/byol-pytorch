@@ -1,8 +1,7 @@
 #!/bin/bash
 #SBATCH -p alldlc_gpu-rtx2080
-#SBATCH --exclude=dlcgpu24,dlcgpu22,dlcgpu28,dlcgpu05,dlcgpu23,dlcgpu31
 #SBATCH --gres=gpu:8
-#SBATCH --job-name=alternating-advanced-stats-ftlr-1e-5-ptlr-1e-5-bs-256-epochs-100-no-bn-small-lr
+#SBATCH --job-name=alternating-ftlr-1e-5-ptlr-1e-5-bs-256-epochs-100-no-bn-small-lr
 #SBATCH -o /home/ferreira/workspace/experiments/metassl/logs/%x.%N.%A.%a.out
 #SBATCH --array=0-8%1
 
@@ -11,7 +10,7 @@ FINETUNING_EPOCHS=100
 TRAIN_LR=0.00001
 FINETUNING_LR=0.00001
 
-EXPT_NAME="alternating-advanced-stats-ftlr-1e-5-ptlr-1e-5-bs-256-epochs-100-no-bn-small-lr"
+EXPT_NAME="alternating-ftlr-1e-5-ptlr-1e-5-bs-256-epochs-100-no-bn-small-lr"
 
 echo "TRAIN EPOCHS $TRAIN_EPOCHS"
 echo "FINETUNING EPOCHS $FINETUNING_EPOCHS"
