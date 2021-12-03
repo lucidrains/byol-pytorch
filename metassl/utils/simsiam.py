@@ -20,6 +20,9 @@ class TwoCropsTransform:
         q = self.base_transform(x)
         k = self.base_transform(x)
         return [q, k]
+    
+    def __str__(self):
+        return f"{self.base_transform}"
 
 
 class GaussianBlur(object):

@@ -27,6 +27,7 @@ def get_train_valid_loader(
     distributed=False,
     drop_last=True,
     get_fine_tuning_loaders=False,
+    use_pt_loader_color_jitter_transform=True,
     ):
     """
     Utility function for loading and returning train and valid
@@ -61,7 +62,11 @@ def get_train_valid_loader(
         exit()
     
     dataset = eval("datasets." + dataset_name)
-    print(f"using dataset: {dataset}")
+
+    if get_fine_tuning_loaders:
+        print(f"using finetuning dataset: {dataset}")
+    else:
+        print(f"using pretraining dataset: {dataset}")
     
     if dataset_name == "CIFAR10":
         # No blur augmentation for CIFAR10!
@@ -69,11 +74,7 @@ def get_train_valid_loader(
             train_transform = TwoCropsTransform(
                 transforms.Compose([
                     transforms.RandomResizedCrop(size=32, scale=(0.2, 1.)),
-                    transforms.RandomApply(
-                        [
-                            transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.1)
-                        ], p=0.8
-                    ),
+                    transforms.RandomApply([transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.1)], p=0.8) if use_pt_loader_color_jitter_transform else torch.nn.Identity(),
                     transforms.RandomGrayscale(p=0.2),
                     transforms.RandomHorizontalFlip(),
                     transforms.ToTensor(),
@@ -131,13 +132,8 @@ def get_train_valid_loader(
             train_transform = TwoCropsTransform(
                 transforms.Compose(
                     [
-                        
                         transforms.RandomResizedCrop(224, scale=(0.2, 1.)),
-                        transforms.RandomApply(
-                            [
-                                transforms.ColorJitter(0.4, 0.4, 0.4, 0.1)  # not strengthened
-                                ], p=0.8
-                            ),
+                        transforms.RandomApply([transforms.ColorJitter(0.4, 0.4, 0.4, 0.1)], p=0.8) if use_pt_loader_color_jitter_transform else torch.nn.Identity(),
                         transforms.RandomGrayscale(p=0.2),
                         transforms.RandomApply([GaussianBlur([.1, 2.])], p=0.5),
                         transforms.RandomHorizontalFlip(),
@@ -177,6 +173,8 @@ def get_train_valid_loader(
         # not supported
         raise ValueError('invalid dataset name=%s' % dataset)
 
+    print(train_transform)
+    
     if dataset_name == "ImageNet":
         # hardcoded for now
         root = "/data/datasets/ImageNet/imagenet-pytorch"
@@ -196,11 +194,11 @@ def get_train_valid_loader(
     elif dataset_name == "CIFAR10":
         # TODO: Check out how to set the train split here.
         train_dataset = torchvision.datasets.CIFAR10(root='datasets/CIFAR10', train=True,
-                                                download=True, transform=train_transform)
+                                                download=download, transform=train_transform)
 
 
         valid_dataset = torchvision.datasets.CIFAR10(root='datasets/CIFAR10', train=False,
-                                               download=True, transform=valid_transform)
+                                               download=download, transform=valid_transform)
     else:
         # not supported
         raise ValueError('invalid dataset name=%s' % dataset)
@@ -393,3 +391,50 @@ def plot_images(images, cls_true, cls_pred=None):
         ax.set_yticks([])
     
     plt.show()
+
+
+def get_loaders(traindir, config, use_pt_loader_color_jitter_transform=True):
+    train_loader_pt, _, train_sampler_pt, _ = get_train_valid_loader(
+        data_dir=traindir,
+        batch_size=config.train.batch_size,
+        random_seed=config.expt.seed,
+        valid_size=0.0,
+        dataset_name=config.data.dataset,
+        shuffle=True,
+        num_workers=config.expt.workers,
+        pin_memory=True,
+        download=False,
+        distributed=config.expt.distributed,
+        drop_last=True,
+        get_fine_tuning_loaders=False,
+        use_pt_loader_color_jitter_transform=use_pt_loader_color_jitter_transform,
+        )
+    
+    train_loader_ft, _, train_sampler_ft, _ = get_train_valid_loader(
+        data_dir=traindir,
+        batch_size=config.finetuning.batch_size,
+        random_seed=config.expt.seed,
+        valid_size=0.0,
+        dataset_name="ImageNet",
+        shuffle=True,
+        num_workers=config.expt.workers,
+        pin_memory=True,
+        download=False,
+        distributed=config.expt.distributed,
+        drop_last=True,
+        get_fine_tuning_loaders=True,
+        )
+    
+    test_loader_ft = get_test_loader(
+        data_dir=traindir,
+        batch_size=256,
+        dataset_name="ImageNet",
+        shuffle=False,
+        num_workers=config.expt.workers,
+        pin_memory=True,
+        download=False,
+        drop_last=False,
+        )
+    
+    return train_loader_pt, train_sampler_pt, train_loader_ft, train_sampler_ft, test_loader_ft
+

@@ -36,14 +36,14 @@ warnings.filterwarnings("ignore", category=UserWarning)
 
 try:
     # For execution in PyCharm
-    from metassl.utils.data import get_train_valid_loader, get_test_loader
+    from metassl.utils.data import get_train_valid_loader, get_test_loader, get_loaders
     from metassl.utils.config import AttrDict
     from metassl.utils.meters import AverageMeter, ProgressMeter, ExponentialMovingAverageMeter
     from metassl.utils.simsiam_alternating import SimSiam
     import metassl.models.resnet_cifar as our_cifar_resnets
 except ImportError:
     # For execution in command line
-    from .utils.data import get_train_valid_loader, get_test_loader
+    from .utils.data import get_train_valid_loader, get_test_loader, get_loaders
     from .utils.config import AttrDict
     from .utils.meters import AverageMeter, ProgressMeter, ExponentialMovingAverageMeter
     from .utils.simsiam_alternating import SimSiam
@@ -243,7 +243,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
     # Data loading code
     traindir = os.path.join(config.data.dataset, 'train')
     
-    train_loader_pt, train_sampler_pt, train_loader_ft, train_sampler_ft, test_loader_ft = get_loaders(traindir, config)
+    train_loader_pt, train_sampler_pt, train_loader_ft, train_sampler_ft, test_loader_ft = get_loaders(traindir, config, use_pt_loader_color_jitter_transform=False)
     
     cudnn.benchmark = True
     writer = None
@@ -501,51 +501,6 @@ def adjust_learning_rate(optimizer, init_lr, epoch, total_epochs):
         else:
             param_group['lr'] = cur_lr
             return cur_lr
-
-
-def get_loaders(traindir, config):
-    train_loader_pt, _, train_sampler_pt, _ = get_train_valid_loader(
-        data_dir=traindir,
-        batch_size=config.train.batch_size,
-        random_seed=config.expt.seed,
-        valid_size=0.0,
-        dataset_name=config.data.dataset,
-        shuffle=True,
-        num_workers=config.expt.workers,
-        pin_memory=True,
-        download=False,
-        distributed=config.expt.distributed,
-        drop_last=True,
-        get_fine_tuning_loaders=False,
-        )
-    
-    train_loader_ft, _, train_sampler_ft, _ = get_train_valid_loader(
-        data_dir=traindir,
-        batch_size=config.finetuning.batch_size,
-        random_seed=config.expt.seed,
-        valid_size=0.0,
-        dataset_name="ImageNet",
-        shuffle=True,
-        num_workers=config.expt.workers,
-        pin_memory=True,
-        download=False,
-        distributed=config.expt.distributed,
-        drop_last=True,
-        get_fine_tuning_loaders=True,
-        )
-    
-    test_loader_ft = get_test_loader(
-        data_dir=traindir,
-        batch_size=256,
-        dataset_name="ImageNet",
-        shuffle=False,
-        num_workers=config.expt.workers,
-        pin_memory=True,
-        download=False,
-        drop_last=False,
-        )
-    
-    return train_loader_pt, train_sampler_pt, train_loader_ft, train_sampler_ft, test_loader_ft
 
 
 def accuracy(output, target, topk=(1,)):
