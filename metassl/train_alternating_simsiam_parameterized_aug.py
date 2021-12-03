@@ -10,6 +10,7 @@ import pathlib
 import random
 import time
 import warnings
+from collections import OrderedDict
 
 import jsonargparse
 import numpy as np
@@ -35,17 +36,19 @@ warnings.filterwarnings("ignore", category=UserWarning)
 
 try:
     # For execution in PyCharm
-    from metassl.utils.data import get_train_valid_loader, get_test_loader, get_loaders
+    from metassl.utils.data import get_train_valid_loader, get_test_loader, get_loaders, normalize_imagenet
     from metassl.utils.config import AttrDict, _parse_args
     from metassl.utils.meters import AverageMeter, ProgressMeter, ExponentialMovingAverageMeter
     from metassl.utils.simsiam_alternating import SimSiam
     import metassl.models.resnet_cifar as our_cifar_resnets
+    from metassl.utils.simsiam import TwoCropsTransform, GaussianBlur
 except ImportError:
     # For execution in command line
-    from .utils.data import get_train_valid_loader, get_test_loader, get_loaders
+    from .utils.data import get_train_valid_loader, get_test_loader, get_loaders, normalize_imagenet
     from .utils.config import AttrDict, _parse_args
     from .utils.meters import AverageMeter, ProgressMeter, ExponentialMovingAverageMeter
     from .utils.simsiam_alternating import SimSiam
+    from .utils.simsiam import TwoCropsTransform, GaussianBlur
     from .models import resnet_cifar as our_cifar_resnets
 
 model_names = sorted(
@@ -242,7 +245,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
     # Data loading code
     traindir = os.path.join(config.data.dataset, 'train')
     
-    train_loader_pt, train_sampler_pt, train_loader_ft, train_sampler_ft, test_loader_ft = get_loaders(traindir, config, use_pt_loader_color_jitter_transform=False)
+    train_loader_pt, train_sampler_pt, train_loader_ft, train_sampler_ft, test_loader_ft = get_loaders(traindir, config, parameterize_augmentation=True)
     
     cudnn.benchmark = True
     writer = None
@@ -252,7 +255,12 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
     
     color_jitter_strength_hist = {k: 0 for k in color_jitter_strengths}
     
-    cos_sim_ema_meter = ExponentialMovingAverageMeter('Cos. Sim. PT-FT layer-wise average', window=100, alpha=2, fmt=':6.4f')
+    if config.expt.layer_wise_stats:
+        meter_name = "Cos. Sim. PT-FT layer-wise average"
+    else:
+        meter_name = "Cos. Sim. PT-FT"
+    
+    cos_sim_ema_meter = ExponentialMovingAverageMeter(meter_name, window=100, alpha=2, fmt=':6.4f')
     
     for epoch in range(config.train.start_epoch, config.train.epochs):
         
@@ -370,8 +378,21 @@ def train_one_epoch(
         color_jitter_strength = color_jitter_strengths[i_color_jitter]
         color_jitter_strength_hist[color_jitter_strength] += 1
         
-        # print(f"Sampled color jitter strength: {color_jitter_strength}")
-        color_jitter_transform = transforms.ColorJitter(0.4 * color_jitter_strength, 0.4 * color_jitter_strength, 0.4 * color_jitter_strength, 0.1 * color_jitter_strength)
+        # todo: could be made more efficient by simply replacing colorjitter in composed list
+        parameterized_transform = TwoCropsTransform(
+            transforms.Compose(
+                [
+                    transforms.RandomResizedCrop(224, scale=(0.2, 1.)),
+                    transforms.RandomApply([transforms.ColorJitter(0.4 * color_jitter_strength, 0.4 * color_jitter_strength, 0.4 * color_jitter_strength, 0.1 * color_jitter_strength)], p=0.8),
+                    transforms.RandomGrayscale(p=0.2),
+                    transforms.RandomApply([GaussianBlur([.1, 2.])], p=0.5),
+                    transforms.RandomHorizontalFlip(),
+                    transforms.ToTensor(),
+                    normalize_imagenet
+                    ]
+                )
+            )
+        images_pt = parameterized_transform(images_pt)
         
         if config.expt.gpu is not None:
             images_pt[0] = images_pt[0].cuda(config.expt.gpu, non_blocking=True)
@@ -379,13 +400,10 @@ def train_one_epoch(
             images_ft = images_ft.cuda(config.expt.gpu, non_blocking=True)
             target_ft = target_ft.cuda(config.expt.gpu, non_blocking=True)
         
-        images_pt[0] = color_jitter_transform(images_pt[0])
-        images_pt[1] = color_jitter_transform(images_pt[1])
-        
-        loss_pt, backbone_grads_pt = pretrain(model, images_pt, criterion_pt, optimizer_pt, losses_pt_meter, data_time_meter, end, alternating_mode=True)
+        loss_pt, backbone_grads_pt = pretrain(model, images_pt, criterion_pt, optimizer_pt, losses_pt_meter, data_time_meter, end, alternating_mode=True, layer_wise_stats=layer_wise_stats)
         
         if not warmup:
-            loss_ft, backbone_grads_ft = finetune(model, images_ft, target_ft, criterion_ft, optimizer_ft, losses_ft_meter, top1_meter, top5_meter, alternating_mode=True)
+            loss_ft, backbone_grads_ft = finetune(model, images_ft, target_ft, criterion_ft, optimizer_ft, losses_ft_meter, top1_meter, top5_meter, alternating_mode=True, layer_wise_stats=layer_wise_stats)
         else:
             losses_ft_meter.update(np.inf)
             loss_ft = np.inf
@@ -402,7 +420,7 @@ def train_one_epoch(
                     warmup=False,
                     )
             else:
-                cos_sim_ema_meter.update(F.cosine_similarity(backbone_grads_pt, backbone_grads_ft, dim=0).cuda(config.expt.gpu, non_blocking=True))
+                cos_sim_ema_meter.update(F.cosine_similarity(backbone_grads_pt, backbone_grads_ft, dim=0))
                 dot_prod_meter.update(torch.dot(backbone_grads_pt, backbone_grads_ft))
                 eucl_dis_meter.update(torch.linalg.norm(backbone_grads_pt - backbone_grads_ft, 2))
                 norm_pt_meter.update(torch.linalg.norm(backbone_grads_pt, 2))
@@ -453,9 +471,12 @@ def train_one_epoch(
     return total_iter
 
 
-def pretrain(model, images_pt, criterion_pt, optimizer_pt, losses_pt, data_time, end, alternating_mode=False):
+def pretrain(model, images_pt, criterion_pt, optimizer_pt, losses_pt, data_time, end, alternating_mode=False, layer_wise_stats=False):
     # backbone_grads = np.empty(sum(p.numel() for p in model.parameters()))
-    backbone_grads = torch.Tensor().cuda()
+    if layer_wise_stats:
+        backbone_grads = OrderedDict()
+    else:
+        backbone_grads = torch.Tensor().cuda()
     # backbone_grads = OrderedDict()
     
     model.requires_grad_(True)
@@ -482,15 +503,21 @@ def pretrain(model, images_pt, criterion_pt, optimizer_pt, losses_pt, data_time,
     
     if alternating_mode:
         for key, param in model.module.backbone.named_parameters():
-            backbone_grads = torch.cat([backbone_grads, param.grad.detach().clone().flatten()], dim=0)
+            if layer_wise_stats:
+                backbone_grads[key] = torch.tensor(param.grad.detach().clone().flatten())
+            else:
+                backbone_grads = torch.cat([backbone_grads, param.grad.detach().clone().flatten()], dim=0)
             # backbone_grads = np.concatenate((backbone_grads, param.grad.detach().clone().flatten().cpu()))
             # backbone_grads[key] = param.grad.detach().clone().flatten().cpu()
     
     return loss_pt, backbone_grads
 
 
-def finetune(model, images_ft, target_ft, criterion_ft, optimizer_ft, losses_ft_meter, top1_meter, top5_meter, alternating_mode=False):
-    backbone_grads = torch.Tensor().cuda()
+def finetune(model, images_ft, target_ft, criterion_ft, optimizer_ft, losses_ft_meter, top1_meter, top5_meter, alternating_mode=False, layer_wise_stats=False):
+    if layer_wise_stats:
+        backbone_grads = OrderedDict()
+    else:
+        backbone_grads = torch.Tensor().cuda()
     # backbone_grads = OrderedDict()
     
     # fine-tuning
@@ -513,7 +540,10 @@ def finetune(model, images_ft, target_ft, criterion_ft, optimizer_ft, losses_ft_
     
     if alternating_mode:
         for key, param in model.module.backbone.named_parameters():
-            backbone_grads = torch.cat([backbone_grads, param.grad.detach().clone().flatten()], dim=0)
+            if layer_wise_stats:
+                backbone_grads[key] = torch.tensor(param.grad.detach().clone().flatten())
+            else:
+                backbone_grads = torch.cat([backbone_grads, param.grad.detach().clone().flatten()], dim=0)
             # backbone_grads = np.concatenate((backbone_grads, param.grad.detach().clone().flatten().cpu()))
             # backbone_grads[key] = param.grad.detach().clone().flatten().cpu()
     

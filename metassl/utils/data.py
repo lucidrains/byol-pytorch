@@ -13,6 +13,11 @@ from .simsiam import GaussianBlur, TwoCropsTransform
 from .torch_utils import DistributedSampler
 import torchvision.datasets as datasets  # do not remove this
 
+normalize_imagenet = transforms.Normalize(
+    mean=[0.485, 0.456, 0.406],
+    std=[0.229, 0.224, 0.225]
+    )
+
 def get_train_valid_loader(
     data_dir,
     batch_size,
@@ -27,7 +32,7 @@ def get_train_valid_loader(
     distributed=False,
     drop_last=True,
     get_fine_tuning_loaders=False,
-    use_pt_loader_color_jitter_transform=True,
+    parameterize_augmentation=False,
     ):
     """
     Utility function for loading and returning train and valid
@@ -71,17 +76,26 @@ def get_train_valid_loader(
     if dataset_name == "CIFAR10":
         # No blur augmentation for CIFAR10!
         if not get_fine_tuning_loaders:
-            train_transform = TwoCropsTransform(
-                transforms.Compose([
-                    transforms.RandomResizedCrop(size=32, scale=(0.2, 1.)),
-                    transforms.RandomApply([transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.1)], p=0.8) if use_pt_loader_color_jitter_transform else torch.nn.Identity(),
-                    transforms.RandomGrayscale(p=0.2),
-                    transforms.RandomHorizontalFlip(),
-                    transforms.ToTensor(),
-                    transforms.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.2023, 0.1994, 0.2010])
-                    ]
-                )
-            )
+            if parameterize_augmentation:
+                # rest is done outside
+                train_transform = TwoCropsTransform(
+                    transforms.Compose([transforms.ToTensor()])
+                    )
+                
+            else:
+                train_transform = TwoCropsTransform(
+                    transforms.Compose(
+                        [
+                            transforms.RandomResizedCrop(size=32, scale=(0.2, 1.)),
+                            transforms.RandomApply([transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.1)], p=0.8),
+                            transforms.RandomGrayscale(p=0.2),
+                            transforms.RandomHorizontalFlip(),
+                            transforms.ToTensor(),
+                            transforms.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.2023, 0.1994, 0.2010])
+                            ]
+                        )
+                    )
+
 
             valid_transform = TwoCropsTransform(
                 transforms.Compose([
@@ -121,27 +135,27 @@ def get_train_valid_loader(
             )
     
     elif dataset_name == "ImageNet":
-        
-        normalize = transforms.Normalize(
-            mean=[0.485, 0.456, 0.406],
-            std=[0.229, 0.224, 0.225]
-            )
-
         if not get_fine_tuning_loaders:
             # MoCo v2's aug: similar to SimCLR https://arxiv.org/abs/2002.05709
-            train_transform = TwoCropsTransform(
-                transforms.Compose(
-                    [
-                        transforms.RandomResizedCrop(224, scale=(0.2, 1.)),
-                        transforms.RandomApply([transforms.ColorJitter(0.4, 0.4, 0.4, 0.1)], p=0.8) if use_pt_loader_color_jitter_transform else torch.nn.Identity(),
-                        transforms.RandomGrayscale(p=0.2),
-                        transforms.RandomApply([GaussianBlur([.1, 2.])], p=0.5),
-                        transforms.RandomHorizontalFlip(),
-                        transforms.ToTensor(),
-                        normalize
-                        ]
+            if parameterize_augmentation:
+                # rest is done outside
+                train_transform = TwoCropsTransform(
+                    transforms.Compose([transforms.ToTensor()])
                     )
-                )
+            else:
+                train_transform = TwoCropsTransform(
+                    transforms.Compose(
+                        [
+                            transforms.RandomResizedCrop(224, scale=(0.2, 1.)),
+                            transforms.RandomApply([transforms.ColorJitter(0.4, 0.4, 0.4, 0.1)], p=0.8),
+                            transforms.RandomGrayscale(p=0.2),
+                            transforms.RandomApply([GaussianBlur([.1, 2.])], p=0.5),
+                            transforms.RandomHorizontalFlip(),
+                            transforms.ToTensor(),
+                            normalize_imagenet
+                            ]
+                        )
+                    )
                 
             valid_transform = TwoCropsTransform(
                 transforms.Compose(
@@ -149,7 +163,7 @@ def get_train_valid_loader(
                         transforms.Resize(256, interpolation=Image.BICUBIC),
                         transforms.CenterCrop((224, 224)),
                         transforms.ToTensor(),
-                        normalize
+                        normalize_imagenet
                         ]
                     )
                 )
@@ -158,7 +172,7 @@ def get_train_valid_loader(
                                 transforms.RandomResizedCrop(224),
                                 transforms.RandomHorizontalFlip(),
                                 transforms.ToTensor(),
-                                normalize,
+                                normalize_imagenet,
                             ])
             # same as above without two crop transform
             valid_transform = transforms.Compose(
@@ -166,7 +180,7 @@ def get_train_valid_loader(
                         transforms.Resize(256, interpolation=Image.BICUBIC),
                         transforms.CenterCrop((224, 224)),
                         transforms.ToTensor(),
-                        normalize
+                        normalize_imagenet
                         ]
                     )
     else:
@@ -311,17 +325,13 @@ def get_test_loader(
             )
     
     elif dataset_name == "ImageNet":
-        normalize = transforms.Normalize(
-            mean=[0.485, 0.456, 0.406],
-            std=[0.229, 0.224, 0.225]
-            )
         
         transform = transforms.Compose(
             [
                 transforms.Resize(256),
                 transforms.CenterCrop(224),
                 transforms.ToTensor(),
-                normalize,
+                normalize_imagenet,
                 ]
             )
     
@@ -393,7 +403,7 @@ def plot_images(images, cls_true, cls_pred=None):
     plt.show()
 
 
-def get_loaders(traindir, config, use_pt_loader_color_jitter_transform=True):
+def get_loaders(traindir, config, parameterize_augmentation=False):
     train_loader_pt, _, train_sampler_pt, _ = get_train_valid_loader(
         data_dir=traindir,
         batch_size=config.train.batch_size,
@@ -407,7 +417,7 @@ def get_loaders(traindir, config, use_pt_loader_color_jitter_transform=True):
         distributed=config.expt.distributed,
         drop_last=True,
         get_fine_tuning_loaders=False,
-        use_pt_loader_color_jitter_transform=use_pt_loader_color_jitter_transform,
+        parameterize_augmentation=parameterize_augmentation,
         )
     
     train_loader_ft, _, train_sampler_ft, _ = get_train_valid_loader(

@@ -247,26 +247,26 @@ def calc_all_layer_wise_stats(
     warmup=False
     ):
     if not warmup:
-        mean, std = calc_layer_wise_stats(backbone_grads_pt, backbone_grads_ft, metric_type="cosine")
+        mean, std = calc_layer_wise_stats(backbone_grads_pt=backbone_grads_pt, backbone_grads_ft=backbone_grads_ft, metric_type="cosine")
         cos_sim_ema_meter.update(mean), cos_sim_std_meter.update(std)
         
-        mean, std = calc_layer_wise_stats(backbone_grads_pt, backbone_grads_ft, metric_type="dot")
+        mean, std = calc_layer_wise_stats(backbone_grads_pt=backbone_grads_pt, backbone_grads_ft=backbone_grads_ft, metric_type="dot")
         dot_prod_avg_meter.update(mean), dot_prod_std_meter.update(std)
         
-        mean, std = calc_layer_wise_stats(backbone_grads_pt, backbone_grads_ft, metric_type="euclidean")
+        mean, std = calc_layer_wise_stats(backbone_grads_pt=backbone_grads_pt, backbone_grads_ft=backbone_grads_ft, metric_type="euclidean")
         eucl_dis_avg_meter.update(mean), eucl_dis_std_meter.update(std)
         
-        mean, std = calc_layer_wise_stats(backbone_grads_pt, metric_type="norm")
+        mean, std = calc_layer_wise_stats(backbone_grads_pt=backbone_grads_pt, backbone_grads_ft=None, metric_type="norm")
         norm_pt_avg_meter.update(mean), norm_pt_std_meter.update(std)
         
-        mean, std = calc_layer_wise_stats(backbone_grads_ft, metric_type="norm")
+        mean, std = calc_layer_wise_stats(backbone_grads_pt=backbone_grads_ft, backbone_grads_ft=None, metric_type="norm")
         norm_ft_avg_meter.update(mean), norm_ft_std_meter.update(std)
     else:
         cos_sim_ema_meter.update(0.), cos_sim_std_meter.update(0.)
         dot_prod_avg_meter.update(0.), dot_prod_std_meter.update(0.)
         eucl_dis_avg_meter.update(0.), eucl_dis_std_meter.update(0.)
         
-        mean, std = calc_layer_wise_stats(torch.linalg.norm, backbone_grads_pt, metric_type="norm")
+        mean, std = calc_layer_wise_stats(backbone_grads_pt=backbone_grads_pt, backbone_grads_ft=None, metric_type="norm")
         norm_pt_avg_meter.update(mean), norm_pt_std_meter.update(std)
         
         norm_ft_avg_meter.update(0.), norm_ft_std_meter.update(0.)
@@ -276,7 +276,7 @@ def calc_layer_wise_stats(backbone_grads_pt, backbone_grads_ft=None, metric_type
     allowed_types = ["cosine", "euclidean", "norm", "dot"]
     assert metric_type in allowed_types, f"metric_type must be one of {allowed_types}"
     metric_vals = []
-    if backbone_grads_ft:
+    if backbone_grads_ft is not None:
         for (k1, v1), (k2, v2) in zip(backbone_grads_pt.items(), backbone_grads_ft.items()):
             if k1 == k2 and "bn" not in k1:
                 if metric_type == "euclidean":
