@@ -31,7 +31,7 @@ from jsonargparse import ArgumentParser
 from torch.nn import functional as F
 from torch.utils.tensorboard import SummaryWriter
 
-from utils.torch_utils import hist_to_image, get_newest_model, check_and_save_checkpoint, deactivate_bn, calc_all_layer_wise_stats, validate, accuracy
+from utils.torch_utils import hist_to_image, get_newest_model, check_and_save_checkpoint, deactivate_bn, calc_all_layer_wise_stats, validate, accuracy, get_dist
 
 warnings.filterwarnings("ignore", category=UserWarning)
 
@@ -214,7 +214,11 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
     aug_w = torch.zeros(len(color_jitter_strengths), requires_grad=True)
     bound = 1. / math.sqrt(aug_w.size(0))
     nn.init.uniform(aug_w, -bound, bound)
-    aug_w.grad = torch.zeros_like(aug_w)
+    # aug_w.grad = torch.zeros_like(aug_w)
+    
+    # color_jitter_dist = torch.distributions.Categorical(probs=torch.softmax(aug_w, dim=0))
+    
+    optimizer_aug = torch.optim.Adam([aug_w], 0.001)
     
     # in case a dumped model exist and ssl_model_checkpoint is not set, load that dumped model
     newest_model = get_newest_model(expt_dir)
@@ -237,7 +241,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
             model.load_state_dict(checkpoint['state_dict'])
             optimizer_pt.load_state_dict(checkpoint['optimizer_pt'])
             optimizer_ft.load_state_dict(checkpoint['optimizer_ft'])
-            # optimizer_aug.load_state_dict(checkpoint['optimizer_aug'])
+            optimizer_aug.load_state_dict(checkpoint['optimizer_aug'])
             total_iter = checkpoint['total_iter']
             print(f"=> loaded checkpoint '{config.expt.ssl_model_checkpoint_path}' (epoch {checkpoint['epoch']})")
         else:
@@ -285,9 +289,10 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
             criterion_ft=criterion_ft,
             optimizer_pt=optimizer_pt,
             optimizer_ft=optimizer_ft,
+            optimizer_aug=optimizer_aug,
             color_jitter_strength_hist=color_jitter_strength_hist,
-            aug_w=aug_w,
             color_jitter_strengths=color_jitter_strengths,
+            aug_w=aug_w,
             epoch=epoch,
             total_iter=total_iter,
             config=config,
@@ -317,9 +322,10 @@ def train_one_epoch(
     criterion_ft,
     optimizer_pt,
     optimizer_ft,
+    optimizer_aug,
     color_jitter_strength_hist,
-    aug_w,
     color_jitter_strengths,
+    aug_w,
     epoch,
     total_iter,
     config,
@@ -348,7 +354,7 @@ def train_one_epoch(
         norm_pt_std_meter = AverageMeter('Norm PT layer-wise std.', ':6.4f')
         norm_ft_avg_meter = AverageMeter('Norm FT layer-wise average', ':6.4f')
         norm_ft_std_meter = AverageMeter('Norm FT layer-wise std.', ':6.4f')
-
+        
         norm_aug_grad_meter = AverageMeter('Norm Aug. gradient', ':6.4f')
         
         meters = [batch_time_meter, losses_pt_meter, losses_ft_meter, top1_meter, cos_sim_ema_meter, cos_sim_std_meter, dot_prod_avg_meter, dot_prod_std_meter, eucl_dis_avg_meter, eucl_dis_std_meter, norm_pt_avg_meter, norm_pt_std_meter, norm_ft_avg_meter, norm_ft_std_meter]
@@ -376,9 +382,11 @@ def train_one_epoch(
         
         total_iter += 1
         
-        probs = torch.softmax(aug_w, dim=0)
-        i_color_jitter = torch.multinomial(probs, 1).item()
-        color_jitter_strength = color_jitter_strengths[i_color_jitter]
+        color_jitter_dist = get_dist(logits=aug_w)
+        color_jitter_action = color_jitter_dist.sample()
+        color_jitter_logprob = color_jitter_dist.log_prob(color_jitter_action)
+        
+        color_jitter_strength = color_jitter_strengths[color_jitter_action]
         color_jitter_strength_hist[color_jitter_strength] += 1
         
         kernel_h = images_pt.shape[2] // 10
@@ -388,7 +396,7 @@ def train_one_epoch(
             kernel_h -= 1
         if kernel_w % 2 == 0:
             kernel_w -= 1
-            
+        
         # todo: could be made more efficient by simply replacing colorjitter in composed list
         parameterized_transform = TwoCropsTransform(
             transforms.Compose(
@@ -404,7 +412,7 @@ def train_one_epoch(
                     ]
                 )
             )
-
+        
         if config.expt.gpu is not None:
             images_pt = parameterized_transform(images_pt.cuda(config.expt.gpu, non_blocking=True))
             images_pt[0] = images_pt[0].contiguous()
@@ -439,7 +447,13 @@ def train_one_epoch(
                 norm_pt_meter.update(torch.linalg.norm(backbone_grads_pt, 2))
                 norm_ft_meter.update(torch.linalg.norm(backbone_grads_ft, 2))
             
-            aug_w.grad.data[i_color_jitter] = -cos_sim_ema_meter.ema
+            optimizer_aug.zero_grad()
+            # print(color_jitter_dist.log_prob(color_jitter_action))
+            reward = (cos_sim_ema_meter.val - cos_sim_ema_meter.ema)
+            weighted_logprob = -color_jitter_logprob * reward
+            weighted_logprob.backward()
+            # print(aug_w.grad.data)
+            optimizer_aug.step()
             norm_aug_grad_meter.update(torch.linalg.norm(aug_w.grad.data, 2))
         
         else:
@@ -517,9 +531,9 @@ def pretrain(model, images_pt, criterion_pt, optimizer_pt, losses_pt, data_time,
     if alternating_mode:
         for key, param in model.module.backbone.named_parameters():
             if layer_wise_stats:
-                backbone_grads[key] = torch.tensor(param.grad.detach().clone().flatten())
+                backbone_grads[key] = torch.tensor(param.grad.detach_().clone().flatten())
             else:
-                backbone_grads = torch.cat([backbone_grads, param.grad.detach().clone().flatten()], dim=0)
+                backbone_grads = torch.cat([backbone_grads, param.grad.detach_().clone().flatten()], dim=0)
             # backbone_grads = np.concatenate((backbone_grads, param.grad.detach().clone().flatten().cpu()))
             # backbone_grads[key] = param.grad.detach().clone().flatten().cpu()
     
@@ -554,9 +568,9 @@ def finetune(model, images_ft, target_ft, criterion_ft, optimizer_ft, losses_ft_
     if alternating_mode:
         for key, param in model.module.backbone.named_parameters():
             if layer_wise_stats:
-                backbone_grads[key] = torch.tensor(param.grad.detach().clone().flatten())
+                backbone_grads[key] = torch.tensor(param.grad.detach_().clone().flatten())
             else:
-                backbone_grads = torch.cat([backbone_grads, param.grad.detach().clone().flatten()], dim=0)
+                backbone_grads = torch.cat([backbone_grads, param.grad.detach_().clone().flatten()], dim=0)
             # backbone_grads = np.concatenate((backbone_grads, param.grad.detach().clone().flatten().cpu()))
             # backbone_grads[key] = param.grad.detach().clone().flatten().cpu()
     

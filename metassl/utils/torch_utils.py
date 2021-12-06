@@ -352,3 +352,20 @@ def accuracy(output, target, topk=(1,)):
             correct_k = correct[:k].reshape(-1).float().sum(0, keepdim=True)
             res.append(correct_k.mul_(100.0 / batch_size))
         return res
+
+
+def get_dist(logits=None, probs=None, dist="categorical", device=None):
+    assert (logits is None) != (probs is None), 'Either provide probs or logits.'
+    if dist == 'bernoulli':
+        # We have to sample from only one logit.
+        # In this case we use Sigmoid.
+        return torch.distributions.Bernoulli(logits=logits, probs=probs)
+    elif dist == 'categorical':
+        # We have multiple logits, thus we use
+        # softmax.
+        if device is not None:
+            return torch.distributions.Categorical(logits=logits, probs=probs).to(device)
+        else:
+            return torch.distributions.Categorical(logits=logits, probs=probs)
+    else:
+        raise NotImplementedError
