@@ -210,15 +210,48 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
         weight_decay=config.finetuning.weight_decay
         )
     
-    color_jitter_strengths = [0.1, 0.2, 0.3, 0.4, 0.5]
-    aug_w = torch.zeros(len(color_jitter_strengths), requires_grad=True)
-    bound = 1. / math.sqrt(aug_w.size(0))
-    nn.init.uniform(aug_w, -bound, bound)
+    # color_jitter_strengths = [0.1, 0.2, 0.3, 0.4, 0.5]
+    
+    color_jitter_strengths_brightness = [0.1, 0.2, 0.4, 0.8, 1.0, 1.2, 1.4, 1.6]
+    color_jitter_strengths_contrast = [0.1, 0.2, 0.4, 0.8, 1.0, 1.2, 1.4, 1.6]
+    color_jitter_strengths_saturation = [0.1, 0.2, 0.4, 0.8, 1.0, 1.2, 1.4, 1.6]
+    color_jitter_strengths_hue = [0.0, 0.1, 0.2, 0.4]
+    
+    aug_w_b = torch.zeros(len(color_jitter_strengths_brightness), requires_grad=True)
+    aug_w_c = torch.zeros(len(color_jitter_strengths_contrast), requires_grad=True)
+    aug_w_s = torch.zeros(len(color_jitter_strengths_saturation), requires_grad=True)
+    aug_w_h = torch.zeros(len(color_jitter_strengths_hue), requires_grad=True)
+    
+    bound = 1. / math.sqrt(aug_w_b.size(0))
+    bound_h = 1. / math.sqrt(aug_w_h.size(0))
+    
+    nn.init.uniform(aug_w_b, -bound, bound)
+    nn.init.uniform(aug_w_c, -bound, bound)
+    nn.init.uniform(aug_w_s, -bound, bound)
+    nn.init.uniform(aug_w_h, -bound_h, bound_h)
     # aug_w.grad = torch.zeros_like(aug_w)
     
-    # color_jitter_dist = torch.distributions.Categorical(probs=torch.softmax(aug_w, dim=0))
+    # histograms
+    color_jitter_strength_b_hist = {k: 0 for k in color_jitter_strengths_brightness}
+    color_jitter_strength_c_hist = {k: 0 for k in color_jitter_strengths_contrast}
+    color_jitter_strength_s_hist = {k: 0 for k in color_jitter_strengths_saturation}
+    color_jitter_strength_h_hist = {k: 0 for k in color_jitter_strengths_hue}
     
-    optimizer_aug = torch.optim.Adam([aug_w], 0.001)
+    color_hitter_hists = {
+        "b": color_jitter_strength_b_hist,
+        "c": color_jitter_strength_c_hist,
+        "s": color_jitter_strength_s_hist,
+        "h": color_jitter_strength_h_hist
+        }
+    color_jitter_strengths = {
+        "b": color_jitter_strengths_brightness,
+        "c": color_jitter_strengths_contrast,
+        "s": color_jitter_strengths_saturation,
+        "h": color_jitter_strengths_hue
+        }
+    
+    # color_jitter_dist = torch.distributions.Categorical(probs=torch.softmax(aug_w, dim=0))
+    optimizer_aug = torch.optim.Adam([aug_w_b, aug_w_c, aug_w_s, aug_w_h], 0.001)
     
     # in case a dumped model exist and ssl_model_checkpoint is not set, load that dumped model
     newest_model = get_newest_model(expt_dir)
@@ -258,8 +291,6 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
     if config.expt.rank == 0:
         writer = SummaryWriter(log_dir=os.path.join(expt_dir, "tensorboard"))
     
-    color_jitter_strength_hist = {k: 0 for k in color_jitter_strengths}
-    
     if config.expt.layer_wise_stats:
         meter_name = "Cos. Sim. PT-FT layer-wise average"
     else:
@@ -290,9 +321,12 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
             optimizer_pt=optimizer_pt,
             optimizer_ft=optimizer_ft,
             optimizer_aug=optimizer_aug,
-            color_jitter_strength_hist=color_jitter_strength_hist,
+            color_hitter_hists=color_hitter_hists,
             color_jitter_strengths=color_jitter_strengths,
-            aug_w=aug_w,
+            aug_w_b=aug_w_b,
+            aug_w_c=aug_w_c,
+            aug_w_s=aug_w_s,
+            aug_w_h=aug_w_h,
             epoch=epoch,
             total_iter=total_iter,
             config=config,
@@ -308,7 +342,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
             if config.expt.rank == 0:
                 writer.add_scalar('Test/Accuracy@1', top1_avg, total_iter)
         
-        check_and_save_checkpoint(config, ngpus_per_node, total_iter, epoch, model, optimizer_pt, optimizer_ft, expt_dir)
+        check_and_save_checkpoint(config, ngpus_per_node, total_iter, epoch, model, optimizer_pt, optimizer_ft, expt_dir, optimizer_aug=optimizer_aug)
     
     if config.expt.rank == 0:
         writer.close()
@@ -323,9 +357,12 @@ def train_one_epoch(
     optimizer_pt,
     optimizer_ft,
     optimizer_aug,
-    color_jitter_strength_hist,
+    color_hitter_hists,
     color_jitter_strengths,
-    aug_w,
+    aug_w_b,
+    aug_w_c,
+    aug_w_s,
+    aug_w_h,
     epoch,
     total_iter,
     config,
@@ -382,12 +419,26 @@ def train_one_epoch(
         
         total_iter += 1
         
-        color_jitter_dist = get_dist(logits=aug_w)
-        color_jitter_action = color_jitter_dist.sample()
-        color_jitter_logprob = color_jitter_dist.log_prob(color_jitter_action)
+        color_jitter_dist_b, color_jitter_dist_c, color_jitter_dist_s, color_jitter_dist_h = get_dist(logits=aug_w_b), get_dist(logits=aug_w_c), get_dist(logits=aug_w_s), get_dist(logits=aug_w_h)
         
-        color_jitter_strength = color_jitter_strengths[color_jitter_action]
-        color_jitter_strength_hist[color_jitter_strength] += 1
+        color_jitter_action_idx_b, color_jitter_action_idx_c, color_jitter_action_idx_s, color_jitter_action_idx_h = color_jitter_dist_b.sample(), color_jitter_dist_c.sample(), color_jitter_dist_s.sample(), color_jitter_dist_h.sample()
+        
+        color_jitter_logprob_b, color_jitter_logprob_c = color_jitter_dist_b.log_prob(color_jitter_action_idx_b), color_jitter_dist_c.log_prob(color_jitter_action_idx_c)
+        color_jitter_logprob_s, color_jitter_logprob_h = color_jitter_dist_s.log_prob(color_jitter_action_idx_s), color_jitter_dist_h.log_prob(color_jitter_action_idx_h)
+        
+        b_hist, c_hist, s_hist, h_hist = color_hitter_hists["b"], color_hitter_hists["c"], color_hitter_hists["s"], color_hitter_hists["h"]
+        
+        strengths_b, strengths_c, strengths_s, strengths_h = color_jitter_strengths["b"], color_jitter_strengths["c"], color_jitter_strengths["s"], color_jitter_strengths["h"]
+
+        strength_b, strength_c, strength_s, strength_h = strengths_b[color_jitter_action_idx_b], strengths_c[color_jitter_action_idx_c], strengths_s[color_jitter_action_idx_s], strengths_h[color_jitter_action_idx_h]
+        
+        b_hist[strengths_b[color_jitter_action_idx_b]] += 1
+        c_hist[strengths_c[color_jitter_action_idx_c]] += 1
+        s_hist[strengths_s[color_jitter_action_idx_s]] += 1
+        h_hist[strengths_h[color_jitter_action_idx_h]] += 1
+        
+        # color_jitter_actions = color_jitter_dist.sample(sample_shape=torch.Size([config.train.batch_size]))
+        # color_jitter_logprobs = color_jitter_dist.log_prob(color_jitter_actions)
         
         kernel_h = images_pt.shape[2] // 10
         kernel_w = images_pt.shape[3] // 10
@@ -403,7 +454,7 @@ def train_one_epoch(
                 [
                     # transforms.RandomResizedCrop(224, scale=(0.2, 1.)), # done in dataloader
                     # transforms.ToPILImage(),  # following GaussianBlur expects PIL image not tensor (and torchvision GB parameterizes the kernel size)
-                    transforms.RandomApply([transforms.ColorJitter(0.4 * color_jitter_strength, 0.4 * color_jitter_strength, 0.4 * color_jitter_strength, 0.1 * color_jitter_strength)], p=0.8),
+                    transforms.RandomApply([transforms.ColorJitter(brightness=strength_b, contrast=strength_c, saturation=strength_s, hue=strength_h)], p=0.8),
                     transforms.RandomGrayscale(p=0.2),
                     transforms.RandomApply([torchvision.transforms.GaussianBlur([kernel_h, kernel_w], [.1, 2.])], p=0.5),
                     # transforms.RandomApply([GaussianBlur([.1, 2.])], p=0.5),
@@ -448,13 +499,25 @@ def train_one_epoch(
                 norm_ft_meter.update(torch.linalg.norm(backbone_grads_ft, 2))
             
             optimizer_aug.zero_grad()
-            # print(color_jitter_dist.log_prob(color_jitter_action))
             reward = (cos_sim_ema_meter.val - cos_sim_ema_meter.ema)
-            weighted_logprob = -color_jitter_logprob * reward
-            weighted_logprob.backward()
+            # weighted_logprobs = -(color_jitter_logprob * reward)
+            # weighted_logprobs.backward()
+            
+            color_jitter_logprob_b = -(color_jitter_logprob_b * reward)
+            color_jitter_logprob_b.backward()
+            
+            color_jitter_logprob_c = -(color_jitter_logprob_c * reward)
+            color_jitter_logprob_c.backward()
+            
+            color_jitter_logprob_s = -(color_jitter_logprob_s * reward)
+            color_jitter_logprob_s.backward()
+            
+            color_jitter_logprob_h = -(color_jitter_logprob_h * reward)
+            color_jitter_logprob_h.backward()
+            
             # print(aug_w.grad.data)
             optimizer_aug.step()
-            norm_aug_grad_meter.update(torch.linalg.norm(aug_w.grad.data, 2))
+            norm_aug_grad_meter.update(torch.linalg.norm(aug_w_b.grad.data, 2))
         
         else:
             if layer_wise_stats:
@@ -492,8 +555,17 @@ def train_one_epoch(
             write_to_summary_writer(total_iter, loss_pt, loss_ft, data_time_meter, batch_time_meter, optimizer_pt, optimizer_ft, top1_meter, top5_meter, advanced_stats_meters, writer)
         # expensive stats
         if config.expt.rank == 0 and i % (config.expt.print_freq * 100) == 0:
-            img = hist_to_image(color_jitter_strength_hist, "Color Jitter Strength Counts")
-            writer.add_image(tag="Advanced Stats/color jitter strength", img_tensor=img, global_step=total_iter)
+            img = hist_to_image(b_hist, "Color Jitter Strength Brightness Counts")
+            writer.add_image(tag="Advanced Stats/color jitter strength brightness", img_tensor=img, global_step=total_iter)
+            
+            img = hist_to_image(c_hist, "Color Jitter Strength Contrast Counts")
+            writer.add_image(tag="Advanced Stats/color jitter strength contrast", img_tensor=img, global_step=total_iter)
+            
+            img = hist_to_image(s_hist, "Color Jitter Strength Saturation Counts")
+            writer.add_image(tag="Advanced Stats/color jitter strength saturation", img_tensor=img, global_step=total_iter)
+            
+            img = hist_to_image(h_hist, "Color Jitter Strength Hue Counts")
+            writer.add_image(tag="Advanced Stats/color jitter strength hue", img_tensor=img, global_step=total_iter)
     
     return total_iter
 
