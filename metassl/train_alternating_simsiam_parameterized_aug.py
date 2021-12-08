@@ -27,6 +27,11 @@ import torchvision.models as models
 import torchvision.transforms
 import torchvision.transforms as transforms
 import yaml
+
+from backpack import backpack
+from backpack import extend
+from backpack.extensions import BatchGrad
+
 from jsonargparse import ArgumentParser
 from torch.nn import functional as F
 from torch.utils.tensorboard import SummaryWriter
@@ -153,6 +158,10 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
             config.finetuning.batch_size = int(config.finetuning.batch_size / ngpus_per_node)
             config.train.batch_size = int(config.train.batch_size / ngpus_per_node)
             config.workers = int((config.expt.workers + ngpus_per_node - 1) / ngpus_per_node)
+            
+            if config.expt.image_wise_gradients:
+                model = extend(model)
+            
             model = torch.nn.parallel.DistributedDataParallel(
                 model, device_ids=[config.expt.gpu],
                 find_unused_parameters=True
@@ -212,10 +221,10 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
     
     # color_jitter_strengths = [0.1, 0.2, 0.3, 0.4, 0.5]
     
-    color_jitter_strengths_brightness = [0.1, 0.2, 0.4, 0.8, 1.0, 1.2, 1.4, 1.6]
-    color_jitter_strengths_contrast = [0.1, 0.2, 0.4, 0.8, 1.0, 1.2, 1.4, 1.6]
-    color_jitter_strengths_saturation = [0.1, 0.2, 0.4, 0.8, 1.0, 1.2, 1.4, 1.6]
-    color_jitter_strengths_hue = [0.0, 0.1, 0.2, 0.4]
+    color_jitter_strengths_brightness = [0.1, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6]
+    color_jitter_strengths_contrast = [0.1, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6]
+    color_jitter_strengths_saturation = [0.1, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6]
+    color_jitter_strengths_hue = [0.0, 0.1, 0.2, 0.3, 0.4]
     
     aug_w_b = torch.zeros(len(color_jitter_strengths_brightness), requires_grad=True)
     aug_w_c = torch.zeros(len(color_jitter_strengths_contrast), requires_grad=True)
@@ -727,6 +736,7 @@ if __name__ == '__main__':
     parser.add_argument('--expt.seed', default=123, type=int, metavar='N', help='random seed of numpy and torch')
     parser.add_argument('--expt.evaluate', action='store_true', help='evaluate model on validation set once and terminate (default: False)')
     parser.add_argument('--expt.layer_wise_stats', action='store_true', help='compute the advanced stats for each layer separately and then plot the average and deviation (default: False).')
+    parser.add_argument('--expt.image_wise_gradients', action='store_true', help='compute image wise gradients (default: False).')
     
     parser.add_argument('--train', default="train", type=str, metavar='N')
     parser.add_argument('--train.batch_size', default=256, type=int, metavar='N', help='in distributed setting this is the total batch size, i.e. batch size = individual bs * number of GPUs')
