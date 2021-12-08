@@ -24,19 +24,15 @@ import torch.optim
 import torch.utils.data
 import torch.utils.data.distributed
 import torchvision.models as models
-import torchvision.transforms
-import torchvision.transforms as transforms
 import yaml
-
-from backpack import backpack
-from backpack import extend
+from backpack import backpack, extend
 from backpack.extensions import BatchGrad
-
 from jsonargparse import ArgumentParser
 from torch.nn import functional as F
 from torch.utils.tensorboard import SummaryWriter
 
-from utils.torch_utils import hist_to_image, get_newest_model, check_and_save_checkpoint, deactivate_bn, calc_all_layer_wise_stats, validate, accuracy, get_dist
+from utils.torch_utils import hist_to_image, get_newest_model, check_and_save_checkpoint, deactivate_bn, calc_all_layer_wise_stats, validate, accuracy, get_sample_logprob
+
 
 warnings.filterwarnings("ignore", category=UserWarning)
 
@@ -48,6 +44,7 @@ try:
     from metassl.utils.simsiam_alternating import SimSiam
     import metassl.models.resnet_cifar as our_cifar_resnets
     from metassl.utils.simsiam import TwoCropsTransform, GaussianBlur
+    from metassl.utils.augment import create_transforms, augment_per_image
 except ImportError:
     # For execution in command line
     from .utils.data import get_train_valid_loader, get_test_loader, get_loaders, normalize_imagenet
@@ -56,12 +53,39 @@ except ImportError:
     from .utils.simsiam_alternating import SimSiam
     from .utils.simsiam import TwoCropsTransform, GaussianBlur
     from .models import resnet_cifar as our_cifar_resnets
+    from .utils.augment import create_transforms, augment_per_image
 
 model_names = sorted(
     name for name in models.__dict__
     if name.islower() and not name.startswith("__")
     and callable(models.__dict__[name])
     )
+
+# augmentation strengths
+color_jitter_strengths_brightness = [0.1, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6]
+color_jitter_strengths_contrast = [0.1, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6]
+color_jitter_strengths_saturation = [0.1, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6]
+color_jitter_strengths_hue = [0.0, 0.1, 0.2, 0.3, 0.4]
+
+# histograms
+color_jitter_histogram_brightness = {k: 0 for k in color_jitter_strengths_brightness}
+color_jitter_histogram_contrast = {k: 0 for k in color_jitter_strengths_contrast}
+color_jitter_histogram_saturation = {k: 0 for k in color_jitter_strengths_saturation}
+color_jitter_histogram_hue = {k: 0 for k in color_jitter_strengths_hue}
+
+color_jitter_hists = {
+    "b": color_jitter_histogram_brightness,
+    "c": color_jitter_histogram_contrast,
+    "s": color_jitter_histogram_saturation,
+    "h": color_jitter_histogram_hue
+    }
+
+color_jitter_strengths = {
+    "b": color_jitter_strengths_brightness,
+    "c": color_jitter_strengths_contrast,
+    "s": color_jitter_strengths_saturation,
+    "h": color_jitter_strengths_hue
+    }
 
 
 def main(config, expt_dir):
@@ -134,6 +158,12 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
     else:
         model = SimSiam(models.__dict__[config.model.model_type], config.simsiam.dim, config.simsiam.pred_dim)
     
+    # todo: check backpack + ddp + resnet with sam; backpack raises errors when using inplace operations
+    if config.expt.image_wise_gradients:
+        for module in model.modules():
+            if hasattr(module, "inplace"):
+                module.inplace = False
+    
     if config.model.turn_off_bn:
         print("Turning off BatchNorm in entire model.")
         deactivate_bn(model)
@@ -161,6 +191,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
             
             if config.expt.image_wise_gradients:
                 model = extend(model)
+                print("using backpack")
             
             model = torch.nn.parallel.DistributedDataParallel(
                 model, device_ids=[config.expt.gpu],
@@ -219,13 +250,6 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
         weight_decay=config.finetuning.weight_decay
         )
     
-    # color_jitter_strengths = [0.1, 0.2, 0.3, 0.4, 0.5]
-    
-    color_jitter_strengths_brightness = [0.1, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6]
-    color_jitter_strengths_contrast = [0.1, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6]
-    color_jitter_strengths_saturation = [0.1, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6]
-    color_jitter_strengths_hue = [0.0, 0.1, 0.2, 0.3, 0.4]
-    
     aug_w_b = torch.zeros(len(color_jitter_strengths_brightness), requires_grad=True)
     aug_w_c = torch.zeros(len(color_jitter_strengths_contrast), requires_grad=True)
     aug_w_s = torch.zeros(len(color_jitter_strengths_saturation), requires_grad=True)
@@ -238,26 +262,6 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
     nn.init.uniform(aug_w_c, -bound, bound)
     nn.init.uniform(aug_w_s, -bound, bound)
     nn.init.uniform(aug_w_h, -bound_h, bound_h)
-    # aug_w.grad = torch.zeros_like(aug_w)
-    
-    # histograms
-    color_jitter_strength_b_hist = {k: 0 for k in color_jitter_strengths_brightness}
-    color_jitter_strength_c_hist = {k: 0 for k in color_jitter_strengths_contrast}
-    color_jitter_strength_s_hist = {k: 0 for k in color_jitter_strengths_saturation}
-    color_jitter_strength_h_hist = {k: 0 for k in color_jitter_strengths_hue}
-    
-    color_hitter_hists = {
-        "b": color_jitter_strength_b_hist,
-        "c": color_jitter_strength_c_hist,
-        "s": color_jitter_strength_s_hist,
-        "h": color_jitter_strength_h_hist
-        }
-    color_jitter_strengths = {
-        "b": color_jitter_strengths_brightness,
-        "c": color_jitter_strengths_contrast,
-        "s": color_jitter_strengths_saturation,
-        "h": color_jitter_strengths_hue
-        }
     
     # color_jitter_dist = torch.distributions.Categorical(probs=torch.softmax(aug_w, dim=0))
     optimizer_aug = torch.optim.Adam([aug_w_b, aug_w_c, aug_w_s, aug_w_h], 0.001)
@@ -301,7 +305,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
         writer = SummaryWriter(log_dir=os.path.join(expt_dir, "tensorboard"))
     
     if config.expt.layer_wise_stats:
-        meter_name = "Cos. Sim. PT-FT layer-wise average"
+        meter_name = "Cos. Sim. PT-FT layer-w. average"
     else:
         meter_name = "Cos. Sim. PT-FT"
     
@@ -330,8 +334,6 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
             optimizer_pt=optimizer_pt,
             optimizer_ft=optimizer_ft,
             optimizer_aug=optimizer_aug,
-            color_hitter_hists=color_hitter_hists,
-            color_jitter_strengths=color_jitter_strengths,
             aug_w_b=aug_w_b,
             aug_w_c=aug_w_c,
             aug_w_s=aug_w_s,
@@ -366,8 +368,6 @@ def train_one_epoch(
     optimizer_pt,
     optimizer_ft,
     optimizer_aug,
-    color_hitter_hists,
-    color_jitter_strengths,
     aug_w_b,
     aug_w_c,
     aug_w_s,
@@ -386,24 +386,27 @@ def train_one_epoch(
     losses_ft_meter = AverageMeter('Loss FT', ':.4e')
     top1_meter = AverageMeter('Acc@1', ':6.2f')
     top5_meter = AverageMeter('Acc@5', ':6.2f')
+
+    norm_aug_brightness_grad_meter = AverageMeter('Norm Aug. brightness gradient', ':6.4f')
+    norm_aug_contrast_grad_meter = AverageMeter('Norm Aug. contrast gradient', ':6.4f')
+    norm_aug_saturation_grad_meter = AverageMeter('Norm Aug. saturation gradient', ':6.4f')
+    norm_aug_hue_grad_meter = AverageMeter('Norm Aug. hue gradient', ':6.4f')
     
     if layer_wise_stats:
         if not cos_sim_ema_meter:
-            cos_sim_ema_meter = ExponentialMovingAverageMeter('Cos. Sim. PT-FT layer-wise average', window=100, alpha=2, fmt=':6.4f')
-        cos_sim_std_meter = AverageMeter('Cos. Sim. PT-FT layer-wise std.', ':6.4f')
+            cos_sim_ema_meter = ExponentialMovingAverageMeter('Cos. Sim. PT-FT layer-w.', window=100, alpha=2, fmt=':6.4f')
+        cos_sim_std_meter = AverageMeter('Cos. Sim. PT-FT layer-w. std.', ':6.4f')
         
-        dot_prod_avg_meter = AverageMeter('Dot Product PT-FT layer-wise average', ':6.4f')
-        dot_prod_std_meter = AverageMeter('Dot Product PT-FT layer-wise std.', ':6.4f')
-        eucl_dis_avg_meter = AverageMeter('Eucl. Dist. PT-FT layer-wise average', ':6.4f')
-        eucl_dis_std_meter = AverageMeter('Eucl. Dist. PT-FT layer-wise std.', ':6.4f')
-        norm_pt_avg_meter = AverageMeter('Norm PT layer-wise average', ':6.4f')
-        norm_pt_std_meter = AverageMeter('Norm PT layer-wise std.', ':6.4f')
-        norm_ft_avg_meter = AverageMeter('Norm FT layer-wise average', ':6.4f')
-        norm_ft_std_meter = AverageMeter('Norm FT layer-wise std.', ':6.4f')
+        dot_prod_avg_meter = AverageMeter('Dot Product PT-FT layer-w. average', ':6.4f')
+        dot_prod_std_meter = AverageMeter('Dot Product PT-FT layer-w. std.', ':6.4f')
+        eucl_dis_avg_meter = AverageMeter('Eucl. Dist. PT-FT layer-w. average', ':6.4f')
+        eucl_dis_std_meter = AverageMeter('Eucl. Dist. PT-FT layer-w. std.', ':6.4f')
+        norm_pt_avg_meter = AverageMeter('Norm PT layer-w. average', ':6.4f')
+        norm_pt_std_meter = AverageMeter('Norm PT layer-w. std.', ':6.4f')
+        norm_ft_avg_meter = AverageMeter('Norm FT layer-w. average', ':6.4f')
+        norm_ft_std_meter = AverageMeter('Norm FT layer-w. std.', ':6.4f')
         
-        norm_aug_grad_meter = AverageMeter('Norm Aug. gradient', ':6.4f')
-        
-        meters = [batch_time_meter, losses_pt_meter, losses_ft_meter, top1_meter, cos_sim_ema_meter, cos_sim_std_meter, dot_prod_avg_meter, dot_prod_std_meter, eucl_dis_avg_meter, eucl_dis_std_meter, norm_pt_avg_meter, norm_pt_std_meter, norm_ft_avg_meter, norm_ft_std_meter]
+        meters = [batch_time_meter, losses_pt_meter, losses_ft_meter, top1_meter, cos_sim_ema_meter, dot_prod_avg_meter, eucl_dis_avg_meter, norm_pt_avg_meter, norm_ft_avg_meter]
     else:
         if not cos_sim_ema_meter:
             cos_sim_ema_meter = ExponentialMovingAverageMeter('Cos. Sim. PT-FT', window=100, alpha=2, fmt=':6.4f')
@@ -412,7 +415,6 @@ def train_one_epoch(
         eucl_dis_meter = AverageMeter('Eucl. Dist. PT-FT', ':6.4f')
         norm_pt_meter = AverageMeter('Norm PT', ':6.4f')
         norm_ft_meter = AverageMeter('Norm FT', ':6.4f')
-        norm_aug_grad_meter = AverageMeter('Norm Aug. gradient', ':6.4f')
         
         meters = [batch_time_meter, losses_pt_meter, losses_ft_meter, top1_meter, cos_sim_ema_meter, dot_prod_meter, eucl_dis_meter, norm_pt_meter, norm_ft_meter]
     
@@ -428,63 +430,42 @@ def train_one_epoch(
         
         total_iter += 1
         
-        color_jitter_dist_b, color_jitter_dist_c, color_jitter_dist_s, color_jitter_dist_h = get_dist(logits=aug_w_b), get_dist(logits=aug_w_c), get_dist(logits=aug_w_s), get_dist(logits=aug_w_h)
+        color_jitter_action_idx_b, color_jitter_logprob_b, _ = get_sample_logprob(logits=aug_w_b)
+        color_jitter_action_idx_c, color_jitter_logprob_c, _ = get_sample_logprob(logits=aug_w_c)
+        color_jitter_action_idx_s, color_jitter_logprob_s, _ = get_sample_logprob(logits=aug_w_s)
+        color_jitter_action_idx_h, color_jitter_logprob_h, _ = get_sample_logprob(logits=aug_w_h)
         
-        color_jitter_action_idx_b, color_jitter_action_idx_c, color_jitter_action_idx_s, color_jitter_action_idx_h = color_jitter_dist_b.sample(), color_jitter_dist_c.sample(), color_jitter_dist_s.sample(), color_jitter_dist_h.sample()
+        strength_b = color_jitter_strengths_brightness[color_jitter_action_idx_b]
+        strength_c = color_jitter_strengths_contrast[color_jitter_action_idx_c]
+        strength_s = color_jitter_strengths_saturation[color_jitter_action_idx_s]
+        strength_h = color_jitter_strengths_hue[color_jitter_action_idx_h]
         
-        color_jitter_logprob_b, color_jitter_logprob_c = color_jitter_dist_b.log_prob(color_jitter_action_idx_b), color_jitter_dist_c.log_prob(color_jitter_action_idx_c)
-        color_jitter_logprob_s, color_jitter_logprob_h = color_jitter_dist_s.log_prob(color_jitter_action_idx_s), color_jitter_dist_h.log_prob(color_jitter_action_idx_h)
-        
-        b_hist, c_hist, s_hist, h_hist = color_hitter_hists["b"], color_hitter_hists["c"], color_hitter_hists["s"], color_hitter_hists["h"]
-        
-        strengths_b, strengths_c, strengths_s, strengths_h = color_jitter_strengths["b"], color_jitter_strengths["c"], color_jitter_strengths["s"], color_jitter_strengths["h"]
-
-        strength_b, strength_c, strength_s, strength_h = strengths_b[color_jitter_action_idx_b], strengths_c[color_jitter_action_idx_c], strengths_s[color_jitter_action_idx_s], strengths_h[color_jitter_action_idx_h]
-        
-        b_hist[strengths_b[color_jitter_action_idx_b]] += 1
-        c_hist[strengths_c[color_jitter_action_idx_c]] += 1
-        s_hist[strengths_s[color_jitter_action_idx_s]] += 1
-        h_hist[strengths_h[color_jitter_action_idx_h]] += 1
-        
-        # color_jitter_actions = color_jitter_dist.sample(sample_shape=torch.Size([config.train.batch_size]))
-        # color_jitter_logprobs = color_jitter_dist.log_prob(color_jitter_actions)
-        
-        kernel_h = images_pt.shape[2] // 10
-        kernel_w = images_pt.shape[3] // 10
-        
-        if kernel_h % 2 == 0:
-            kernel_h -= 1
-        if kernel_w % 2 == 0:
-            kernel_w -= 1
-        
-        # todo: could be made more efficient by simply replacing colorjitter in composed list
-        parameterized_transform = TwoCropsTransform(
-            transforms.Compose(
-                [
-                    # transforms.RandomResizedCrop(224, scale=(0.2, 1.)), # done in dataloader
-                    # transforms.ToPILImage(),  # following GaussianBlur expects PIL image not tensor (and torchvision GB parameterizes the kernel size)
-                    transforms.RandomApply([transforms.ColorJitter(brightness=strength_b, contrast=strength_c, saturation=strength_s, hue=strength_h)], p=0.8),
-                    transforms.RandomGrayscale(p=0.2),
-                    transforms.RandomApply([torchvision.transforms.GaussianBlur([kernel_h, kernel_w], [.1, 2.])], p=0.5),
-                    # transforms.RandomApply([GaussianBlur([.1, 2.])], p=0.5),
-                    transforms.RandomHorizontalFlip(),
-                    normalize_imagenet
-                    ]
-                )
-            )
+        color_jitter_histogram_brightness[strength_b] += 1
+        color_jitter_histogram_contrast[strength_c] += 1
+        color_jitter_histogram_saturation[strength_s] += 1
+        color_jitter_histogram_hue[strength_h] += 1
         
         if config.expt.gpu is not None:
-            images_pt = parameterized_transform(images_pt.cuda(config.expt.gpu, non_blocking=True))
+            images_pt = images_pt.cuda(config.expt.gpu, non_blocking=True)
+        
+        if config.expt.image_wise_gradients:
+            parameterized_transform_list = create_transforms(strength_b, strength_c, strength_s, strength_h, image_height=images_pt.shape[2], image_width=images_pt.shape[3])
+            images_pt = augment_per_image(parameterized_transform_list, images_pt)
+        else:
+            parameterized_transform = create_transforms(strength_b, strength_c, strength_s, strength_h, image_height=images_pt.shape[2], image_width=images_pt.shape[3])[0]
+            images_pt = parameterized_transform(images_pt)
+        
+        if config.expt.gpu is not None:
             images_pt[0] = images_pt[0].contiguous()
             images_pt[1] = images_pt[1].contiguous()
             images_ft = images_ft.cuda(config.expt.gpu, non_blocking=True)
             target_ft = target_ft.cuda(config.expt.gpu, non_blocking=True)
         
-        loss_pt, backbone_grads_pt = pretrain(model, images_pt, criterion_pt, optimizer_pt, losses_pt_meter, data_time_meter, end, alternating_mode=True, layer_wise_stats=layer_wise_stats)
+        loss_pt, backbone_grads_pt = pretrain(model, images_pt, criterion_pt, optimizer_pt, losses_pt_meter, data_time_meter, end, config=config, alternating_mode=True, layer_wise_stats=layer_wise_stats)
         
         backbone_grads_ft = None
         if not warmup:
-            loss_ft, backbone_grads_ft = finetune(model, images_ft, target_ft, criterion_ft, optimizer_ft, losses_ft_meter, top1_meter, top5_meter, alternating_mode=True, layer_wise_stats=layer_wise_stats)
+            loss_ft, backbone_grads_ft = finetune(model, images_ft, target_ft, criterion_ft, optimizer_ft, losses_ft_meter, top1_meter, top5_meter, config=config, alternating_mode=True, layer_wise_stats=layer_wise_stats)
         else:
             losses_ft_meter.update(np.inf)
             loss_ft = np.inf
@@ -492,12 +473,18 @@ def train_one_epoch(
         if not warmup:
             if layer_wise_stats:
                 calc_all_layer_wise_stats(
-                    backbone_grads_pt, backbone_grads_ft,
-                    cos_sim_ema_meter, cos_sim_std_meter,
-                    dot_prod_avg_meter, dot_prod_std_meter,
-                    eucl_dis_avg_meter, eucl_dis_std_meter,
-                    norm_pt_avg_meter, norm_pt_std_meter,
-                    norm_ft_avg_meter, norm_ft_std_meter,
+                    backbone_grads_pt=backbone_grads_pt,
+                    backbone_grads_ft=backbone_grads_ft,
+                    cos_sim_ema_meter=cos_sim_ema_meter,
+                    cos_sim_std_meter=cos_sim_std_meter,
+                    dot_prod_avg_meter=dot_prod_avg_meter,
+                    dot_prod_std_meter=dot_prod_std_meter,
+                    eucl_dis_avg_meter=eucl_dis_avg_meter,
+                    eucl_dis_std_meter=eucl_dis_std_meter,
+                    norm_pt_avg_meter=norm_pt_avg_meter,
+                    norm_pt_std_meter=norm_pt_std_meter,
+                    norm_ft_avg_meter=norm_ft_avg_meter,
+                    norm_ft_std_meter=norm_ft_std_meter,
                     warmup=False,
                     )
             else:
@@ -509,8 +496,6 @@ def train_one_epoch(
             
             optimizer_aug.zero_grad()
             reward = (cos_sim_ema_meter.val - cos_sim_ema_meter.ema)
-            # weighted_logprobs = -(color_jitter_logprob * reward)
-            # weighted_logprobs.backward()
             
             color_jitter_logprob_b = -(color_jitter_logprob_b * reward)
             color_jitter_logprob_b.backward()
@@ -524,19 +509,27 @@ def train_one_epoch(
             color_jitter_logprob_h = -(color_jitter_logprob_h * reward)
             color_jitter_logprob_h.backward()
             
-            # print(aug_w.grad.data)
             optimizer_aug.step()
-            norm_aug_grad_meter.update(torch.linalg.norm(aug_w_b.grad.data, 2))
+            norm_aug_brightness_grad_meter.update(torch.linalg.norm(aug_w_b.grad.data, 2))
+            norm_aug_contrast_grad_meter.update(torch.linalg.norm(aug_w_c.grad.data, 2))
+            norm_aug_saturation_grad_meter.update(torch.linalg.norm(aug_w_s.grad.data, 2))
+            norm_aug_hue_grad_meter.update(torch.linalg.norm(aug_w_h.grad.data, 2))
         
         else:
             if layer_wise_stats:
                 calc_all_layer_wise_stats(
-                    backbone_grads_pt, backbone_grads_ft,
-                    cos_sim_ema_meter, cos_sim_std_meter,
-                    dot_prod_avg_meter, dot_prod_std_meter,
-                    eucl_dis_avg_meter, eucl_dis_std_meter,
-                    norm_pt_avg_meter, norm_pt_std_meter,
-                    norm_ft_avg_meter, norm_ft_std_meter,
+                    backbone_grads_pt=backbone_grads_pt,
+                    backbone_grads_ft=backbone_grads_ft,
+                    cos_sim_ema_meter=cos_sim_ema_meter,
+                    cos_sim_std_meter=cos_sim_std_meter,
+                    dot_prod_avg_meter=dot_prod_avg_meter,
+                    dot_prod_std_meter=dot_prod_std_meter,
+                    eucl_dis_avg_meter=eucl_dis_avg_meter,
+                    eucl_dis_std_meter=eucl_dis_std_meter,
+                    norm_pt_avg_meter=norm_pt_avg_meter,
+                    norm_pt_std_meter=norm_pt_std_meter,
+                    norm_ft_avg_meter=norm_ft_avg_meter,
+                    norm_ft_std_meter=norm_ft_std_meter,
                     warmup=True
                     )
             else:
@@ -546,10 +539,10 @@ def train_one_epoch(
                 eucl_dis_meter.update(0.)
                 norm_pt_meter.update(torch.linalg.norm(backbone_grads_pt, 2))
                 norm_ft_meter.update(0.)
-                norm_aug_grad_meter.update(0.)
+                norm_aug_brightness_grad_meter.update(0.)
         
         if layer_wise_stats:
-            advanced_stats_meters = [cos_sim_ema_meter, cos_sim_std_meter, dot_prod_avg_meter, dot_prod_std_meter, eucl_dis_avg_meter, eucl_dis_std_meter, norm_pt_avg_meter, norm_pt_std_meter, norm_ft_avg_meter, norm_ft_std_meter]
+            advanced_stats_meters = [cos_sim_ema_meter, dot_prod_avg_meter, dot_prod_std_meter, eucl_dis_avg_meter, eucl_dis_std_meter, norm_pt_avg_meter, norm_pt_std_meter, norm_ft_avg_meter, norm_ft_std_meter, norm_aug_brightness_grad_meter]
         else:
             advanced_stats_meters = [cos_sim_ema_meter, dot_prod_meter, eucl_dis_meter, norm_pt_meter, norm_ft_meter]
         
@@ -559,33 +552,30 @@ def train_one_epoch(
         
         if i % config.expt.print_freq == 0:
             progress.display(i)
-            # print(f"Color jitter strengths counts: {color_jitter_strength_hist}")
         if config.expt.rank == 0:
             write_to_summary_writer(total_iter, loss_pt, loss_ft, data_time_meter, batch_time_meter, optimizer_pt, optimizer_ft, top1_meter, top5_meter, advanced_stats_meters, writer)
         # expensive stats
         if config.expt.rank == 0 and i % (config.expt.print_freq * 100) == 0:
-            img = hist_to_image(b_hist, "Color Jitter Strength Brightness Counts")
+            img = hist_to_image(color_jitter_histogram_brightness, "Color Jitter Strength Brightness Counts")
             writer.add_image(tag="Advanced Stats/color jitter strength brightness", img_tensor=img, global_step=total_iter)
             
-            img = hist_to_image(c_hist, "Color Jitter Strength Contrast Counts")
+            img = hist_to_image(color_jitter_histogram_contrast, "Color Jitter Strength Contrast Counts")
             writer.add_image(tag="Advanced Stats/color jitter strength contrast", img_tensor=img, global_step=total_iter)
             
-            img = hist_to_image(s_hist, "Color Jitter Strength Saturation Counts")
+            img = hist_to_image(color_jitter_histogram_saturation, "Color Jitter Strength Saturation Counts")
             writer.add_image(tag="Advanced Stats/color jitter strength saturation", img_tensor=img, global_step=total_iter)
             
-            img = hist_to_image(h_hist, "Color Jitter Strength Hue Counts")
+            img = hist_to_image(color_jitter_histogram_hue, "Color Jitter Strength Hue Counts")
             writer.add_image(tag="Advanced Stats/color jitter strength hue", img_tensor=img, global_step=total_iter)
     
     return total_iter
 
 
-def pretrain(model, images_pt, criterion_pt, optimizer_pt, losses_pt, data_time, end, alternating_mode=False, layer_wise_stats=False):
-    # backbone_grads = np.empty(sum(p.numel() for p in model.parameters()))
+def pretrain(model, images_pt, criterion_pt, optimizer_pt, losses_pt, data_time, end, config, alternating_mode=False, layer_wise_stats=False):
     if layer_wise_stats:
         backbone_grads = OrderedDict()
     else:
         backbone_grads = torch.Tensor().cuda()
-    # backbone_grads = OrderedDict()
     
     model.requires_grad_(True)
     
@@ -605,7 +595,11 @@ def pretrain(model, images_pt, criterion_pt, optimizer_pt, losses_pt, data_time,
     
     # compute gradient and do SGD step
     optimizer_pt.zero_grad()
-    loss_pt.backward()
+    if config.expt.image_wise_gradients:
+        with backpack(BatchGrad()):
+            loss_pt.backward()
+    else:
+        loss_pt.backward()
     # step does not change .grad field of the parameters.
     optimizer_pt.step()
     
@@ -615,18 +609,15 @@ def pretrain(model, images_pt, criterion_pt, optimizer_pt, losses_pt, data_time,
                 backbone_grads[key] = torch.tensor(param.grad.detach_().clone().flatten())
             else:
                 backbone_grads = torch.cat([backbone_grads, param.grad.detach_().clone().flatten()], dim=0)
-            # backbone_grads = np.concatenate((backbone_grads, param.grad.detach().clone().flatten().cpu()))
-            # backbone_grads[key] = param.grad.detach().clone().flatten().cpu()
     
     return loss_pt, backbone_grads
 
 
-def finetune(model, images_ft, target_ft, criterion_ft, optimizer_ft, losses_ft_meter, top1_meter, top5_meter, alternating_mode=False, layer_wise_stats=False):
+def finetune(model, images_ft, target_ft, criterion_ft, optimizer_ft, losses_ft_meter, top1_meter, top5_meter, config, alternating_mode=False, layer_wise_stats=False):
     if layer_wise_stats:
         backbone_grads = OrderedDict()
     else:
         backbone_grads = torch.Tensor().cuda()
-    # backbone_grads = OrderedDict()
     
     # fine-tuning
     model.eval()
@@ -644,7 +635,11 @@ def finetune(model, images_ft, target_ft, criterion_ft, optimizer_ft, losses_ft_
     # compute outputs
     output_ft = model(images_ft, finetuning=True)
     loss_ft = criterion_ft(output_ft, target_ft)
-    loss_ft.backward()
+    if config.expt.image_wise_gradients:
+        with backpack(BatchGrad()):
+            loss_ft.backward()
+    else:
+        loss_ft.backward()
     
     if alternating_mode:
         for key, param in model.module.backbone.named_parameters():
@@ -652,8 +647,6 @@ def finetune(model, images_ft, target_ft, criterion_ft, optimizer_ft, losses_ft_
                 backbone_grads[key] = torch.tensor(param.grad.detach_().clone().flatten())
             else:
                 backbone_grads = torch.cat([backbone_grads, param.grad.detach_().clone().flatten()], dim=0)
-            # backbone_grads = np.concatenate((backbone_grads, param.grad.detach().clone().flatten().cpu()))
-            # backbone_grads[key] = param.grad.detach().clone().flatten().cpu()
     
     # compute losses and measure accuracy
     acc1, acc5 = accuracy(output_ft, target_ft, topk=(1, 5))
@@ -736,7 +729,7 @@ if __name__ == '__main__':
     parser.add_argument('--expt.seed', default=123, type=int, metavar='N', help='random seed of numpy and torch')
     parser.add_argument('--expt.evaluate', action='store_true', help='evaluate model on validation set once and terminate (default: False)')
     parser.add_argument('--expt.layer_wise_stats', action='store_true', help='compute the advanced stats for each layer separately and then plot the average and deviation (default: False).')
-    parser.add_argument('--expt.image_wise_gradients', action='store_true', help='compute image wise gradients (default: False).')
+    parser.add_argument('--expt.image_wise_gradients', action='store_true', help='compute image wise gradients with backpack (default: False).')
     
     parser.add_argument('--train', default="train", type=str, metavar='N')
     parser.add_argument('--train.batch_size', default=256, type=int, metavar='N', help='in distributed setting this is the total batch size, i.e. batch size = individual bs * number of GPUs')

@@ -17,7 +17,6 @@ from torchvision.transforms import ToTensor
 
 from metassl.utils.meters import AverageMeter, ProgressMeter
 
-
 def count_parameters(parameters):
     return sum(p.numel() for p in parameters if p.requires_grad)
 
@@ -238,12 +237,18 @@ def hist_to_image(hist_dict, title=None):
 
 
 def calc_all_layer_wise_stats(
-    backbone_grads_pt, backbone_grads_ft,
-    cos_sim_ema_meter, cos_sim_std_meter,
-    dot_prod_avg_meter, dot_prod_std_meter,
-    eucl_dis_avg_meter, eucl_dis_std_meter,
-    norm_pt_avg_meter, norm_pt_std_meter,
-    norm_ft_avg_meter, norm_ft_std_meter,
+    backbone_grads_pt,
+    backbone_grads_ft,
+    cos_sim_ema_meter,
+    cos_sim_std_meter,
+    dot_prod_avg_meter,
+    dot_prod_std_meter,
+    eucl_dis_avg_meter,
+    eucl_dis_std_meter,
+    norm_pt_avg_meter,
+    norm_pt_std_meter,
+    norm_ft_avg_meter,
+    norm_ft_std_meter,
     warmup=False
     ):
     if not warmup:
@@ -370,3 +375,11 @@ def get_dist(logits=None, probs=None, dist="categorical", device=None):
             return torch.distributions.Categorical(logits=logits, probs=probs)
     else:
         raise NotImplementedError
+
+
+def get_sample_logprob(logits):
+    color_jitter_dist = get_dist(logits=logits)
+    sample = color_jitter_dist.sample()
+    logprob = color_jitter_dist.log_prob(sample)
+    
+    return sample, logprob, color_jitter_dist
