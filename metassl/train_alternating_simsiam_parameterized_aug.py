@@ -173,6 +173,9 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
     init_lr_pt = config.train.lr * config.train.batch_size / 256
     init_lr_ft = config.finetuning.lr * config.finetuning.batch_size / 256
     
+    config.train.init_lr_pt = init_lr_pt
+    config.train.init_lr_ft = init_lr_ft
+    
     if config.expt.distributed:
         # Apply SyncBN
         model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
@@ -317,13 +320,18 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
             train_sampler_pt.set_epoch(epoch)
             train_sampler_ft.set_epoch(epoch)
         
-        # train for one epoch
-        cur_lr_pt = adjust_learning_rate(optimizer_pt, init_lr_pt, epoch, config.train.epochs)
-        cur_lr_ft = adjust_learning_rate(optimizer_ft, init_lr_ft, epoch, config.finetuning.epochs)
-        print(f"current pretrain lr: {cur_lr_pt}, finetune lr: {cur_lr_ft}")
-        
         warmup = config.train.warmup > epoch
         print(f"Warmup status: {warmup}")
+
+        cur_lr_pt = adjust_learning_rate(optimizer_pt, init_lr_pt, epoch, config.train.epochs)
+        
+        if config.expt.full_lr_cycle_warmup and warmup:
+            print(f"full lr cycle: {config.expt.full_lr_cycle_warmup}")
+            print(f"warmup: {config.train.warmup}")
+            cur_lr_pt = adjust_learning_rate(optimizer_pt, init_lr_pt, epoch, total_epochs=config.train.warmup)
+            
+        cur_lr_ft = adjust_learning_rate(optimizer_ft, init_lr_ft, epoch, config.finetuning.epochs)
+        print(f"current pretrain lr: {cur_lr_pt}, finetune lr: {cur_lr_ft}")
         
         total_iter = train_one_epoch(
             train_loader_pt=train_loader_pt,
@@ -460,6 +468,9 @@ def train_one_epoch(
             images_pt[1] = images_pt[1].contiguous()
             images_ft = images_ft.cuda(config.expt.gpu, non_blocking=True)
             target_ft = target_ft.cuda(config.expt.gpu, non_blocking=True)
+        
+        if warmup:
+            adjust_learning_rate(optimizer_pt, config.train.init_lr_pt, epoch, total_epochs=config.train.warmup)
         
         loss_pt, backbone_grads_pt = pretrain(model, images_pt, criterion_pt, optimizer_pt, losses_pt_meter, data_time_meter, end, config=config, alternating_mode=True, layer_wise_stats=layer_wise_stats)
         
@@ -730,6 +741,7 @@ if __name__ == '__main__':
     parser.add_argument('--expt.evaluate', action='store_true', help='evaluate model on validation set once and terminate (default: False)')
     parser.add_argument('--expt.layer_wise_stats', action='store_true', help='compute the advanced stats for each layer separately and then plot the average and deviation (default: False).')
     parser.add_argument('--expt.image_wise_gradients', action='store_true', help='compute image wise gradients with backpack (default: False).')
+    parser.add_argument('--expt.full_lr_cycle_warmup', action='store_true', help='controls whether during warmup phase a full learning rate cycle should be used for pre-training (default: False).')
     
     parser.add_argument('--train', default="train", type=str, metavar='N')
     parser.add_argument('--train.batch_size', default=256, type=int, metavar='N', help='in distributed setting this is the total batch size, i.e. batch size = individual bs * number of GPUs')
