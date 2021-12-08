@@ -278,6 +278,7 @@ def calc_layer_wise_stats(backbone_grads_pt, backbone_grads_ft=None, metric_type
     metric_vals = []
     if backbone_grads_ft is not None:
         for (k1, v1), (k2, v2) in zip(backbone_grads_pt.items(), backbone_grads_ft.items()):
+            # todo: for each layer, assumes independence of weights and biases but should be considered as one layer
             if k1 == k2 and "bn" not in k1:
                 if metric_type == "euclidean":
                     metric_vals.append(torch.linalg.norm(v1 - v2, 2).cpu().numpy())
