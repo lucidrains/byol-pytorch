@@ -134,6 +134,9 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
     init_lr_pt = config.train.lr * config.train.batch_size / 256
     init_lr_ft = config.finetuning.lr * config.finetuning.batch_size / 256
     
+    config.train.init_lr_pt = init_lr_pt
+    config.train.init_lr_ft = init_lr_ft
+    
     if config.expt.distributed:
         # Apply SyncBN
         model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
@@ -243,19 +246,31 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
     if config.expt.rank == 0:
         writer = SummaryWriter(log_dir=os.path.join(expt_dir, "tensorboard"))
     
+    if config.expt.layer_wise_stats:
+        meter_name = "Cos. Sim. PT-FT layer-w. average"
+    else:
+        meter_name = "Cos. Sim. PT-FT"
+    
+    cos_sim_ema_meter = ExponentialMovingAverageMeter(meter_name, window=100, alpha=2, fmt=':6.4f')
+    
     for epoch in range(config.train.start_epoch, config.train.epochs):
         
         if config.expt.distributed:
             train_sampler_pt.set_epoch(epoch)
             train_sampler_ft.set_epoch(epoch)
         
-        # train for one epoch
-        cur_lr_pt = adjust_learning_rate(optimizer_pt, init_lr_pt, epoch, config.train.epochs)
-        cur_lr_ft = adjust_learning_rate(optimizer_ft, init_lr_ft, epoch, config.finetuning.epochs)
-        print(f"current pretrain lr: {cur_lr_pt}, finetune lr: {cur_lr_ft}")
-        
         warmup = config.train.warmup > epoch
         print(f"Warmup status: {warmup}")
+
+        cur_lr_pt = adjust_learning_rate(optimizer_pt, init_lr_pt, epoch, config.train.epochs)
+        
+        if config.expt.full_lr_cycle_warmup and warmup:
+            print(f"full lr cycle: {config.expt.full_lr_cycle_warmup}")
+            print(f"warmup: {config.train.warmup}")
+            cur_lr_pt = adjust_learning_rate(optimizer_pt, init_lr_pt, epoch, total_epochs=config.train.warmup)
+            
+        cur_lr_ft = adjust_learning_rate(optimizer_ft, init_lr_ft, epoch, config.finetuning.epochs)
+        print(f"current pretrain lr: {cur_lr_pt}, finetune lr: {cur_lr_ft}")
         
         total_iter = train_one_epoch(
             train_loader_pt=train_loader_pt,
@@ -270,7 +285,8 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
             config=config,
             writer=writer,
             warmup=warmup,
-            layer_wise_stats=config.expt.layer_wise_stats
+            layer_wise_stats=config.expt.layer_wise_stats,
+            cos_sim_ema_meter=cos_sim_ema_meter,
             )
         
         # evaluate on validation set
@@ -301,7 +317,6 @@ def train_one_epoch(
     layer_wise_stats=False,
     cos_sim_ema_meter=None,
     ):
-    global norm_pt_std_meter
     batch_time_meter = AverageMeter('Time', ':6.3f')
     data_time_meter = AverageMeter('Data', ':6.3f')
     losses_pt_meter = AverageMeter('Loss PT', ':.4f')
@@ -311,24 +326,28 @@ def train_one_epoch(
     
     if layer_wise_stats:
         if not cos_sim_ema_meter:
-            cos_sim_ema_meter = ExponentialMovingAverageMeter('Cos. Sim. PT-FT layer-wise average', window=100, alpha=2, fmt=':6.4f')
-        cos_sim_std_meter = AverageMeter('Cos. Sim. PT-FT layer-wise std.', ':6.4f')
-        dot_prod_avg_meter = AverageMeter('Dot Product PT-FT layer-wise average', ':6.4f')
-        dot_prod_std_meter = AverageMeter('Dot Product PT-FT layer-wise std.', ':6.4f')
-        eucl_dis_avg_meter = AverageMeter('Eucl. Dist. PT-FT layer-wise average', ':6.4f')
-        eucl_dis_std_meter = AverageMeter('Eucl. Dist. PT-FT layer-wise std.', ':6.4f')
-        norm_pt_avg_meter = AverageMeter('Norm PT layer-wise average', ':6.4f')
-        norm_pt_std_meter = AverageMeter('Norm PT layer-wise std.', ':6.4f')
-        norm_ft_avg_meter = AverageMeter('Norm FT layer-wise average', ':6.4f')
-        norm_ft_std_meter = AverageMeter('Norm FT layer-wise std.', ':6.4f')
-        meters = [batch_time_meter, losses_pt_meter, losses_ft_meter, top1_meter, cos_sim_ema_meter, cos_sim_std_meter, dot_prod_avg_meter, dot_prod_std_meter, eucl_dis_avg_meter, eucl_dis_std_meter, norm_pt_avg_meter, norm_pt_std_meter, norm_ft_avg_meter, norm_ft_std_meter]
+            cos_sim_ema_meter = ExponentialMovingAverageMeter('Cos. Sim. PT-FT layer-w.', window=100, alpha=2, fmt=':6.4f')
+        cos_sim_std_meter = AverageMeter('Cos. Sim. PT-FT layer-w. std.', ':6.4f')
+        
+        dot_prod_avg_meter = AverageMeter('Dot Product PT-FT layer-w. average', ':6.4f')
+        dot_prod_std_meter = AverageMeter('Dot Product PT-FT layer-w. std.', ':6.4f')
+        eucl_dis_avg_meter = AverageMeter('Eucl. Dist. PT-FT layer-w. average', ':6.4f')
+        eucl_dis_std_meter = AverageMeter('Eucl. Dist. PT-FT layer-w. std.', ':6.4f')
+        norm_pt_avg_meter = AverageMeter('Norm PT layer-w. average', ':6.4f')
+        norm_pt_std_meter = AverageMeter('Norm PT layer-w. std.', ':6.4f')
+        norm_ft_avg_meter = AverageMeter('Norm FT layer-w. average', ':6.4f')
+        norm_ft_std_meter = AverageMeter('Norm FT layer-w. std.', ':6.4f')
+        
+        meters = [batch_time_meter, losses_pt_meter, losses_ft_meter, top1_meter, cos_sim_ema_meter, dot_prod_avg_meter, eucl_dis_avg_meter, norm_pt_avg_meter, norm_ft_avg_meter]
     else:
         if not cos_sim_ema_meter:
             cos_sim_ema_meter = ExponentialMovingAverageMeter('Cos. Sim. PT-FT', window=100, alpha=2, fmt=':6.4f')
+        
         dot_prod_meter = AverageMeter('Dot Product PT-FT', ':6.4f')
         eucl_dis_meter = AverageMeter('Eucl. Dist. PT-FT', ':6.4f')
         norm_pt_meter = AverageMeter('Norm PT', ':6.4f')
         norm_ft_meter = AverageMeter('Norm FT', ':6.4f')
+        
         meters = [batch_time_meter, losses_pt_meter, losses_ft_meter, top1_meter, cos_sim_ema_meter, dot_prod_meter, eucl_dis_meter, norm_pt_meter, norm_ft_meter]
     
     progress = ProgressMeter(
@@ -350,7 +369,7 @@ def train_one_epoch(
             target_ft = target_ft.cuda(config.expt.gpu, non_blocking=True)
         
         loss_pt, backbone_grads_pt = pretrain(model, images_pt, criterion_pt, optimizer_pt, losses_pt_meter, data_time_meter, end, alternating_mode=True, layer_wise_stats=layer_wise_stats)
-
+        
         backbone_grads_ft = None
         if not warmup:
             loss_ft, backbone_grads_ft = finetune(model, images_ft, target_ft, criterion_ft, optimizer_ft, losses_ft_meter, top1_meter, top5_meter, alternating_mode=True, layer_wise_stats=layer_wise_stats)
@@ -361,12 +380,18 @@ def train_one_epoch(
         if not warmup:
             if layer_wise_stats:
                 calc_all_layer_wise_stats(
-                    backbone_grads_pt, backbone_grads_ft,
-                    cos_sim_ema_meter, cos_sim_std_meter,
-                    dot_prod_avg_meter, dot_prod_std_meter,
-                    eucl_dis_avg_meter, eucl_dis_std_meter,
-                    norm_pt_avg_meter, norm_pt_std_meter,
-                    norm_ft_avg_meter, norm_ft_std_meter,
+                    backbone_grads_pt=backbone_grads_pt,
+                    backbone_grads_ft=backbone_grads_ft,
+                    cos_sim_ema_meter=cos_sim_ema_meter,
+                    cos_sim_std_meter=cos_sim_std_meter,
+                    dot_prod_avg_meter=dot_prod_avg_meter,
+                    dot_prod_std_meter=dot_prod_std_meter,
+                    eucl_dis_avg_meter=eucl_dis_avg_meter,
+                    eucl_dis_std_meter=eucl_dis_std_meter,
+                    norm_pt_avg_meter=norm_pt_avg_meter,
+                    norm_pt_std_meter=norm_pt_std_meter,
+                    norm_ft_avg_meter=norm_ft_avg_meter,
+                    norm_ft_std_meter=norm_ft_std_meter,
                     warmup=False,
                     )
             
@@ -380,15 +405,22 @@ def train_one_epoch(
             # no resetting needed, as meters are freshly initialized at each epoch
             if layer_wise_stats:
                 calc_all_layer_wise_stats(
-                    backbone_grads_pt, backbone_grads_ft,
-                    cos_sim_ema_meter, cos_sim_std_meter,
-                    dot_prod_avg_meter, dot_prod_std_meter,
-                    eucl_dis_avg_meter, eucl_dis_std_meter,
-                    norm_pt_avg_meter, norm_pt_std_meter,
-                    norm_ft_avg_meter, norm_ft_std_meter,
+                    backbone_grads_pt=backbone_grads_pt,
+                    backbone_grads_ft=backbone_grads_ft,
+                    cos_sim_ema_meter=cos_sim_ema_meter,
+                    cos_sim_std_meter=cos_sim_std_meter,
+                    dot_prod_avg_meter=dot_prod_avg_meter,
+                    dot_prod_std_meter=dot_prod_std_meter,
+                    eucl_dis_avg_meter=eucl_dis_avg_meter,
+                    eucl_dis_std_meter=eucl_dis_std_meter,
+                    norm_pt_avg_meter=norm_pt_avg_meter,
+                    norm_pt_std_meter=norm_pt_std_meter,
+                    norm_ft_avg_meter=norm_ft_avg_meter,
+                    norm_ft_std_meter=norm_ft_std_meter,
                     warmup=True
                     )
             else:
+                # no resetting needed, as meters are freshly initialized at each epoch
                 cos_sim_ema_meter.update(0.)
                 dot_prod_meter.update(0.)
                 eucl_dis_meter.update(0.)
@@ -396,7 +428,7 @@ def train_one_epoch(
                 norm_ft_meter.update(0.)
         
         if layer_wise_stats:
-            advanced_stats_meters = [cos_sim_ema_meter, cos_sim_std_meter, dot_prod_avg_meter, dot_prod_std_meter, eucl_dis_avg_meter, eucl_dis_std_meter, norm_pt_avg_meter, norm_pt_std_meter, norm_ft_avg_meter, norm_ft_std_meter]
+            advanced_stats_meters = [cos_sim_ema_meter, dot_prod_avg_meter, dot_prod_std_meter, eucl_dis_avg_meter, eucl_dis_std_meter, norm_pt_avg_meter, norm_pt_std_meter, norm_ft_avg_meter, norm_ft_std_meter, norm_aug_brightness_grad_meter]
         else:
             advanced_stats_meters = [cos_sim_ema_meter, dot_prod_meter, eucl_dis_meter, norm_pt_meter, norm_ft_meter]
         
@@ -412,13 +444,11 @@ def train_one_epoch(
     return total_iter
 
 
-def pretrain(model, images_pt, criterion_pt, optimizer_pt, losses_pt_meter, data_time_meter, end, alternating_mode=False, layer_wise_stats=False):
-    # backbone_grads = np.empty(sum(p.numel() for p in model.parameters()))
+def pretrain(model, images_pt, criterion_pt, optimizer_pt, losses_pt, data_time, end, config, alternating_mode=False, layer_wise_stats=False):
     if layer_wise_stats:
         backbone_grads = OrderedDict()
     else:
         backbone_grads = torch.Tensor().cuda()
-    # backbone_grads = OrderedDict()
     
     model.requires_grad_(True)
     
@@ -426,7 +456,7 @@ def pretrain(model, images_pt, criterion_pt, optimizer_pt, losses_pt_meter, data
     model.train()
     
     # measure data loading time
-    data_time_meter.update(time.time() - end)
+    data_time.update(time.time() - end)
     
     # pre-training
     # compute outputs
@@ -434,7 +464,7 @@ def pretrain(model, images_pt, criterion_pt, optimizer_pt, losses_pt_meter, data
     
     # compute losses
     loss_pt = -(criterion_pt(p1, z2).mean() + criterion_pt(p2, z1).mean()) * 0.5
-    losses_pt_meter.update(loss_pt.item(), images_pt[0].size(0))
+    losses_pt.update(loss_pt.item(), images_pt[0].size(0))
     
     # compute gradient and do SGD step
     optimizer_pt.zero_grad()
@@ -445,21 +475,18 @@ def pretrain(model, images_pt, criterion_pt, optimizer_pt, losses_pt_meter, data
     if alternating_mode:
         for key, param in model.module.backbone.named_parameters():
             if layer_wise_stats:
-                backbone_grads[key] = torch.tensor(param.grad.detach().clone().flatten())
+                backbone_grads[key] = torch.tensor(param.grad.detach_().clone().flatten())
             else:
-                backbone_grads = torch.cat([backbone_grads, param.grad.detach().clone().flatten()], dim=0)
-            # backbone_grads = np.concatenate((backbone_grads, param.grad.detach().clone().flatten().cpu()))
-            # backbone_grads[key] = param.grad.detach().clone().flatten().cpu()
+                backbone_grads = torch.cat([backbone_grads, param.grad.detach_().clone().flatten()], dim=0)
     
     return loss_pt, backbone_grads
 
 
-def finetune(model, images_ft, target_ft, criterion_ft, optimizer_ft, losses_ft_meter, top1_meter, top5_meter, alternating_mode=False, layer_wise_stats=False):
+def finetune(model, images_ft, target_ft, criterion_ft, optimizer_ft, losses_ft_meter, top1_meter, top5_meter, config, alternating_mode=False, layer_wise_stats=False):
     if layer_wise_stats:
         backbone_grads = OrderedDict()
     else:
         backbone_grads = torch.Tensor().cuda()
-    # backbone_grads = OrderedDict()
     
     # fine-tuning
     model.eval()
@@ -482,11 +509,9 @@ def finetune(model, images_ft, target_ft, criterion_ft, optimizer_ft, losses_ft_
     if alternating_mode:
         for key, param in model.module.backbone.named_parameters():
             if layer_wise_stats:
-                backbone_grads[key] = torch.tensor(param.grad.detach().clone().flatten())
+                backbone_grads[key] = torch.tensor(param.grad.detach_().clone().flatten())
             else:
-                backbone_grads = torch.cat([backbone_grads, param.grad.detach().clone().flatten()], dim=0)
-            # backbone_grads = np.concatenate((backbone_grads, param.grad.detach().clone().flatten().cpu()))
-            # backbone_grads[key] = param.grad.detach().clone().flatten().cpu()
+                backbone_grads = torch.cat([backbone_grads, param.grad.detach_().clone().flatten()], dim=0)
     
     # compute losses and measure accuracy
     acc1, acc5 = accuracy(output_ft, target_ft, topk=(1, 5))
@@ -569,6 +594,7 @@ if __name__ == '__main__':
     parser.add_argument('--expt.seed', default=123, type=int, metavar='N', help='random seed of numpy and torch')
     parser.add_argument('--expt.evaluate', action='store_true', help='evaluate model on validation set once and terminate (default: False)')
     parser.add_argument('--expt.layer_wise_stats', action='store_true', help='compute the advanced stats for each layer separately and then plot the average and deviation (default: False).')
+    parser.add_argument('--expt.full_lr_cycle_warmup', action='store_true', help='controls whether during warmup phase a full learning rate cycle should be used for pre-training (default: False).')
     
     parser.add_argument('--train', default="train", type=str, metavar='N')
     parser.add_argument('--train.batch_size', default=256, type=int, metavar='N', help='in distributed setting this is the total batch size, i.e. batch size = individual bs * number of GPUs')
