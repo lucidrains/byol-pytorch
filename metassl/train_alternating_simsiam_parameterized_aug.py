@@ -674,7 +674,7 @@ def finetune(model, images_ft, target_ft, criterion_ft, optimizer_ft, losses_ft_
 def adjust_learning_rate(optimizer, init_lr, epoch, total_epochs, warmup=False):
     """Decay the learning rate based on schedule; during warmup, increment the learning rate linearly (not used for fixed lr)"""
     if warmup:
-        cur_lr = init_lr * (float(epoch / total_epochs))
+        cur_lr = init_lr * max(1., (float((epoch + 1) / total_epochs)))
     else:
         cur_lr = init_lr * 0.5 * (1. + math.cos(math.pi * epoch / total_epochs))
         
