@@ -261,13 +261,12 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
         
         warmup = config.train.warmup > epoch
         print(f"Warmup status: {warmup}")
-
-        cur_lr_pt = adjust_learning_rate(optimizer_pt, init_lr_pt, epoch, config.train.epochs)
         
-        if config.expt.full_lr_cycle_warmup and warmup:
-            print(f"full lr cycle: {config.expt.full_lr_cycle_warmup}")
-            print(f"warmup: {config.train.warmup}")
-            cur_lr_pt = adjust_learning_rate(optimizer_pt, init_lr_pt, epoch, total_epochs=config.train.warmup)
+        if warmup:
+            cur_lr_pt = adjust_learning_rate(optimizer_pt, init_lr_pt, epoch, total_epochs=config.train.warmup, warmup=True)
+            print(f"current warmup lr: {cur_lr_pt}")
+        else:
+            cur_lr_pt = adjust_learning_rate(optimizer_pt, init_lr_pt, epoch, config.train.epochs)
             
         cur_lr_ft = adjust_learning_rate(optimizer_ft, init_lr_ft, epoch, config.finetuning.epochs)
         print(f"current pretrain lr: {cur_lr_pt}, finetune lr: {cur_lr_ft}")
@@ -529,9 +528,13 @@ def finetune(model, images_ft, target_ft, criterion_ft, optimizer_ft, losses_ft_
     return loss_ft, backbone_grads
 
 
-def adjust_learning_rate(optimizer, init_lr, epoch, total_epochs):
-    """Decay the learning rate based on schedule"""
-    cur_lr = init_lr * 0.5 * (1. + math.cos(math.pi * epoch / total_epochs))
+def adjust_learning_rate(optimizer, init_lr, epoch, total_epochs, warmup=False):
+    """Decay the learning rate based on schedule; during warmup, increment the learning rate linearly (not used for fixed lr)"""
+    if warmup:
+        cur_lr = init_lr * (float(epoch / total_epochs))
+    else:
+        cur_lr = init_lr * 0.5 * (1. + math.cos(math.pi * epoch / total_epochs))
+    
     for param_group in optimizer.param_groups:
         if 'fix_lr' in param_group and param_group['fix_lr']:
             param_group['lr'] = init_lr
@@ -594,7 +597,6 @@ if __name__ == '__main__':
     parser.add_argument('--expt.seed', default=123, type=int, metavar='N', help='random seed of numpy and torch')
     parser.add_argument('--expt.evaluate', action='store_true', help='evaluate model on validation set once and terminate (default: False)')
     parser.add_argument('--expt.layer_wise_stats', action='store_true', help='compute the advanced stats for each layer separately and then plot the average and deviation (default: False).')
-    parser.add_argument('--expt.full_lr_cycle_warmup', action='store_true', help='controls whether during warmup phase a full learning rate cycle should be used for pre-training (default: False).')
     
     parser.add_argument('--train', default="train", type=str, metavar='N')
     parser.add_argument('--train.batch_size', default=256, type=int, metavar='N', help='in distributed setting this is the total batch size, i.e. batch size = individual bs * number of GPUs')
@@ -602,7 +604,7 @@ if __name__ == '__main__':
     parser.add_argument('--train.start_epoch', default=0, type=int, metavar='N', help='start training at epoch n')
     parser.add_argument('--train.optimizer', type=str, default='sgd', help='optimizer type, options: sgd')
     parser.add_argument('--train.schedule', type=str, default='cosine', help='learning rate schedule, not implemented')
-    parser.add_argument('--train.warmup', default=0, type=int, metavar='N', help='denotes the number of epochs that we only pre-train without finetuning afterwards; warmup is turned off when set to 0')
+    parser.add_argument('--train.warmup', default=0, type=int, metavar='N', help='denotes the number of epochs that we only pre-train without finetuning afterwards; warmup is turned off when set to 0; we use a linear incremental schedule during warmup')
     parser.add_argument('--train.weight_decay', default=0.0001, type=float, metavar='N')
     parser.add_argument('--train.momentum', default=0.9, type=float, metavar='N', help='SGD momentum')
     parser.add_argument('--train.lr', default=0.05, type=float, metavar='N', help='pre-training learning rate')
