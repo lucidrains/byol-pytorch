@@ -469,9 +469,6 @@ def train_one_epoch(
             images_ft = images_ft.cuda(config.expt.gpu, non_blocking=True)
             target_ft = target_ft.cuda(config.expt.gpu, non_blocking=True)
         
-        if warmup:
-            adjust_learning_rate(optimizer_pt, config.train.init_lr_pt, epoch, total_epochs=config.train.warmup)
-        
         loss_pt, backbone_grads_pt = pretrain(model, images_pt, criterion_pt, optimizer_pt, losses_pt_meter, data_time_meter, end, config=config, alternating_mode=True, layer_wise_stats=layer_wise_stats)
         
         backbone_grads_ft = None
