@@ -4,7 +4,6 @@
 # code taken from https://github.com/facebookresearch/simsiam
 import argparse
 import builtins
-import math
 import os
 import pathlib
 import random
@@ -29,7 +28,7 @@ from jsonargparse import ArgumentParser
 from torch.nn import functional as F
 from torch.utils.tensorboard import SummaryWriter
 
-from utils.torch_utils import get_newest_model, check_and_save_checkpoint, deactivate_bn, calc_all_layer_wise_stats, validate, accuracy
+from utils.torch_utils import get_newest_model, check_and_save_checkpoint, deactivate_bn, calc_all_layer_wise_stats, validate, accuracy, adjust_learning_rate
 
 warnings.filterwarnings("ignore", category=UserWarning)
 
@@ -263,11 +262,11 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
         print(f"Warmup status: {warmup}")
         
         if warmup:
-            cur_lr_pt = adjust_learning_rate(optimizer_pt, init_lr_pt, epoch, total_epochs=config.train.warmup, warmup=True)
+            cur_lr_pt = adjust_learning_rate(optimizer_pt, init_lr_pt, epoch, total_epochs=config.train.warmup, warmup=True, multiplier=config.train.warmup_multiplier)
             print(f"current warmup lr: {cur_lr_pt}")
         else:
             cur_lr_pt = adjust_learning_rate(optimizer_pt, init_lr_pt, epoch, config.train.epochs)
-            
+        
         cur_lr_ft = adjust_learning_rate(optimizer_ft, init_lr_ft, epoch, config.finetuning.epochs)
         print(f"current pretrain lr: {cur_lr_pt}, finetune lr: {cur_lr_ft}")
         
@@ -528,22 +527,6 @@ def finetune(model, images_ft, target_ft, criterion_ft, optimizer_ft, losses_ft_
     return loss_ft, backbone_grads
 
 
-def adjust_learning_rate(optimizer, init_lr, epoch, total_epochs, warmup=False):
-    """Decay the learning rate based on schedule; during warmup, increment the learning rate linearly (not used for fixed lr)"""
-    if warmup:
-        cur_lr = init_lr * min(1., (float((epoch + 1) / total_epochs)))
-    else:
-        cur_lr = init_lr * 0.5 * (1. + math.cos(math.pi * epoch / total_epochs))
-    
-    for param_group in optimizer.param_groups:
-        if 'fix_lr' in param_group and param_group['fix_lr']:
-            param_group['lr'] = init_lr
-            return init_lr
-        else:
-            param_group['lr'] = cur_lr
-            return cur_lr
-
-
 def write_to_summary_writer(total_iter, loss_pt, loss_ft, data_time, batch_time, optimizer_pt, optimizer_ft, top1, top5, advanced_stats_meters, writer):
     writer.add_scalar('Loss/pre-training', loss_pt.item(), total_iter)
     if isinstance(loss_ft, float):
@@ -605,6 +588,7 @@ if __name__ == '__main__':
     parser.add_argument('--train.optimizer', type=str, default='sgd', help='optimizer type, options: sgd')
     parser.add_argument('--train.schedule', type=str, default='cosine', help='learning rate schedule, not implemented')
     parser.add_argument('--train.warmup', default=0, type=int, metavar='N', help='denotes the number of epochs that we only pre-train without finetuning afterwards; warmup is turned off when set to 0; we use a linear incremental schedule during warmup')
+    parser.add_argument('--train.warmup_multiplier', default=2., type=float, metavar='N', help='A factor that is multiplied with the pretraining lr used in the linear incremental learning rate scheduler during warmup. The final lr is multiplier * pre-training lr')
     parser.add_argument('--train.weight_decay', default=0.0001, type=float, metavar='N')
     parser.add_argument('--train.momentum', default=0.9, type=float, metavar='N', help='SGD momentum')
     parser.add_argument('--train.lr', default=0.05, type=float, metavar='N', help='pre-training learning rate')
