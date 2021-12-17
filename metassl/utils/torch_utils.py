@@ -17,6 +17,7 @@ from torchvision.transforms import ToTensor
 
 from metassl.utils.meters import AverageMeter, ProgressMeter
 
+
 def count_parameters(parameters):
     return sum(p.numel() for p in parameters if p.requires_grad)
 
@@ -227,6 +228,21 @@ def hist_to_image(hist_dict, title=None):
     plt.bar(hist_dict.keys(), hist_dict.values(), width=0.05)
     if title:
         plt.title(title)
+    buf = io.BytesIO()
+    plt.savefig(buf, format='jpeg')
+    buf.seek(0)
+    image = PIL.Image.open(buf)
+    image = ToTensor()(image)
+    plt.close()
+    return image
+
+
+def tensor_to_image(tensor, title=None):
+    plt.figure()
+    plt.imshow(tensor)
+    if title:
+        plt.title(title)
+    
     buf = io.BytesIO()
     plt.savefig(buf, format='jpeg')
     buf.seek(0)

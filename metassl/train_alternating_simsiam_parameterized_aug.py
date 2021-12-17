@@ -31,7 +31,15 @@ from jsonargparse import ArgumentParser
 from torch.nn import functional as F
 from torch.utils.tensorboard import SummaryWriter
 
-from utils.torch_utils import hist_to_image, get_newest_model, check_and_save_checkpoint, deactivate_bn, calc_all_layer_wise_stats, validate, accuracy, get_sample_logprob
+from utils.torch_utils import (hist_to_image,
+                               tensor_to_image,
+                               get_newest_model,
+                               check_and_save_checkpoint,
+                               deactivate_bn,
+                               calc_all_layer_wise_stats,
+                               validate,
+                               accuracy,
+                               get_sample_logprob)
 
 
 warnings.filterwarnings("ignore", category=UserWarning)
@@ -452,6 +460,10 @@ def train_one_epoch(
         color_jitter_histogram_saturation[strength_s] += 1
         color_jitter_histogram_hue[strength_h] += 1
         
+        if config.expt.rank == 0 and i % (config.expt.print_freq * 100) == 0:
+            rand_int = torch.randint(high=images_pt.shape[0], size=(1,))
+            untransformed_image = torch.permute(images_pt[rand_int].squeeze(), (1, 2, 0)).cpu()
+            
         if config.expt.gpu is not None:
             images_pt = images_pt.cuda(config.expt.gpu, non_blocking=True)
         
@@ -467,6 +479,11 @@ def train_one_epoch(
             images_pt[1] = images_pt[1].contiguous()
             images_ft = images_ft.cuda(config.expt.gpu, non_blocking=True)
             target_ft = target_ft.cuda(config.expt.gpu, non_blocking=True)
+
+        if config.expt.rank == 0 and i % (config.expt.print_freq * 100) == 0:
+            img0 = torch.permute(images_pt[0][rand_int].squeeze(), (1, 2, 0)).cpu()
+            img1 = torch.permute(images_pt[1][rand_int].squeeze(), (1, 2, 0)).cpu()
+            images_pt_to_plot = [untransformed_image, img0, img1]
         
         loss_pt, backbone_grads_pt = pretrain(model, images_pt, criterion_pt, optimizer_pt, losses_pt_meter, data_time_meter, end, config=config, alternating_mode=True, layer_wise_stats=layer_wise_stats)
         
@@ -574,6 +591,15 @@ def train_one_epoch(
             
             img = hist_to_image(color_jitter_histogram_hue, "Color Jitter Strength Hue Counts")
             writer.add_image(tag="Advanced Stats/color jitter strength hue", img_tensor=img, global_step=total_iter)
+
+            img = tensor_to_image(images_pt_to_plot[0], "Randomly sampled untransformed image")
+            writer.add_image(tag="Advanced Stats/sampled untransformed image 1", img_tensor=img, global_step=total_iter)
+            
+            img = tensor_to_image(images_pt_to_plot[1], "Randomly sampled transformed image 1")
+            writer.add_image(tag="Advanced Stats/sampled transformed image 1", img_tensor=img, global_step=total_iter)
+
+            img = tensor_to_image(images_pt_to_plot[2], "Randomly sampled transformed image 2")
+            writer.add_image(tag="Advanced Stats/sampled transformed image 2", img_tensor=img, global_step=total_iter)
     
     return total_iter
 
@@ -674,7 +700,7 @@ def finetune(model, images_ft, target_ft, criterion_ft, optimizer_ft, losses_ft_
 def adjust_learning_rate(optimizer, init_lr, epoch, total_epochs, warmup=False):
     """Decay the learning rate based on schedule; during warmup, increment the learning rate linearly (not used for fixed lr)"""
     if warmup:
-        cur_lr = init_lr * (float(epoch / total_epochs))
+        cur_lr = init_lr * min(1., (float((epoch + 1) / total_epochs)))
     else:
         cur_lr = init_lr * 0.5 * (1. + math.cos(math.pi * epoch / total_epochs))
         
@@ -726,7 +752,7 @@ if __name__ == '__main__':
     parser.add_argument('--expt.expt_mode', default='ImageNet', choices=["ImageNet", "CIFAR10"], help='Define which dataset to use to select the correct yaml file.')
     parser.add_argument('--expt.save_model', action='store_false', help='save the model to disc or not (default: True)')
     parser.add_argument('--expt.save_model_frequency', default=1, type=int, metavar='N', help='save model frequency in # of epochs')
-    parser.add_argument('--expt.ssl_model_checkpoint_path', type=str, help='ppath to the pre-trained model, resumes training if model with same config exists')
+    parser.add_argument('--expt.ssl_model_checkpoint_path', type=str, help='path to the pre-trained model, resumes training if model with same config exists')
     parser.add_argument('--expt.target_model_checkpoint_path', type=str, help='path to the downstream task model, resumes training if model with same config exists')
     parser.add_argument('--expt.print_freq', default=10, type=int, metavar='N')
     parser.add_argument('--expt.gpu', default=None, type=int, metavar='N', help='GPU ID to train on (if not distributed)')
