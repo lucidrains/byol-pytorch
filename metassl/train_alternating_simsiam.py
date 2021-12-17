@@ -367,11 +367,11 @@ def train_one_epoch(
             images_ft = images_ft.cuda(config.expt.gpu, non_blocking=True)
             target_ft = target_ft.cuda(config.expt.gpu, non_blocking=True)
         
-        loss_pt, backbone_grads_pt = pretrain(model, images_pt, criterion_pt, optimizer_pt, losses_pt_meter, data_time_meter, end, alternating_mode=True, layer_wise_stats=layer_wise_stats)
+        loss_pt, backbone_grads_pt = pretrain(model, images_pt, criterion_pt, optimizer_pt, losses_pt_meter, data_time_meter, end, config=config, alternating_mode=True, layer_wise_stats=layer_wise_stats)
         
         backbone_grads_ft = None
         if not warmup:
-            loss_ft, backbone_grads_ft = finetune(model, images_ft, target_ft, criterion_ft, optimizer_ft, losses_ft_meter, top1_meter, top5_meter, alternating_mode=True, layer_wise_stats=layer_wise_stats)
+            loss_ft, backbone_grads_ft = finetune(model, images_ft, target_ft, criterion_ft, optimizer_ft, losses_ft_meter, top1_meter, top5_meter, config=config, alternating_mode=True, layer_wise_stats=layer_wise_stats)
         else:
             losses_ft_meter.update(np.inf)
             loss_ft = np.inf
@@ -531,7 +531,7 @@ def finetune(model, images_ft, target_ft, criterion_ft, optimizer_ft, losses_ft_
 def adjust_learning_rate(optimizer, init_lr, epoch, total_epochs, warmup=False):
     """Decay the learning rate based on schedule; during warmup, increment the learning rate linearly (not used for fixed lr)"""
     if warmup:
-        cur_lr = init_lr * (float(epoch / total_epochs))
+        cur_lr = init_lr * min(1., (float((epoch + 1) / total_epochs)))
     else:
         cur_lr = init_lr * 0.5 * (1. + math.cos(math.pi * epoch / total_epochs))
     
@@ -583,7 +583,7 @@ if __name__ == '__main__':
     parser.add_argument('--expt.expt_mode', default='ImageNet', choices=["ImageNet", "CIFAR10"], help='Define which dataset to use to select the correct yaml file.')
     parser.add_argument('--expt.save_model', action='store_false', help='save the model to disc or not (default: True)')
     parser.add_argument('--expt.save_model_frequency', default=1, type=int, metavar='N', help='save model frequency in # of epochs')
-    parser.add_argument('--expt.ssl_model_checkpoint_path', type=str, help='ppath to the pre-trained model, resumes training if model with same config exists')
+    parser.add_argument('--expt.ssl_model_checkpoint_path', type=str, help='path to the pre-trained model, resumes training if model with same config exists')
     parser.add_argument('--expt.target_model_checkpoint_path', type=str, help='path to the downstream task model, resumes training if model with same config exists')
     parser.add_argument('--expt.print_freq', default=10, type=int, metavar='N')
     parser.add_argument('--expt.gpu', default=None, type=int, metavar='N', help='GPU ID to train on (if not distributed)')
