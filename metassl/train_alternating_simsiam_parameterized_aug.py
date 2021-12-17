@@ -72,9 +72,9 @@ model_names = sorted(
     )
 
 # augmentation strengths
-color_jitter_strengths_brightness = [0.1, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6]
-color_jitter_strengths_contrast = [0.1, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6]
-color_jitter_strengths_saturation = [0.1, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6]
+color_jitter_strengths_brightness = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2]
+color_jitter_strengths_contrast = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2]
+color_jitter_strengths_saturation = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2]
 color_jitter_strengths_hue = [0.0, 0.1, 0.2, 0.3, 0.4]
 
 # histograms
@@ -464,6 +464,7 @@ def train_one_epoch(
         
         if config.expt.rank == 0 and i % (config.expt.print_freq * 100) == 0:
             rand_int = torch.randint(high=images_pt.shape[0], size=(1,))
+            # permute from CHW to HWC for pyplot
             untransformed_image = torch.permute(images_pt[rand_int].squeeze(), (1, 2, 0)).cpu()
         
         if config.expt.gpu is not None:
@@ -483,10 +484,11 @@ def train_one_epoch(
             target_ft = target_ft.cuda(config.expt.gpu, non_blocking=True)
         
         if config.expt.rank == 0 and i % (config.expt.print_freq * 100) == 0:
+            # permute from CHW to HWC for pyplot
             img0 = torch.permute(images_pt[0][rand_int].squeeze(), (1, 2, 0)).cpu()
             img1 = torch.permute(images_pt[1][rand_int].squeeze(), (1, 2, 0)).cpu()
             title = f"b: {strength_b}, c: {strength_c}, s: {strength_s}, h: {strength_h}"
-            images_pt_to_plot = [untransformed_image, img0, img1, title]
+            image_data_to_plot = [untransformed_image, img0, img1, title]
         
         loss_pt, backbone_grads_pt = pretrain(model, images_pt, criterion_pt, optimizer_pt, losses_pt_meter, data_time_meter, end, config=config, alternating_mode=True, layer_wise_stats=layer_wise_stats)
         
@@ -595,13 +597,13 @@ def train_one_epoch(
             img = hist_to_image(color_jitter_histogram_hue, "Color Jitter Strength Hue Counts")
             writer.add_image(tag="Advanced Stats/color jitter strength hue", img_tensor=img, global_step=total_iter)
             
-            img = tensor_to_image(images_pt_to_plot[0], f"Randomly sampled untransformed image")
+            img = tensor_to_image(image_data_to_plot[0], f"Randomly sampled untransformed image")
             writer.add_image(tag="Advanced Stats/sampled untransformed image 1", img_tensor=img, global_step=total_iter)
             
-            img = tensor_to_image(images_pt_to_plot[1], f"Randomly sampled transformed image 1\n {images_pt_to_plot[3]}")
+            img = tensor_to_image(image_data_to_plot[1], f"Randomly sampled transformed image 1\n {image_data_to_plot[3]}")
             writer.add_image(tag="Advanced Stats/sampled transformed image 1", img_tensor=img, global_step=total_iter)
             
-            img = tensor_to_image(images_pt_to_plot[2], f"Randomly sampled transformed image 2\n {images_pt_to_plot[3]}")
+            img = tensor_to_image(image_data_to_plot[2], f"Randomly sampled transformed image 2\n {image_data_to_plot[3]}")
             writer.add_image(tag="Advanced Stats/sampled transformed image 2", img_tensor=img, global_step=total_iter)
     
     return total_iter
