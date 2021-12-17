@@ -41,7 +41,7 @@ from utils.torch_utils import (
     validate,
     accuracy,
     get_sample_logprob,
-    adjust_learning_rate
+    adjust_learning_rate,
     )
 
 warnings.filterwarnings("ignore", category=UserWarning)
@@ -276,6 +276,8 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
     nn.init.uniform(aug_w_s, -bound, bound)
     nn.init.uniform(aug_w_h, -bound_h, bound_h)
     
+    aug_param_dict = {"aug_w_b": aug_w_b, "aug_w_c": aug_w_c, "aug_w_s": aug_w_s, "aug_w_h": aug_w_h}
+    
     # color_jitter_dist = torch.distributions.Categorical(probs=torch.softmax(aug_w, dim=0))
     optimizer_aug = torch.optim.Adam([aug_w_b, aug_w_c, aug_w_s, aug_w_h], 0.001)
     
@@ -351,10 +353,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
             optimizer_pt=optimizer_pt,
             optimizer_ft=optimizer_ft,
             optimizer_aug=optimizer_aug,
-            aug_w_b=aug_w_b,
-            aug_w_c=aug_w_c,
-            aug_w_s=aug_w_s,
-            aug_w_h=aug_w_h,
+            aug_param_dict=aug_param_dict,
             epoch=epoch,
             total_iter=total_iter,
             config=config,
@@ -385,10 +384,7 @@ def train_one_epoch(
     optimizer_pt,
     optimizer_ft,
     optimizer_aug,
-    aug_w_b,
-    aug_w_c,
-    aug_w_s,
-    aug_w_h,
+    aug_param_dict,
     epoch,
     total_iter,
     config,
@@ -408,6 +404,8 @@ def train_one_epoch(
     norm_aug_contrast_grad_meter = AverageMeter('Norm Aug. contrast gradient', ':6.4f')
     norm_aug_saturation_grad_meter = AverageMeter('Norm Aug. saturation gradient', ':6.4f')
     norm_aug_hue_grad_meter = AverageMeter('Norm Aug. hue gradient', ':6.4f')
+
+    aug_w_b, aug_w_c, aug_w_s, aug_w_h = aug_param_dict["aug_w_b"], aug_param_dict["aug_w_c"], aug_param_dict["aug_w_s"], aug_param_dict["aug_w_h"]
     
     if layer_wise_stats:
         if not cos_sim_ema_meter:
@@ -488,7 +486,12 @@ def train_one_epoch(
             img0 = torch.permute(images_pt[0][rand_int].squeeze(), (1, 2, 0)).cpu()
             img1 = torch.permute(images_pt[1][rand_int].squeeze(), (1, 2, 0)).cpu()
             title = f"b: {strength_b}, c: {strength_c}, s: {strength_s}, h: {strength_h}"
-            image_data_to_plot = [untransformed_image, img0, img1, title]
+            image_data_to_plot = {
+                "untransformed_image": untransformed_image,
+                "img0":                img0,
+                "img1":                img1,
+                "title":               title,
+                }
         
         loss_pt, backbone_grads_pt = pretrain(model, images_pt, criterion_pt, optimizer_pt, losses_pt_meter, data_time_meter, end, config=config, alternating_mode=True, layer_wise_stats=layer_wise_stats)
         
@@ -597,13 +600,15 @@ def train_one_epoch(
             img = hist_to_image(color_jitter_histogram_hue, "Color Jitter Strength Hue Counts")
             writer.add_image(tag="Advanced Stats/color jitter strength hue", img_tensor=img, global_step=total_iter)
             
-            img = tensor_to_image(image_data_to_plot[0], f"Randomly sampled untransformed image")
+            img = tensor_to_image(image_data_to_plot["untransformed_image"], f"Randomly sampled untransformed image")
             writer.add_image(tag="Advanced Stats/sampled untransformed image 1", img_tensor=img, global_step=total_iter)
             
-            img = tensor_to_image(image_data_to_plot[1], f"Randomly sampled transformed image 1\n {image_data_to_plot[3]}")
+            title = image_data_to_plot["title"]
+            
+            img = tensor_to_image(image_data_to_plot["img0"], f"Randomly sampled transformed image 1\n {title}")
             writer.add_image(tag="Advanced Stats/sampled transformed image 1", img_tensor=img, global_step=total_iter)
             
-            img = tensor_to_image(image_data_to_plot[2], f"Randomly sampled transformed image 2\n {image_data_to_plot[3]}")
+            img = tensor_to_image(image_data_to_plot["img1"], f"Randomly sampled transformed image 2\n {title}")
             writer.add_image(tag="Advanced Stats/sampled transformed image 2", img_tensor=img, global_step=total_iter)
     
     return total_iter
