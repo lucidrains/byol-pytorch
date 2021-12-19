@@ -25,10 +25,9 @@ import torch.utils.data.distributed
 import torchvision.models as models
 import yaml
 from jsonargparse import ArgumentParser
-from torch.nn import functional as F
 from torch.utils.tensorboard import SummaryWriter
 
-from utils.torch_utils import get_newest_model, check_and_save_checkpoint, deactivate_bn, calc_all_layer_wise_stats, validate, accuracy, adjust_learning_rate
+from utils.torch_utils import get_newest_model, check_and_save_checkpoint, deactivate_bn, validate, accuracy, adjust_learning_rate
 
 warnings.filterwarnings("ignore", category=UserWarning)
 
@@ -38,6 +37,7 @@ try:
     from metassl.utils.config import AttrDict, _parse_args
     from metassl.utils.meters import AverageMeter, ProgressMeter, ExponentialMovingAverageMeter, initialize_all_meters_global, update_grad_stats_meters
     from metassl.utils.simsiam_alternating import SimSiam
+    from metassl.utils.summary import write_to_summary_writer
     import metassl.models.resnet_cifar as our_cifar_resnets
 except ImportError:
     # For execution in command line
@@ -45,6 +45,7 @@ except ImportError:
     from .utils.config import AttrDict, _parse_args
     from .utils.meters import AverageMeter, ProgressMeter, ExponentialMovingAverageMeter, initialize_all_meters_global, update_grad_stats_meters
     from .utils.simsiam_alternating import SimSiam
+    from .utils.summary import write_to_summary_writer
     from .models import resnet_cifar as our_cifar_resnets
 
 model_names = sorted(
@@ -357,8 +358,6 @@ def train_one_epoch(
         
         loss_pt, backbone_grads_pt_lw, backbone_grads_pt_global = pretrain(model, images_pt, criterion_pt, optimizer_pt, losses_pt_meter, data_time_meter, end, config=config, alternating_mode=True)
         
-        loss_pt, backbone_grads_pt_lw, backbone_grads_pt_global = pretrain(model, images_pt, criterion_pt, optimizer_pt, losses_pt_meter, data_time_meter, end, config=config, alternating_mode=True)
-        
         backbone_grads_ft_lw, backbone_grads_ft_global = None, None
         if not warmup:
             loss_ft, backbone_grads_ft_lw, backbone_grads_ft_global = finetune(model, images_ft, target_ft, criterion_ft, optimizer_ft, losses_ft_meter, top1_meter, top5_meter, config=config, alternating_mode=True)
@@ -375,23 +374,23 @@ def train_one_epoch(
         
         update_grad_stats_meters(grads=grads, meters=meters, warmup=warmup)
         
-        advanced_stats_meters = [
-            cos_sim_ema_meter_global,
-            cos_sim_ema_meter_lw,
-            cos_sim_std_meter_lw,
-            dot_prod_meter_global,
-            dot_prod_avg_meter_lw,
-            dot_prod_std_meter_lw,
-            eucl_dis_meter_global,
-            eucl_dis_avg_meter_lw,
-            eucl_dis_std_meter_lw,
-            norm_pt_meter_global,
-            norm_pt_avg_meter_lw,
-            norm_pt_std_meter_lw,
-            norm_ft_meter_global,
-            norm_ft_avg_meter_lw,
-            norm_ft_std_meter_lw,
-            ]
+        main_stats_meters = [cos_sim_ema_meter_global,
+                             cos_sim_ema_meter_lw,
+                             dot_prod_meter_global,
+                             dot_prod_avg_meter_lw,
+                             eucl_dis_meter_global,
+                             eucl_dis_avg_meter_lw,
+                             norm_pt_meter_global,
+                             norm_pt_avg_meter_lw,
+                             norm_ft_meter_global,
+                             norm_ft_avg_meter_lw]
+        
+        additional_stats_meters = [cos_sim_std_meter_lw, dot_prod_std_meter_lw, eucl_dis_std_meter_lw, norm_pt_std_meter_lw, norm_ft_std_meter_lw]
+        
+        meters_to_plot = {
+            "main_meters": main_stats_meters,
+            "additional_stats_meters": additional_stats_meters
+            }
         
         # measure elapsed time
         batch_time_meter.update(time.time() - end)
@@ -400,16 +399,15 @@ def train_one_epoch(
         if i % config.expt.print_freq == 0:
             progress.display(i)
         if config.expt.rank == 0:
-            write_to_summary_writer(total_iter, loss_pt, loss_ft, data_time_meter, batch_time_meter, optimizer_pt, optimizer_ft, top1_meter, top5_meter, advanced_stats_meters, writer)
+            write_to_summary_writer(total_iter, loss_pt, loss_ft, data_time_meter, batch_time_meter, optimizer_pt, optimizer_ft, top1_meter, top5_meter, meters_to_plot, writer)
     
     return total_iter
 
 
-def pretrain(model, images_pt, criterion_pt, optimizer_pt, losses_pt, data_time, end, config, alternating_mode=False, layer_wise_stats=False):
-    if layer_wise_stats:
-        backbone_grads = OrderedDict()
-    else:
-        backbone_grads = torch.Tensor().cuda()
+def pretrain(model, images_pt, criterion_pt, optimizer_pt, losses_pt, data_time, end, config, alternating_mode=False):
+    
+    backbone_grads_lw = OrderedDict()
+    backbone_grads_gl = torch.Tensor().cuda()
     
     model.requires_grad_(True)
     
@@ -435,19 +433,16 @@ def pretrain(model, images_pt, criterion_pt, optimizer_pt, losses_pt, data_time,
     
     if alternating_mode:
         for key, param in model.module.backbone.named_parameters():
-            if layer_wise_stats:
-                backbone_grads[key] = torch.tensor(param.grad.detach_().clone().flatten())
-            else:
-                backbone_grads = torch.cat([backbone_grads, param.grad.detach_().clone().flatten()], dim=0)
+            grad_tensor = param.grad.detach_().clone().flatten()
+            backbone_grads_lw[key] = torch.tensor(grad_tensor)
+            backbone_grads_global = torch.cat([backbone_grads_global, grad_tensor], dim=0)
     
-    return loss_pt, backbone_grads
+    return loss_pt, backbone_grads_lw, backbone_grads_global
 
 
-def finetune(model, images_ft, target_ft, criterion_ft, optimizer_ft, losses_ft_meter, top1_meter, top5_meter, config, alternating_mode=False, layer_wise_stats=False):
-    if layer_wise_stats:
-        backbone_grads = OrderedDict()
-    else:
-        backbone_grads = torch.Tensor().cuda()
+def finetune(model, images_ft, target_ft, criterion_ft, optimizer_ft, losses_ft_meter, top1_meter, top5_meter, config, alternating_mode=False):
+    backbone_grads_lw = OrderedDict()
+    backbone_grads_global = torch.Tensor().cuda()
     
     # fine-tuning
     model.eval()
@@ -469,10 +464,9 @@ def finetune(model, images_ft, target_ft, criterion_ft, optimizer_ft, losses_ft_
     
     if alternating_mode:
         for key, param in model.module.backbone.named_parameters():
-            if layer_wise_stats:
-                backbone_grads[key] = torch.tensor(param.grad.detach_().clone().flatten())
-            else:
-                backbone_grads = torch.cat([backbone_grads, param.grad.detach_().clone().flatten()], dim=0)
+            grad_tensor = param.grad.detach_().clone().flatten()
+            backbone_grads_lw[key] = torch.tensor(grad_tensor)
+            backbone_grads_global = torch.cat([backbone_grads_global, grad_tensor], dim=0)
     
     # compute losses and measure accuracy
     acc1, acc5 = accuracy(output_ft, target_ft, topk=(1, 5))
@@ -487,34 +481,7 @@ def finetune(model, images_ft, target_ft, criterion_ft, optimizer_ft, losses_ft_
     for param in model.module.parameters():
         param.grad = None
     
-    return loss_ft, backbone_grads
-
-
-def write_to_summary_writer(total_iter, loss_pt, loss_ft, data_time, batch_time, optimizer_pt, optimizer_ft, top1, top5, advanced_stats_meters, writer):
-    writer.add_scalar('Loss/pre-training', loss_pt.item(), total_iter)
-    if isinstance(loss_ft, float):
-        writer.add_scalar('Loss/fine-tuning', loss_ft, total_iter)
-    else:
-        writer.add_scalar('Loss/fine-tuning', loss_ft.item(), total_iter)
-    writer.add_scalar('Accuracy/@1', top1.val, total_iter)
-    writer.add_scalar('Accuracy/@5', top5.val, total_iter)
-    writer.add_scalar('Accuracy/@1 average', top1.avg, total_iter)
-    writer.add_scalar('Accuracy/@5 average', top5.avg, total_iter)
-    writer.add_scalar('Time/Data', data_time.val, total_iter)
-    writer.add_scalar('Time/Batch', batch_time.val, total_iter)
-    # assuming only one param group
-    writer.add_scalar('Learning rate/pre-training', optimizer_pt.param_groups[0]['lr'], total_iter)
-    writer.add_scalar('Learning rate/fine-tuning', optimizer_ft.param_groups[0]['lr'], total_iter)
-    
-    for stat in advanced_stats_meters:
-        if isinstance(stat, ExponentialMovingAverageMeter):
-            writer.add_scalar(f'Advanced Stats/{stat.name}', stat.val, total_iter)
-            writer.add_scalar(f'Advanced Stats/{stat.name} average', stat.avg, total_iter)
-            # exponential moving average
-            writer.add_scalar(f'Advanced Stats/{stat.name} exp. moving average', stat.ema, total_iter)
-        else:
-            writer.add_scalar(f'Advanced Stats/{stat.name}', stat.val, total_iter)
-            writer.add_scalar(f'Advanced Stats/{stat.name} average', stat.avg, total_iter)
+    return loss_ft, backbone_grads_lw, backbone_grads_global
 
 
 if __name__ == '__main__':
@@ -542,7 +509,6 @@ if __name__ == '__main__':
     parser.add_argument('--expt.eval_freq', default=10, type=int, metavar='N', help='every eval_freq epoch will the model be evaluated')
     parser.add_argument('--expt.seed', default=123, type=int, metavar='N', help='random seed of numpy and torch')
     parser.add_argument('--expt.evaluate', action='store_true', help='evaluate model on validation set once and terminate (default: False)')
-    parser.add_argument('--expt.layer_wise_stats', action='store_true', help='compute the advanced stats for each layer separately and then plot the average and deviation (default: False).')
     
     parser.add_argument('--train', default="train", type=str, metavar='N')
     parser.add_argument('--train.batch_size', default=256, type=int, metavar='N', help='in distributed setting this is the total batch size, i.e. batch size = individual bs * number of GPUs')

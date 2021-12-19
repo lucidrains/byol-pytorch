@@ -53,6 +53,7 @@ try:
     import metassl.models.resnet_cifar as our_cifar_resnets
     from metassl.utils.simsiam import TwoCropsTransform, GaussianBlur
     from metassl.utils.augment import create_transforms, augment_per_image
+    from metassl.utils.summary import write_to_summary_writer
 except ImportError:
     # For execution in command line
     from .utils.data import get_train_valid_loader, get_test_loader, get_loaders, normalize_imagenet
@@ -61,6 +62,7 @@ except ImportError:
     from .utils.simsiam_alternating import SimSiam
     from .utils.simsiam import TwoCropsTransform, GaussianBlur
     from .models import resnet_cifar as our_cifar_resnets
+    from .utils.summary import write_to_summary_writer
     from .utils.augment import create_transforms, augment_per_image
 
 model_names = sorted(
@@ -533,25 +535,24 @@ def train_one_epoch(
             norm_aug_contrast_grad_meter.update(0.)
             norm_aug_saturation_grad_meter.update(0.)
             norm_aug_hue_grad_meter.update(0.)
-        
-        advanced_stats_meters = [
-            cos_sim_ema_meter_global,
-            cos_sim_ema_meter_lw,
-            cos_sim_std_meter_lw,
-            dot_prod_meter_global,
-            dot_prod_avg_meter_lw,
-            dot_prod_std_meter_lw,
-            eucl_dis_meter_global,
-            eucl_dis_avg_meter_lw,
-            eucl_dis_std_meter_lw,
-            norm_pt_meter_global,
-            norm_pt_avg_meter_lw,
-            norm_pt_std_meter_lw,
-            norm_ft_meter_global,
-            norm_ft_avg_meter_lw,
-            norm_ft_std_meter_lw,
-            norm_aug_brightness_grad_meter,
-            ]
+
+        main_stats_meters = [cos_sim_ema_meter_global,
+                             cos_sim_ema_meter_lw,
+                             dot_prod_meter_global,
+                             dot_prod_avg_meter_lw,
+                             eucl_dis_meter_global,
+                             eucl_dis_avg_meter_lw,
+                             norm_pt_meter_global,
+                             norm_pt_avg_meter_lw,
+                             norm_ft_meter_global,
+                             norm_ft_avg_meter_lw]
+
+        additional_stats_meters = [cos_sim_std_meter_lw, dot_prod_std_meter_lw, eucl_dis_std_meter_lw, norm_pt_std_meter_lw, norm_ft_std_meter_lw]
+
+        meters_to_plot = {
+            "main_meters":             main_stats_meters,
+            "additional_stats_meters": additional_stats_meters
+            }
         
         # measure elapsed time
         batch_time_meter.update(time.time() - end)
@@ -560,7 +561,7 @@ def train_one_epoch(
         if i % config.expt.print_freq == 0:
             progress.display(i)
         if config.expt.rank == 0:
-            write_to_summary_writer(total_iter, loss_pt, loss_ft, data_time_meter, batch_time_meter, optimizer_pt, optimizer_ft, top1_meter, top5_meter, advanced_stats_meters, writer)
+            write_to_summary_writer(total_iter, loss_pt, loss_ft, data_time_meter, batch_time_meter, optimizer_pt, optimizer_ft, top1_meter, top5_meter, meters_to_plot, writer)
         # expensive stats
         if config.expt.rank == 0 and i % (config.expt.print_freq * 100) == 0:
             img = hist_to_image(color_jitter_histogram_brightness, "Color Jitter Strength Brightness Counts")
@@ -674,33 +675,6 @@ def finetune(model, images_ft, target_ft, criterion_ft, optimizer_ft, losses_ft_
         param.grad = None
     
     return loss_ft, backbone_grads_lw, backbone_grads_global
-
-
-def write_to_summary_writer(total_iter, loss_pt, loss_ft, data_time, batch_time, optimizer_pt, optimizer_ft, top1, top5, advanced_stats_meters, writer):
-    writer.add_scalar('Loss/pre-training', loss_pt.item(), total_iter)
-    if isinstance(loss_ft, float):
-        writer.add_scalar('Loss/fine-tuning', loss_ft, total_iter)
-    else:
-        writer.add_scalar('Loss/fine-tuning', loss_ft.item(), total_iter)
-    writer.add_scalar('Accuracy/@1', top1.val, total_iter)
-    writer.add_scalar('Accuracy/@5', top5.val, total_iter)
-    writer.add_scalar('Accuracy/@1 average', top1.avg, total_iter)
-    writer.add_scalar('Accuracy/@5 average', top5.avg, total_iter)
-    writer.add_scalar('Time/Data', data_time.val, total_iter)
-    writer.add_scalar('Time/Batch', batch_time.val, total_iter)
-    # assuming only one param group
-    writer.add_scalar('Learning rate/pre-training', optimizer_pt.param_groups[0]['lr'], total_iter)
-    writer.add_scalar('Learning rate/fine-tuning', optimizer_ft.param_groups[0]['lr'], total_iter)
-    
-    for stat in advanced_stats_meters:
-        if isinstance(stat, ExponentialMovingAverageMeter):
-            writer.add_scalar(f'Advanced Stats/{stat.name}', stat.val, total_iter)
-            writer.add_scalar(f'Advanced Stats/{stat.name} average', stat.avg, total_iter)
-            # exponential moving average
-            writer.add_scalar(f'Advanced Stats/{stat.name} exp. moving average', stat.ema, total_iter)
-        else:
-            writer.add_scalar(f'Advanced Stats/{stat.name}', stat.val, total_iter)
-            writer.add_scalar(f'Advanced Stats/{stat.name} average', stat.avg, total_iter)
 
 
 if __name__ == '__main__':
