@@ -128,6 +128,7 @@ def update_grad_stats_meters(grads, meters, warmup):
     else:
         # global
         cos_sim_ema_meter_global.update(0.)
+        cos_sim_ema_meter_standardized_global.update(0.)
         dot_prod_meter_global.update(0.)
         eucl_dis_meter_global.update(0.)
         norm_pt_meter_global.update(torch.linalg.norm(backbone_grads_pt_global, 2))
@@ -135,6 +136,8 @@ def update_grad_stats_meters(grads, meters, warmup):
         
         # layer-wise
         cos_sim_ema_meter_lw.update(0.), cos_sim_std_meter_lw.update(0.)
+        cos_sim_ema_meter_standardized_lw.update(0.), cos_sim_std_meter_standardized_lw.update(0.)
+        
         dot_prod_avg_meter_lw.update(0.), dot_prod_std_meter_lw.update(0.)
         eucl_dis_avg_meter_lw.update(0.), eucl_dis_std_meter_lw.update(0.)
         
