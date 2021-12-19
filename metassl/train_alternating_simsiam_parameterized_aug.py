@@ -40,8 +40,6 @@ from utils.torch_utils import (
     accuracy,
     get_sample_logprob,
     adjust_learning_rate,
-    initialize_all_meters,
-    update_grad_stats_meters,
     )
 
 warnings.filterwarnings("ignore", category=UserWarning)
@@ -50,7 +48,7 @@ try:
     # For execution in PyCharm
     from metassl.utils.data import get_train_valid_loader, get_test_loader, get_loaders, normalize_imagenet
     from metassl.utils.config import AttrDict, _parse_args
-    from metassl.utils.meters import AverageMeter, ProgressMeter, ExponentialMovingAverageMeter
+    from metassl.utils.meters import AverageMeter, ProgressMeter, ExponentialMovingAverageMeter, update_grad_stats_meters, initialize_all_meters_global
     from metassl.utils.simsiam_alternating import SimSiam
     import metassl.models.resnet_cifar as our_cifar_resnets
     from metassl.utils.simsiam import TwoCropsTransform, GaussianBlur
@@ -59,7 +57,7 @@ except ImportError:
     # For execution in command line
     from .utils.data import get_train_valid_loader, get_test_loader, get_loaders, normalize_imagenet
     from .utils.config import AttrDict, _parse_args
-    from .utils.meters import AverageMeter, ProgressMeter, ExponentialMovingAverageMeter
+    from .utils.meters import AverageMeter, ProgressMeter, ExponentialMovingAverageMeter, update_grad_stats_meters, initialize_all_meters_global
     from .utils.simsiam_alternating import SimSiam
     from .utils.simsiam import TwoCropsTransform, GaussianBlur
     from .models import resnet_cifar as our_cifar_resnets
@@ -324,7 +322,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
     if config.expt.rank == 0:
         writer = SummaryWriter(log_dir=os.path.join(expt_dir, "tensorboard"))
     
-    meters = initialize_all_meters()
+    meters = initialize_all_meters_global()
     
     for epoch in range(config.train.start_epoch, config.train.epochs):
         
@@ -500,7 +498,7 @@ def train_one_epoch(
         grads = {
             "backbone_grads_pt_lw":     backbone_grads_pt_lw,
             "backbone_grads_pt_global": backbone_grads_pt_global,
-            "backbone_grads_ft_lw":    backbone_grads_ft_lw,
+            "backbone_grads_ft_lw":     backbone_grads_ft_lw,
             "backbone_grads_ft_global": backbone_grads_ft_global
             }
         

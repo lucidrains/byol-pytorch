@@ -36,14 +36,14 @@ try:
     # For execution in PyCharm
     from metassl.utils.data import get_train_valid_loader, get_test_loader, get_loaders
     from metassl.utils.config import AttrDict, _parse_args
-    from metassl.utils.meters import AverageMeter, ProgressMeter, ExponentialMovingAverageMeter
+    from metassl.utils.meters import AverageMeter, ProgressMeter, ExponentialMovingAverageMeter, initialize_all_meters_global, update_grad_stats_meters
     from metassl.utils.simsiam_alternating import SimSiam
     import metassl.models.resnet_cifar as our_cifar_resnets
 except ImportError:
     # For execution in command line
     from .utils.data import get_train_valid_loader, get_test_loader, get_loaders
     from .utils.config import AttrDict, _parse_args
-    from .utils.meters import AverageMeter, ProgressMeter, ExponentialMovingAverageMeter
+    from .utils.meters import AverageMeter, ProgressMeter, ExponentialMovingAverageMeter, initialize_all_meters_global, update_grad_stats_meters
     from .utils.simsiam_alternating import SimSiam
     from .models import resnet_cifar as our_cifar_resnets
 
@@ -245,12 +245,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
     if config.expt.rank == 0:
         writer = SummaryWriter(log_dir=os.path.join(expt_dir, "tensorboard"))
     
-    if config.expt.layer_wise_stats:
-        meter_name = "Cos. Sim. PT-FT layer-w. average"
-    else:
-        meter_name = "Cos. Sim. PT-FT"
-    
-    cos_sim_ema_meter = ExponentialMovingAverageMeter(meter_name, window=100, alpha=2, fmt=':6.4f')
+    meters = initialize_all_meters_global()
     
     for epoch in range(config.train.start_epoch, config.train.epochs):
         
@@ -282,9 +277,8 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
             total_iter=total_iter,
             config=config,
             writer=writer,
+            meters=meters,
             warmup=warmup,
-            layer_wise_stats=config.expt.layer_wise_stats,
-            cos_sim_ema_meter=cos_sim_ema_meter,
             )
         
         # evaluate on validation set
@@ -311,46 +305,41 @@ def train_one_epoch(
     total_iter,
     config,
     writer,
+    meters,
     warmup=False,
-    layer_wise_stats=False,
-    cos_sim_ema_meter=None,
     ):
-    batch_time_meter = AverageMeter('Time', ':6.3f')
-    data_time_meter = AverageMeter('Data', ':6.3f')
-    losses_pt_meter = AverageMeter('Loss PT', ':.4f')
-    losses_ft_meter = AverageMeter('Loss FT', ':.4e')
-    top1_meter = AverageMeter('Acc@1', ':6.2f')
-    top5_meter = AverageMeter('Acc@5', ':6.2f')
+    # general meters
+    batch_time_meter = meters["batch_time_meter"]
+    data_time_meter = meters["data_time_meter"]
+    losses_pt_meter = meters["losses_pt_meter"]
+    losses_ft_meter = meters["losses_ft_meter"]
+    top1_meter = meters["top1_meter"]
+    top5_meter = meters["top5_meter"]
     
-    if layer_wise_stats:
-        if not cos_sim_ema_meter:
-            cos_sim_ema_meter = ExponentialMovingAverageMeter('Cos. Sim. PT-FT layer-w.', window=100, alpha=2, fmt=':6.4f')
-        cos_sim_std_meter = AverageMeter('Cos. Sim. PT-FT layer-w. std.', ':6.4f')
-        
-        dot_prod_avg_meter = AverageMeter('Dot Product PT-FT layer-w. average', ':6.4f')
-        dot_prod_std_meter = AverageMeter('Dot Product PT-FT layer-w. std.', ':6.4f')
-        eucl_dis_avg_meter = AverageMeter('Eucl. Dist. PT-FT layer-w. average', ':6.4f')
-        eucl_dis_std_meter = AverageMeter('Eucl. Dist. PT-FT layer-w. std.', ':6.4f')
-        norm_pt_avg_meter = AverageMeter('Norm PT layer-w. average', ':6.4f')
-        norm_pt_std_meter = AverageMeter('Norm PT layer-w. std.', ':6.4f')
-        norm_ft_avg_meter = AverageMeter('Norm FT layer-w. average', ':6.4f')
-        norm_ft_std_meter = AverageMeter('Norm FT layer-w. std.', ':6.4f')
-        
-        meters = [batch_time_meter, losses_pt_meter, losses_ft_meter, top1_meter, cos_sim_ema_meter, dot_prod_avg_meter, eucl_dis_avg_meter, norm_pt_avg_meter, norm_ft_avg_meter]
-    else:
-        if not cos_sim_ema_meter:
-            cos_sim_ema_meter = ExponentialMovingAverageMeter('Cos. Sim. PT-FT', window=100, alpha=2, fmt=':6.4f')
-        
-        dot_prod_meter = AverageMeter('Dot Product PT-FT', ':6.4f')
-        eucl_dis_meter = AverageMeter('Eucl. Dist. PT-FT', ':6.4f')
-        norm_pt_meter = AverageMeter('Norm PT', ':6.4f')
-        norm_ft_meter = AverageMeter('Norm FT', ':6.4f')
-        
-        meters = [batch_time_meter, losses_pt_meter, losses_ft_meter, top1_meter, cos_sim_ema_meter, dot_prod_meter, eucl_dis_meter, norm_pt_meter, norm_ft_meter]
+    # global meters
+    cos_sim_ema_meter_global = meters["cos_sim_ema_meter_global"]
+    dot_prod_meter_global = meters["dot_prod_meter_global"]
+    eucl_dis_meter_global = meters["eucl_dis_meter_global"]
+    norm_pt_meter_global = meters["norm_pt_meter_global"]
+    norm_ft_meter_global = meters["norm_ft_meter_global"]
+    
+    # layer-wise meters
+    cos_sim_ema_meter_lw = meters["cos_sim_ema_meter_lw"]
+    cos_sim_std_meter_lw = meters["cos_sim_std_meter_lw"]
+    dot_prod_avg_meter_lw = meters["dot_prod_avg_meter_lw"]
+    dot_prod_std_meter_lw = meters["dot_prod_std_meter_lw"]
+    eucl_dis_avg_meter_lw = meters["eucl_dis_avg_meter_lw"]
+    eucl_dis_std_meter_lw = meters["eucl_dis_std_meter_lw"]
+    norm_pt_avg_meter_lw = meters["norm_pt_avg_meter_lw"]
+    norm_pt_std_meter_lw = meters["norm_pt_std_meter_lw"]
+    norm_ft_avg_meter_lw = meters["norm_ft_avg_meter_lw"]
+    norm_ft_std_meter_lw = meters["norm_ft_std_meter_lw"]
+    
+    meters_to_print = [batch_time_meter, losses_pt_meter, losses_ft_meter, top1_meter, cos_sim_ema_meter_lw, cos_sim_ema_meter_global]
     
     progress = ProgressMeter(
         num_batches=len(train_loader_pt),
-        meters=meters,
+        meters=meters_to_print,
         prefix=f"Epoch: [{epoch}]"
         )
     
@@ -366,69 +355,43 @@ def train_one_epoch(
             images_ft = images_ft.cuda(config.expt.gpu, non_blocking=True)
             target_ft = target_ft.cuda(config.expt.gpu, non_blocking=True)
         
-        loss_pt, backbone_grads_pt = pretrain(model, images_pt, criterion_pt, optimizer_pt, losses_pt_meter, data_time_meter, end, config=config, alternating_mode=True, layer_wise_stats=layer_wise_stats)
+        loss_pt, backbone_grads_pt_lw, backbone_grads_pt_global = pretrain(model, images_pt, criterion_pt, optimizer_pt, losses_pt_meter, data_time_meter, end, config=config, alternating_mode=True)
         
-        backbone_grads_ft = None
+        loss_pt, backbone_grads_pt_lw, backbone_grads_pt_global = pretrain(model, images_pt, criterion_pt, optimizer_pt, losses_pt_meter, data_time_meter, end, config=config, alternating_mode=True)
+        
+        backbone_grads_ft_lw, backbone_grads_ft_global = None, None
         if not warmup:
-            loss_ft, backbone_grads_ft = finetune(model, images_ft, target_ft, criterion_ft, optimizer_ft, losses_ft_meter, top1_meter, top5_meter, config=config, alternating_mode=True, layer_wise_stats=layer_wise_stats)
+            loss_ft, backbone_grads_ft_lw, backbone_grads_ft_global = finetune(model, images_ft, target_ft, criterion_ft, optimizer_ft, losses_ft_meter, top1_meter, top5_meter, config=config, alternating_mode=True)
         else:
             losses_ft_meter.update(np.inf)
             loss_ft = np.inf
         
-        if not warmup:
-            if layer_wise_stats:
-                calc_all_layer_wise_stats(
-                    backbone_grads_pt=backbone_grads_pt,
-                    backbone_grads_ft=backbone_grads_ft,
-                    cos_sim_ema_meter=cos_sim_ema_meter,
-                    cos_sim_std_meter=cos_sim_std_meter,
-                    dot_prod_avg_meter=dot_prod_avg_meter,
-                    dot_prod_std_meter=dot_prod_std_meter,
-                    eucl_dis_avg_meter=eucl_dis_avg_meter,
-                    eucl_dis_std_meter=eucl_dis_std_meter,
-                    norm_pt_avg_meter=norm_pt_avg_meter,
-                    norm_pt_std_meter=norm_pt_std_meter,
-                    norm_ft_avg_meter=norm_ft_avg_meter,
-                    norm_ft_std_meter=norm_ft_std_meter,
-                    warmup=False,
-                    )
-            
-            else:
-                cos_sim_ema_meter.update(F.cosine_similarity(backbone_grads_pt, backbone_grads_ft, dim=0))
-                dot_prod_meter.update(torch.dot(backbone_grads_pt, backbone_grads_ft))
-                eucl_dis_meter.update(torch.linalg.norm(backbone_grads_pt - backbone_grads_ft, 2))
-                norm_pt_meter.update(torch.linalg.norm(backbone_grads_pt, 2))
-                norm_ft_meter.update(torch.linalg.norm(backbone_grads_ft, 2))
-        else:
-            # no resetting needed, as meters are freshly initialized at each epoch
-            if layer_wise_stats:
-                calc_all_layer_wise_stats(
-                    backbone_grads_pt=backbone_grads_pt,
-                    backbone_grads_ft=backbone_grads_ft,
-                    cos_sim_ema_meter=cos_sim_ema_meter,
-                    cos_sim_std_meter=cos_sim_std_meter,
-                    dot_prod_avg_meter=dot_prod_avg_meter,
-                    dot_prod_std_meter=dot_prod_std_meter,
-                    eucl_dis_avg_meter=eucl_dis_avg_meter,
-                    eucl_dis_std_meter=eucl_dis_std_meter,
-                    norm_pt_avg_meter=norm_pt_avg_meter,
-                    norm_pt_std_meter=norm_pt_std_meter,
-                    norm_ft_avg_meter=norm_ft_avg_meter,
-                    norm_ft_std_meter=norm_ft_std_meter,
-                    warmup=True
-                    )
-            else:
-                # no resetting needed, as meters are freshly initialized at each epoch
-                cos_sim_ema_meter.update(0.)
-                dot_prod_meter.update(0.)
-                eucl_dis_meter.update(0.)
-                norm_pt_meter.update(torch.linalg.norm(backbone_grads_pt, 2))
-                norm_ft_meter.update(0.)
+        grads = {
+            "backbone_grads_pt_lw":     backbone_grads_pt_lw,
+            "backbone_grads_pt_global": backbone_grads_pt_global,
+            "backbone_grads_ft_lw":     backbone_grads_ft_lw,
+            "backbone_grads_ft_global": backbone_grads_ft_global
+            }
         
-        if layer_wise_stats:
-            advanced_stats_meters = [cos_sim_ema_meter, dot_prod_avg_meter, dot_prod_std_meter, eucl_dis_avg_meter, eucl_dis_std_meter, norm_pt_avg_meter, norm_pt_std_meter, norm_ft_avg_meter, norm_ft_std_meter]
-        else:
-            advanced_stats_meters = [cos_sim_ema_meter, dot_prod_meter, eucl_dis_meter, norm_pt_meter, norm_ft_meter]
+        update_grad_stats_meters(grads=grads, meters=meters, warmup=warmup)
+        
+        advanced_stats_meters = [
+            cos_sim_ema_meter_global,
+            cos_sim_ema_meter_lw,
+            cos_sim_std_meter_lw,
+            dot_prod_meter_global,
+            dot_prod_avg_meter_lw,
+            dot_prod_std_meter_lw,
+            eucl_dis_meter_global,
+            eucl_dis_avg_meter_lw,
+            eucl_dis_std_meter_lw,
+            norm_pt_meter_global,
+            norm_pt_avg_meter_lw,
+            norm_pt_std_meter_lw,
+            norm_ft_meter_global,
+            norm_ft_avg_meter_lw,
+            norm_ft_std_meter_lw,
+            ]
         
         # measure elapsed time
         batch_time_meter.update(time.time() - end)
