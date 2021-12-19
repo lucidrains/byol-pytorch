@@ -504,8 +504,6 @@ def train_one_epoch(
         
         loss_pt, backbone_grads_pt_lw, backbone_grads_pt_global = pretrain(model, images_pt, criterion_pt, optimizer_pt, losses_pt_meter, data_time_meter, end, config=config, alternating_mode=True)
         
-        print("backbone_grads_pt_global", backbone_grads_pt_global.size())
-        
         backbone_grads_ft_lw, backbone_grads_ft_global = None, None
         if not warmup:
             loss_ft, backbone_grads_ft_lw, backbone_grads_ft_global = finetune(model, images_ft, target_ft, criterion_ft, optimizer_ft, losses_ft_meter, top1_meter, top5_meter, config=config, alternating_mode=True)

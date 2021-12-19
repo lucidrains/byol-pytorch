@@ -202,8 +202,8 @@ def calc_layer_wise_stats(backbone_grads_pt, backbone_grads_ft=None, metric_type
                     metric_vals.append(torch.dot(v1, v2).cpu().numpy())
                 elif metric_type == "cosine":
                     if standardize_cosine:
-                        v1 = (v1 - v1.mean()) / v1.std()
-                        v2 = (v2 - v2.mean()) / v2.std()
+                        v1 = (v1 - v1.mean()) / max(v1.std(), 1e-12)
+                        v2 = (v2 - v2.mean()) / max(v2.std(), 1e-12)
                     metric_vals.append(F.cosine_similarity(v1, v2, dim=0).cpu().numpy())
     else:
         for k1, v1 in backbone_grads_pt.items():
