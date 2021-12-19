@@ -15,7 +15,7 @@ from torch.nn import functional as F
 from torch.utils.data import Sampler
 from torchvision.transforms import ToTensor
 
-from metassl.utils.meters import AverageMeter, ProgressMeter
+from metassl.utils.meters import AverageMeter, ProgressMeter, ExponentialMovingAverageMeter
 
 
 def count_parameters(parameters):
@@ -252,6 +252,70 @@ def tensor_to_image(tensor, title=None):
     return image
 
 
+def update_grad_stats_meters(grads, meters, warmup):
+    backbone_grads_pt_lw, backbone_grads_pt_global = grads["backbone_grads_pt_lw"], grads["backbone_grads_pt_global"]
+    backbone_grads_ft_lw, backbone_grads_ft_global = grads["backbone_grads_ft_lw"], grads["backbone_grads_ft_global"]
+
+    # global meters
+    cos_sim_ema_meter_global = meters["cos_sim_ema_meter_global"]
+    dot_prod_meter_global = meters["dot_prod_meter_global"]
+    eucl_dis_meter_global = meters["eucl_dis_meter_global"]
+    norm_pt_meter_global = meters["norm_pt_meter_global"]
+    norm_ft_meter_global = meters["norm_ft_meter_global"]
+
+    # layer-wise meters
+    cos_sim_ema_meter_lw = meters["cos_sim_ema_meter_lw"]
+    cos_sim_std_meter_lw = meters["cos_sim_std_meter_lw"]
+    dot_prod_avg_meter_lw = meters["dot_prod_avg_meter_lw"]
+    dot_prod_std_meter_lw = meters["dot_prod_std_meter_lw"]
+    eucl_dis_avg_meter_lw = meters["eucl_dis_avg_meter_lw"]
+    eucl_dis_std_meter_lw = meters["eucl_dis_std_meter_lw"]
+    norm_pt_avg_meter_lw = meters["norm_pt_avg_meter_lw"]
+    norm_pt_std_meter_lw = meters["norm_pt_std_meter_lw"]
+    norm_ft_avg_meter_lw = meters["norm_ft_avg_meter_lw"]
+    norm_ft_std_meter_lw = meters["norm_ft_std_meter_lw"]
+
+    if not warmup:
+        mean, std = calc_layer_wise_stats(backbone_grads_pt=backbone_grads_pt_lw, backbone_grads_ft=backbone_grads_ft_lw, metric_type="cosine")
+        cos_sim_ema_meter_lw.update(mean), cos_sim_std_meter_lw.update(std)
+    
+        mean, std = calc_layer_wise_stats(backbone_grads_pt=backbone_grads_pt_lw, backbone_grads_ft=backbone_grads_ft_lw, metric_type="dot")
+        dot_prod_avg_meter_lw.update(mean), dot_prod_std_meter_lw.update(std)
+    
+        mean, std = calc_layer_wise_stats(backbone_grads_pt=backbone_grads_pt_lw, backbone_grads_ft=backbone_grads_ft_lw, metric_type="euclidean")
+        eucl_dis_avg_meter_lw.update(mean), eucl_dis_std_meter_lw.update(std)
+    
+        mean, std = calc_layer_wise_stats(backbone_grads_pt=backbone_grads_pt_lw, backbone_grads_ft=None, metric_type="norm")
+        norm_pt_avg_meter_lw.update(mean), norm_pt_std_meter_lw.update(std)
+    
+        mean, std = calc_layer_wise_stats(backbone_grads_pt=backbone_grads_pt_lw, backbone_grads_ft=None, metric_type="norm")
+        norm_ft_avg_meter_lw.update(mean), norm_ft_std_meter_lw.update(std)
+
+        cos_sim_ema_meter_global.update(F.cosine_similarity(backbone_grads_pt_global, backbone_grads_ft_global, dim=0))
+        dot_prod_meter_global.update(torch.dot(backbone_grads_pt_global, backbone_grads_ft_global))
+        eucl_dis_meter_global.update(torch.linalg.norm(backbone_grads_pt_global - backbone_grads_ft_global, 2))
+        norm_pt_meter_global.update(torch.linalg.norm(backbone_grads_pt_global, 2))
+        norm_ft_meter_global.update(torch.linalg.norm(backbone_grads_ft_global, 2))
+        
+    else:
+        # global
+        cos_sim_ema_meter_global.update(0.)
+        dot_prod_meter_global.update(0.)
+        eucl_dis_meter_global.update(0.)
+        norm_pt_meter_global.update(torch.linalg.norm(backbone_grads_pt_global, 2))
+        norm_ft_meter_global.update(0.)
+        
+        # layer-wise
+        cos_sim_ema_meter_lw.update(0.), cos_sim_std_meter_lw.update(0.)
+        dot_prod_avg_meter_lw.update(0.), dot_prod_std_meter_lw.update(0.)
+        eucl_dis_avg_meter_lw.update(0.), eucl_dis_std_meter_lw.update(0.)
+    
+        mean, std = calc_layer_wise_stats(backbone_grads_pt=backbone_grads_pt_lw, backbone_grads_ft=None, metric_type="norm")
+        norm_pt_avg_meter_lw.update(mean), norm_pt_std_meter_lw.update(std)
+
+        norm_ft_avg_meter_lw.update(0.), norm_ft_std_meter_lw.update(0.)
+
+
 def calc_all_layer_wise_stats(
     backbone_grads_pt,
     backbone_grads_ft,
@@ -415,3 +479,59 @@ def get_sample_logprob(logits):
     logprob = color_jitter_dist.log_prob(sample)
     
     return sample, logprob, color_jitter_dist
+
+
+def initialize_all_meters():
+    # general meters
+    batch_time_meter = AverageMeter('Time', ':6.3f')
+    data_time_meter = AverageMeter('Data', ':6.3f')
+    losses_pt_meter = AverageMeter('Loss PT', ':.4f')
+    losses_ft_meter = AverageMeter('Loss FT', ':.4e')
+    top1_meter = AverageMeter('Acc@1', ':6.2f')
+    top5_meter = AverageMeter('Acc@5', ':6.2f')
+    
+    # global meters
+    cos_sim_ema_meter_global = ExponentialMovingAverageMeter("Cos. Sim. PT-FT global. average", window=100, alpha=2, fmt=':6.4f')
+    dot_prod_meter = AverageMeter('Dot Product PT-FT', ':6.4f')
+    eucl_dis_meter = AverageMeter('Eucl. Dist. PT-FT', ':6.4f')
+    norm_pt_meter = AverageMeter('Norm PT', ':6.4f')
+    norm_ft_meter = AverageMeter('Norm FT', ':6.4f')
+    
+    # layer-wise meters
+    cos_sim_ema_meter_lw = ExponentialMovingAverageMeter("Cos. Sim. PT-FT layer-w. average", window=100, alpha=2, fmt=':6.4f')
+    cos_sim_std_meter = AverageMeter('Cos. Sim. PT-FT layer-w. std.', ':6.4f')
+    
+    dot_prod_avg_meter = AverageMeter('Dot Product PT-FT layer-w. average', ':6.4f')
+    dot_prod_std_meter = AverageMeter('Dot Product PT-FT layer-w. std.', ':6.4f')
+    eucl_dis_avg_meter = AverageMeter('Eucl. Dist. PT-FT layer-w. average', ':6.4f')
+    eucl_dis_std_meter = AverageMeter('Eucl. Dist. PT-FT layer-w. std.', ':6.4f')
+    norm_pt_avg_meter = AverageMeter('Norm PT layer-w. average', ':6.4f')
+    norm_pt_std_meter = AverageMeter('Norm PT layer-w. std.', ':6.4f')
+    norm_ft_avg_meter = AverageMeter('Norm FT layer-w. average', ':6.4f')
+    norm_ft_std_meter = AverageMeter('Norm FT layer-w. std.', ':6.4f')
+    
+    return {
+        "batch_time_meter":         batch_time_meter,
+        "data_time_meter":          data_time_meter,
+        "losses_pt_meter":          losses_pt_meter,
+        "losses_ft_meter":          losses_ft_meter,
+        "top1_meter":               top1_meter,
+        "top5_meter":               top5_meter,
+        "dot_prod_meter":           dot_prod_meter,
+        "eucl_dis_meter":           eucl_dis_meter,
+        "norm_pt_meter":            norm_pt_meter,
+        "norm_ft_meter":            norm_ft_meter,
+        "dot_prod_avg_meter":       dot_prod_avg_meter,
+        "dot_prod_std_meter":       dot_prod_std_meter,
+        "eucl_dis_avg_meter":       eucl_dis_avg_meter,
+        "eucl_dis_std_meter":       eucl_dis_std_meter,
+        "norm_pt_avg_meter":        norm_pt_avg_meter,
+        "norm_pt_std_meter":        norm_pt_std_meter,
+        "norm_ft_avg_meter":        norm_ft_avg_meter,
+        "norm_ft_std_meter":        norm_ft_std_meter,
+        "cos_sim_ema_meter_lw":     cos_sim_ema_meter_lw,
+        "cos_sim_std_meter":        cos_sim_std_meter,
+        "cos_sim_ema_meter_global": cos_sim_ema_meter_global,
+        
+        }
+    
