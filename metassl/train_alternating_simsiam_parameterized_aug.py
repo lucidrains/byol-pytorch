@@ -401,6 +401,8 @@ def train_one_epoch(
     
     # global meters
     cos_sim_ema_meter_global = meters["cos_sim_ema_meter_global"]
+    cos_sim_ema_meter_standardized_global = meters["cos_sim_ema_meter_standardized_global"]
+    
     dot_prod_meter_global = meters["dot_prod_meter_global"]
     eucl_dis_meter_global = meters["eucl_dis_meter_global"]
     norm_pt_meter_global = meters["norm_pt_meter_global"]
@@ -409,6 +411,9 @@ def train_one_epoch(
     # layer-wise meters
     cos_sim_ema_meter_lw = meters["cos_sim_ema_meter_lw"]
     cos_sim_std_meter_lw = meters["cos_sim_std_meter_lw"]
+    cos_sim_ema_meter_standardized_lw = meters["cos_sim_ema_meter_standardized_lw"]
+    cos_sim_std_meter_standardized_lw = meters["cos_sim_std_meter_standardized_lw"]
+    
     dot_prod_avg_meter_lw = meters["dot_prod_avg_meter_lw"]
     dot_prod_std_meter_lw = meters["dot_prod_std_meter_lw"]
     eucl_dis_avg_meter_lw = meters["eucl_dis_avg_meter_lw"]
@@ -426,7 +431,16 @@ def train_one_epoch(
     
     aug_w_b, aug_w_c, aug_w_s, aug_w_h = aug_param_dict["aug_w_b"], aug_param_dict["aug_w_c"], aug_param_dict["aug_w_s"], aug_param_dict["aug_w_h"]
     
-    meters_to_print = [batch_time_meter, losses_pt_meter, losses_ft_meter, top1_meter, cos_sim_ema_meter_lw, cos_sim_ema_meter_global]
+    meters_to_print = [
+        batch_time_meter,
+        losses_pt_meter,
+        losses_ft_meter,
+        top1_meter,
+        cos_sim_ema_meter_lw,
+        cos_sim_ema_meter_standardized_lw,
+        cos_sim_ema_meter_global,
+        cos_sim_ema_meter_standardized_global
+        ]
     
     progress = ProgressMeter(
         num_batches=len(train_loader_pt),
@@ -490,6 +504,8 @@ def train_one_epoch(
         
         loss_pt, backbone_grads_pt_lw, backbone_grads_pt_global = pretrain(model, images_pt, criterion_pt, optimizer_pt, losses_pt_meter, data_time_meter, end, config=config, alternating_mode=True)
         
+        print("backbone_grads_pt_global", backbone_grads_pt_global.size())
+        
         backbone_grads_ft_lw, backbone_grads_ft_global = None, None
         if not warmup:
             loss_ft, backbone_grads_ft_lw, backbone_grads_ft_global = finetune(model, images_ft, target_ft, criterion_ft, optimizer_ft, losses_ft_meter, top1_meter, top5_meter, config=config, alternating_mode=True)
@@ -535,9 +551,12 @@ def train_one_epoch(
             norm_aug_contrast_grad_meter.update(0.)
             norm_aug_saturation_grad_meter.update(0.)
             norm_aug_hue_grad_meter.update(0.)
-
+        
         main_stats_meters = [cos_sim_ema_meter_global,
+                             cos_sim_ema_meter_standardized_global,
                              cos_sim_ema_meter_lw,
+                             cos_sim_ema_meter_standardized_lw,
+                             cos_sim_std_meter_standardized_lw,
                              dot_prod_meter_global,
                              dot_prod_avg_meter_lw,
                              eucl_dis_meter_global,
@@ -546,9 +565,9 @@ def train_one_epoch(
                              norm_pt_avg_meter_lw,
                              norm_ft_meter_global,
                              norm_ft_avg_meter_lw]
-
+        
         additional_stats_meters = [cos_sim_std_meter_lw, dot_prod_std_meter_lw, eucl_dis_std_meter_lw, norm_pt_std_meter_lw, norm_ft_std_meter_lw]
-
+        
         meters_to_plot = {
             "main_meters":             main_stats_meters,
             "additional_stats_meters": additional_stats_meters

@@ -319,6 +319,8 @@ def train_one_epoch(
     
     # global meters
     cos_sim_ema_meter_global = meters["cos_sim_ema_meter_global"]
+    cos_sim_ema_meter_standardized_global = meters["cos_sim_ema_meter_standardized_global"]
+    
     dot_prod_meter_global = meters["dot_prod_meter_global"]
     eucl_dis_meter_global = meters["eucl_dis_meter_global"]
     norm_pt_meter_global = meters["norm_pt_meter_global"]
@@ -327,6 +329,9 @@ def train_one_epoch(
     # layer-wise meters
     cos_sim_ema_meter_lw = meters["cos_sim_ema_meter_lw"]
     cos_sim_std_meter_lw = meters["cos_sim_std_meter_lw"]
+    cos_sim_ema_meter_standardized_lw = meters["cos_sim_ema_meter_standardized_lw"]
+    cos_sim_std_meter_standardized_lw = meters["cos_sim_std_meter_standardized_lw"]
+    
     dot_prod_avg_meter_lw = meters["dot_prod_avg_meter_lw"]
     dot_prod_std_meter_lw = meters["dot_prod_std_meter_lw"]
     eucl_dis_avg_meter_lw = meters["eucl_dis_avg_meter_lw"]
@@ -336,7 +341,16 @@ def train_one_epoch(
     norm_ft_avg_meter_lw = meters["norm_ft_avg_meter_lw"]
     norm_ft_std_meter_lw = meters["norm_ft_std_meter_lw"]
     
-    meters_to_print = [batch_time_meter, losses_pt_meter, losses_ft_meter, top1_meter, cos_sim_ema_meter_lw, cos_sim_ema_meter_global]
+    meters_to_print = [
+        batch_time_meter,
+        losses_pt_meter,
+        losses_ft_meter,
+        top1_meter,
+        cos_sim_ema_meter_lw,
+        cos_sim_ema_meter_standardized_lw,
+        cos_sim_ema_meter_global,
+        cos_sim_ema_meter_standardized_global,
+        ]
     
     progress = ProgressMeter(
         num_batches=len(train_loader_pt),
@@ -375,7 +389,10 @@ def train_one_epoch(
         update_grad_stats_meters(grads=grads, meters=meters, warmup=warmup)
         
         main_stats_meters = [cos_sim_ema_meter_global,
+                             cos_sim_ema_meter_standardized_global,
                              cos_sim_ema_meter_lw,
+                             cos_sim_ema_meter_standardized_lw,
+                             cos_sim_std_meter_standardized_lw,
                              dot_prod_meter_global,
                              dot_prod_avg_meter_lw,
                              eucl_dis_meter_global,
@@ -388,7 +405,7 @@ def train_one_epoch(
         additional_stats_meters = [cos_sim_std_meter_lw, dot_prod_std_meter_lw, eucl_dis_std_meter_lw, norm_pt_std_meter_lw, norm_ft_std_meter_lw]
         
         meters_to_plot = {
-            "main_meters": main_stats_meters,
+            "main_meters":             main_stats_meters,
             "additional_stats_meters": additional_stats_meters
             }
         
@@ -405,9 +422,8 @@ def train_one_epoch(
 
 
 def pretrain(model, images_pt, criterion_pt, optimizer_pt, losses_pt, data_time, end, config, alternating_mode=False):
-    
     backbone_grads_lw = OrderedDict()
-    backbone_grads_gl = torch.Tensor().cuda()
+    backbone_grads_global = torch.Tensor().cuda()
     
     model.requires_grad_(True)
     
