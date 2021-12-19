@@ -407,7 +407,7 @@ def train_one_epoch(
 def pretrain(model, images_pt, criterion_pt, optimizer_pt, losses_pt, data_time, end, config, alternating_mode=False):
     
     backbone_grads_lw = OrderedDict()
-    backbone_grads_gl = torch.Tensor().cuda()
+    backbone_grads_global = torch.Tensor().cuda()
     
     model.requires_grad_(True)
     
