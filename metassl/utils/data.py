@@ -204,12 +204,14 @@ def get_train_valid_loader(
             )
     elif dataset_name == "CIFAR10":
         # TODO: Check out how to set the train split here.
+        # setting it to true here to explicitly download to avoid having to download imagenet.
+        # Done only once.
         train_dataset = torchvision.datasets.CIFAR10(root='datasets/CIFAR10', train=True,
-                                                download=download, transform=train_transform)
+                                                download=True, transform=train_transform)
 
 
         valid_dataset = torchvision.datasets.CIFAR10(root='datasets/CIFAR10', train=False,
-                                               download=download, transform=valid_transform)
+                                               download=True, transform=valid_transform)
     else:
         # not supported
         raise ValueError('invalid dataset name=%s' % dataset)
