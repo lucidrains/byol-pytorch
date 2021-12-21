@@ -286,7 +286,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
         if epoch % config.expt.val_freq == 0:
             top1_avg = validate(test_loader, model, criterion_ft, config, finetuning=True)
             if config.expt.rank == 0:
-                writer.add_scalar('Test/Accuracy@1', top1_avg, config.train.epochs)
+                writer.add_scalar('Test/Accuracy@1', top1_avg, epoch)
                 print(f"=> Validation '{top1_avg}'")
 
         if not config.expt.multiprocessing_distributed or (config.expt.multiprocessing_distributed
@@ -346,7 +346,7 @@ def train(train_loader, model, criterion, optimizer, epoch, config, writer=None)
             progress.display(i)
         # write log epoch wise
         if config.expt.rank == 0:
-            write_to_summary_writer(epoch+1, losses.avg, writer)
+            writer.add_scalar('Loss/pre-training', loss.item(), epoch+1)
 
 
 def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
