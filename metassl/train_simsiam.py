@@ -59,7 +59,7 @@ model_names = sorted(
 )
 
 
-def validate(val_loader, model, criterion, config, finetuning=False):
+def validate(val_loader, model, criterion, config):
     batch_time = AverageMeter('Time', ':6.3f')
     losses = AverageMeter('Loss', ':.4e')
     top1 = AverageMeter('Acc@1', ':6.2f')
@@ -233,7 +233,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
         data_dir=traindir,
         batch_size=config.train.batch_size,
         random_seed=config.expt.seed,
-        valid_size=0.0,
+        valid_size=0.1,
         dataset_name=config.data.dataset,
         shuffle=True,
         num_workers=config.expt.workers,
@@ -283,11 +283,11 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
         train(train_loader, model, criterion, optimizer, epoch, config, writer)
 
         # evaluate on validation set
-        if epoch % config.expt.val_freq == 0:
-            top1_avg = validate(test_loader, model, criterion_ft, config, finetuning=True)
-            if config.expt.rank == 0:
-                writer.add_scalar('Test/Accuracy@1', top1_avg, epoch)
-                print(f"=> Validation '{top1_avg}'")
+        # if epoch % config.train.val_freq == 0:
+        #     top1_avg = validate(test_loader, model, criterion_ft, config)
+        #     if config.expt.rank == 0:
+        #         writer.add_scalar('Test/Accuracy@1', top1_avg, epoch)
+        #         print(f"=> Validation '{top1_avg}'")
 
         if not config.expt.multiprocessing_distributed or (config.expt.multiprocessing_distributed
                                                            and config.expt.rank % ngpus_per_node == 0):
