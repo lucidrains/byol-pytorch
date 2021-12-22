@@ -396,6 +396,7 @@ def train_one_epoch(
     data_time_meter = meters["data_time_meter"]
     losses_pt_meter = meters["losses_pt_meter"]
     losses_ft_meter = meters["losses_ft_meter"]
+    reward_meter = meters["reward_meter"]
     top1_meter = meters["top1_meter"]
     top5_meter = meters["top5_meter"]
     
@@ -522,7 +523,8 @@ def train_one_epoch(
             update_grad_stats_meters(grads=grads, meters=meters, warmup=warmup)
             
             optimizer_aug.zero_grad()
-            reward = (cos_sim_ema_meter_lw.val - cos_sim_ema_meter_lw.ema)
+            
+            reward = cos_sim_ema_meter_lw.val - cos_sim_ema_meter_lw.ema
             
             color_jitter_logprob_b = -(color_jitter_logprob_b * reward)
             color_jitter_logprob_b.backward()
@@ -537,6 +539,7 @@ def train_one_epoch(
             color_jitter_logprob_h.backward()
             
             optimizer_aug.step()
+            reward_meter.update(reward)
             norm_aug_brightness_grad_meter.update(torch.linalg.norm(aug_w_b.grad.data, 2))
             norm_aug_contrast_grad_meter.update(torch.linalg.norm(aug_w_c.grad.data, 2))
             norm_aug_saturation_grad_meter.update(torch.linalg.norm(aug_w_s.grad.data, 2))
@@ -545,30 +548,48 @@ def train_one_epoch(
         else:
             update_grad_stats_meters(grads=grads, meters=meters, warmup=warmup)
             
+            reward_meter.update(0.)
             norm_aug_brightness_grad_meter.update(0.)
             norm_aug_contrast_grad_meter.update(0.)
             norm_aug_saturation_grad_meter.update(0.)
             norm_aug_hue_grad_meter.update(0.)
         
-        main_stats_meters = [cos_sim_ema_meter_global,
-                             cos_sim_ema_meter_standardized_global,
-                             cos_sim_ema_meter_lw,
-                             cos_sim_ema_meter_standardized_lw,
-                             cos_sim_std_meter_standardized_lw,
-                             dot_prod_meter_global,
-                             dot_prod_avg_meter_lw,
-                             eucl_dis_meter_global,
-                             eucl_dis_avg_meter_lw,
-                             norm_pt_meter_global,
-                             norm_pt_avg_meter_lw,
-                             norm_ft_meter_global,
-                             norm_ft_avg_meter_lw]
+        main_stats_meters = [
+            reward_meter,
+            cos_sim_ema_meter_global,
+            cos_sim_ema_meter_standardized_global,
+            cos_sim_ema_meter_lw,
+            cos_sim_ema_meter_standardized_lw,
+            cos_sim_std_meter_standardized_lw,
+            dot_prod_meter_global,
+            dot_prod_avg_meter_lw,
+            eucl_dis_meter_global,
+            eucl_dis_avg_meter_lw,
+            norm_pt_meter_global,
+            norm_pt_avg_meter_lw,
+            norm_ft_meter_global,
+            norm_ft_avg_meter_lw,
+            ]
         
-        additional_stats_meters = [cos_sim_std_meter_lw, dot_prod_std_meter_lw, eucl_dis_std_meter_lw, norm_pt_std_meter_lw, norm_ft_std_meter_lw]
+        additional_stats_meters = [
+            cos_sim_std_meter_lw,
+            dot_prod_std_meter_lw,
+            eucl_dis_std_meter_lw,
+            norm_pt_std_meter_lw,
+            norm_ft_std_meter_lw
+            ]
+        
+        aug_param_meters = [
+            norm_aug_brightness_grad_meter,
+            norm_aug_contrast_grad_meter,
+            norm_aug_saturation_grad_meter,
+            norm_aug_hue_grad_meter
+            ]
         
         meters_to_plot = {
             "main_meters":             main_stats_meters,
-            "additional_stats_meters": additional_stats_meters
+            "additional_stats_meters": additional_stats_meters,
+            "aug_param_meters":        aug_param_meters
             }
         
         # measure elapsed time
@@ -720,6 +741,7 @@ if __name__ == '__main__':
     parser.add_argument('--expt.seed', default=123, type=int, metavar='N', help='random seed of numpy and torch')
     parser.add_argument('--expt.evaluate', action='store_true', help='evaluate model on validation set once and terminate (default: False)')
     parser.add_argument('--expt.image_wise_gradients', action='store_true', help='compute image wise gradients with backpack (default: False).')
+    # parser.add_argument('--expt.default_augmentation', action='store_true', help='this is a sanity-check flag. If set to True, the categories from which we sample augmentations only contain the default ones (default: False).')
     
     parser.add_argument('--train', default="train", type=str, metavar='N')
     parser.add_argument('--train.batch_size', default=256, type=int, metavar='N', help='in distributed setting this is the total batch size, i.e. batch size = individual bs * number of GPUs')

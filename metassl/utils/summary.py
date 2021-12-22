@@ -45,3 +45,8 @@ def write_to_summary_writer(total_iter, loss_pt, loss_ft, data_time, batch_time,
             writer.add_scalar(f'Additional Advanced Stats/{stat.name}', stat.val, total_iter)
             writer.add_scalar(f'Additional Advanced Stats/{stat.name} average', stat.avg, total_iter)
 
+    if "aug_param_meters" in meters_to_plot:
+        aug_param_meters = meters_to_plot["aug_param_meters"]
+        for stat in aug_param_meters:
+            writer.add_scalar(f'Aug. Param Meters/{stat.name}', stat.val, total_iter)
+            writer.add_scalar(f'Aug. Param Meters/{stat.name} average', stat.avg, total_iter)

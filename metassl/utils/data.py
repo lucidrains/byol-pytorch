@@ -420,6 +420,7 @@ def get_loaders(traindir, config, parameterize_augmentation=False):
         distributed=config.expt.distributed,
         drop_last=True,
         get_fine_tuning_loaders=True,
+        parameterize_augmentation=False,
         )
     
     test_loader_ft = get_test_loader(

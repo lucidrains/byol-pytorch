@@ -222,6 +222,9 @@ def initialize_all_meters_global():
     top1_meter = AverageMeter('Acc@1', ':6.2f')
     top5_meter = AverageMeter('Acc@5', ':6.2f')
     
+    # reward
+    reward_meter = AverageMeter('Reward', ':6.2f')
+    
     # global meters
     cos_sim_ema_meter_global = ExponentialMovingAverageMeter("Cos. Sim. PT-FT global. average", window=100, alpha=2, fmt=':6.4f')
     cos_sim_ema_meter_standardized_global = ExponentialMovingAverageMeter("Cos. Sim. (standardized) PT-FT global. average", window=100, alpha=2, fmt=':6.4f')
@@ -253,6 +256,7 @@ def initialize_all_meters_global():
         "losses_ft_meter":                       losses_ft_meter,
         "top1_meter":                            top1_meter,
         "top5_meter":                            top5_meter,
+        "reward_meter":                          reward_meter,
         "dot_prod_meter_global":                 dot_prod_meter_global,
         "eucl_dis_meter_global":                 eucl_dis_meter_global,
         "norm_pt_meter_global":                  norm_pt_meter_global,
