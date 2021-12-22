@@ -248,7 +248,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
         # evaluate on validation set
         if epoch % config.train.val_freq == 0:
             if config.expt.rank == 0:
-                top1_avg = knn_classifier(model.encoder, knn_loader, test_loader, epoch, args)
+                top1_avg = knn_classifier(model.module.encoder, knn_loader, test_loader, epoch)
                 writer.add_scalar('Pre-training/Accuracy@1', top1_avg, epoch)
                 print(f"=> Validation '{top1_avg}'")
 

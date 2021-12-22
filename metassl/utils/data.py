@@ -30,10 +30,12 @@ def get_knn_data_loader(batch_size, num_workers, pin_memory, drop_last):
 
     memory_data = torchvision.datasets.CIFAR10(root='datasets/CIFAR10', train=True, transform=test_transform,
                                                download=True)
-    # TODO: Is a Sampler needed??
+    num_test = len(memory_data)
+    indices = list(range(num_test))
+    test_sampler = SubsetRandomSampler(indices)
     memory_loader = torch.utils.data.DataLoader(memory_data, batch_size=batch_size,
                                                 num_workers=num_workers, pin_memory=pin_memory,
-                                                drop_last=drop_last, shuffle=False)
+                                                drop_last=drop_last, shuffle=False, sampler=test_sampler)
 
     return memory_loader
 
