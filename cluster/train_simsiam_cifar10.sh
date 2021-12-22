@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH -p mlhiwidlc_gpu-rtx2080
 #SBATCH -q dlc-dsengupt
-#SBATCH --gres=gpu:8
+#SBATCH --gres=gpu:1
 #SBATCH -o /work/dlclarge1/dsengupt-lth_ws/slurm_logs/simsiam_train.out # STDOUT  (the folder log has to be created prior to running or this won't work)
 #SBATCH -e /work/dlclarge1/dsengupt-lth_ws/slurm_logs/simsiam_train.err # STDERR  (the folder log has to be created prior to running or this won't work)
 #SBATCH -J SimSiam_Cifar10
@@ -16,7 +16,7 @@ pip list
 python3 -c "import torch; print(torch.__version__)"
 python3 -c "import torch; print(torch.cuda.is_available())"
 cd MetaSSL/metassl/
-echo "Pretrain Simsiam with CIFAR10"
-python3 -m metassl.train_simsiam --expt_name debug_test --epochs 1 --expt_mode CIFAR10
+echo "Pretrain Simsiam with CIFAR10 and Knn"
+python3 -m metassl.train_simsiam --expt_name simsiam_pretrain_cifar10 --epochs 500 --expt_mode CIFAR10
 
 deactivate
