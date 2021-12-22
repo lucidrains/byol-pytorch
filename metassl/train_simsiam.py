@@ -33,7 +33,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 try:
     # For execution in PyCharm
-    from metassl.utils.data import get_train_valid_loader, get_knn_data_loader
+    from metassl.utils.data import get_train_valid_loader
     from metassl.utils.config import AttrDict
     from metassl.utils.meters import AverageMeter, ProgressMeter
     from metassl.utils.simsiam import SimSiam
@@ -44,7 +44,7 @@ try:
 
 except ImportError:
     # For execution in command line
-    from .utils.data import get_train_valid_loader, get_knn_data_loader
+    from .utils.data import get_train_valid_loader
     from .utils.config import AttrDict
     from .utils.meters import AverageMeter, ProgressMeter
     from .utils.simsiam import SimSiam
@@ -201,9 +201,6 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
         get_fine_tuning_loaders=False,
     )
 
-    knn_loader = get_knn_data_loader(batch_size=config.train.batch_size, num_workers=config.expt.workers,
-                                     pin_memory=True, drop_last=True)
-
     optimizer = torch.optim.SGD(
         optim_params, init_lr,
         momentum=config.train.momentum,
@@ -248,7 +245,8 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
         # evaluate on validation set
         if epoch % config.train.val_freq == 0:
             if config.expt.rank == 0:
-                top1_avg = knn_classifier(model.module.encoder, knn_loader, test_loader, epoch)
+                top1_avg = knn_classifier(net=model.module.encoder, batch_size= config.train.batch_size,
+                                          workers=config.expt.workers,epoch=epoch)
                 writer.add_scalar('Pre-training/Accuracy@1', top1_avg, epoch)
                 print(f"=> Validation '{top1_avg}'")
 

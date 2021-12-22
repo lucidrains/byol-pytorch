@@ -1,13 +1,37 @@
 from tqdm import tqdm
 import torch.nn.functional as F
 import torch
+import torchvision
+import torchvision.transforms as transforms
+from torch.utils.data.distributed import DistributedSampler
+from torch.utils.data.sampler import SubsetRandomSampler
+
+
+def get_knn_data_loaders(batch_size, num_workers):
+    """
+    Data loader for kNN classifier.
+    Needs to be the training data, with test augmentation and no shuffling
+    """
+    test_transform = transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Normalize([0.4914, 0.4822, 0.4465], [0.2023, 0.1994, 0.2010])])
+
+    memory_data = torchvision.datasets.CIFAR10(root='datasets/CIFAR10', train=True,
+                                               transform=test_transform, download=True)
+    test_data = torchvision.datasets.CIFAR10(root='datasets/CIFAR10', train=False,
+                                             transform=test_transform, download=True)
+    memory_loader = torch.utils.data.DataLoader(memory_data, batch_size=batch_size, shuffle=False,
+                                                num_workers=num_workers, pin_memory=True)
+    test_loader = torch.utils.data.DataLoader(test_data, batch_size=batch_size, shuffle=False,
+                                              num_workers=num_workers, pin_memory=True)
+
+    return memory_loader, test_loader
 
 
 # Code from https://colab.research.google.com/github/facebookresearch/moco/blob/colab-notebook/colab
 # /moco_cifar10_demo.ipynb
 # test using a knn monitor
-
-def knn_classifier(net, memory_data_loader, test_data_loader, epoch, k=200, t=0.1, hide_progress=False):
+def knn_classifier(net, batch_size, workers, epoch, k=200, t=0.1, hide_progress=False):
     # Moco used 200
     """
      @param net: Model backbone. Encoder in our case
@@ -16,6 +40,7 @@ def knn_classifier(net, memory_data_loader, test_data_loader, epoch, k=200, t=0.
      @param epoch
      @param k: top neighbors to find. 200 is for ImageNet
     """
+    memory_data_loader, test_data_loader = get_knn_data_loaders(batch_size=batch_size, num_workers=workers)
     net.eval()
     classes = len(memory_data_loader.dataset.classes)
     total_top1, total_top5, total_num, feature_bank = 0.0, 0.0, 0, []

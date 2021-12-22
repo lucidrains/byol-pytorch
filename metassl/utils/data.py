@@ -18,28 +18,6 @@ normalize_imagenet = transforms.Normalize(
     std=[0.229, 0.224, 0.225]
 )
 
-
-def get_knn_data_loader(batch_size, num_workers, pin_memory, drop_last):
-    """
-    Data loader for kNN classifier.
-    Needs to be the training data, with test augmentation and no shuffling
-    """
-    test_transform = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize([0.4914, 0.4822, 0.4465], [0.2023, 0.1994, 0.2010])])
-
-    memory_data = torchvision.datasets.CIFAR10(root='datasets/CIFAR10', train=True, transform=test_transform,
-                                               download=True)
-    num_test = len(memory_data)
-    indices = list(range(num_test))
-    test_sampler = SubsetRandomSampler(indices)
-    memory_loader = torch.utils.data.DataLoader(memory_data, batch_size=batch_size,
-                                                num_workers=num_workers, pin_memory=pin_memory,
-                                                drop_last=drop_last, shuffle=False, sampler=test_sampler)
-
-    return memory_loader
-
-
 def get_train_valid_loader(
         data_dir,
         batch_size,
