@@ -29,78 +29,35 @@ import torch.utils.data
 import torch.utils.data.distributed
 import torchvision.models as models
 import yaml
-
 from torch.utils.tensorboard import SummaryWriter
 
 try:
     # For execution in PyCharm
-    from metassl.utils.data import get_train_valid_loader
+    from metassl.utils.data import get_train_valid_loader, get_knn_data_loader
     from metassl.utils.config import AttrDict
     from metassl.utils.meters import AverageMeter, ProgressMeter
     from metassl.utils.simsiam import SimSiam
     from metassl.utils.summary import write_to_summary_writer
     import metassl.models.resnet_cifar as our_cifar_resnets
     from metassl.utils.torch_utils import accuracy
+    from knn_validation import knn_classifier
 
 except ImportError:
     # For execution in command line
-    from .utils.data import get_train_valid_loader
+    from .utils.data import get_train_valid_loader, get_knn_data_loader
     from .utils.config import AttrDict
     from .utils.meters import AverageMeter, ProgressMeter
     from .utils.simsiam import SimSiam
     from .utils.summary import write_to_summary_writer
     from .models import resnet_cifar as our_cifar_resnets
     from .utils.torch_utils import accuracy
+    from .knn_validation import knn_classifier
 
 model_names = sorted(
     name for name in models.__dict__
     if name.islower() and not name.startswith("__")
     and callable(models.__dict__[name])
 )
-
-
-def validate(val_loader, model, criterion, config):
-    batch_time = AverageMeter('Time', ':6.3f')
-    losses = AverageMeter('Loss', ':.4e')
-    top1 = AverageMeter('Acc@1', ':6.2f')
-    top5 = AverageMeter('Acc@5', ':6.2f')
-    progress = ProgressMeter(
-        len(val_loader),
-        [batch_time, losses, top1, top5],
-        prefix='Test: '
-    )
-
-    # switch to evaluate mode
-    model.eval()
-
-    with torch.no_grad():
-        end = time.time()
-        for i, (images, target) in enumerate(val_loader):
-            if config.expt.gpu is not None:
-                images = images.cuda(config.expt.gpu, non_blocking=True)
-                target = target.cuda(config.expt.gpu, non_blocking=True)
-
-            # compute output
-            output = model(images)
-            loss = criterion(output, target)
-
-            # measure accuracy and record loss
-            acc1, acc5 = accuracy(output, target, topk=(1, 5))
-            losses.update(loss.item(), images.size(0))
-            top1.update(acc1[0], images.size(0))
-            top5.update(acc5[0], images.size(0))
-
-            # measure elapsed time
-            batch_time.update(time.time() - end)
-            end = time.time()
-
-            if i % config.expt.print_freq == 0:
-                progress.display(i)
-
-        # TODO: this should also be done with the ProgressMeter
-        print(f' * Acc@1 {top1.avg:.3f} Acc@5 {top5.avg:.3f}')
-
-    return top1.avg
 
 
 def main(config, expt_dir):
@@ -244,6 +201,9 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
         get_fine_tuning_loaders=False,
     )
 
+    knn_loader = get_knn_data_loader(batch_size=config.train.batch_size, num_workers=config.expt.workers,
+                                     pin_memory=True, drop_last=True)
+
     optimizer = torch.optim.SGD(
         optim_params, init_lr,
         momentum=config.train.momentum,
@@ -272,7 +232,10 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
 
     if config.expt.rank == 0:
         writer = SummaryWriter(log_dir=os.path.join(expt_dir, "tensorboard"))
+
     print(f"=> BEGIN PRE-TRAINING with config {config}")
+    best_acc = 0.0
+
     for epoch in range(config.train.start_epoch, config.train.epochs):
         if config.expt.distributed:
             train_sampler.set_epoch(epoch)
@@ -283,22 +246,25 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
         train(train_loader, model, criterion, optimizer, epoch, config, writer)
 
         # evaluate on validation set
-        # if epoch % config.train.val_freq == 0:
-        #     top1_avg = validate(test_loader, model, criterion_ft, config)
-        #     if config.expt.rank == 0:
-        #         writer.add_scalar('Test/Accuracy@1', top1_avg, epoch)
-        #         print(f"=> Validation '{top1_avg}'")
+        if epoch % config.train.val_freq == 0:
+            if config.expt.rank == 0:
+                top1_avg = knn_classifier(model.encoder, knn_loader, test_loader, epoch, args)
+                writer.add_scalar('Pre-training/Accuracy@1', top1_avg, epoch)
+                print(f"=> Validation '{top1_avg}'")
 
-        if not config.expt.multiprocessing_distributed or (config.expt.multiprocessing_distributed
-                                                           and config.expt.rank % ngpus_per_node == 0):
-            save_checkpoint(
-                {
-                    'epoch': epoch + 1,
-                    'arch': config.model.model_type,
-                    'state_dict': model.state_dict(),
-                    'optimizer': optimizer.state_dict(),
-                }, is_best=False, filename=os.path.join(expt_dir, 'checkpoint_{:04d}.pth.tar'.format(epoch))
-            )
+                # save the best model
+                if top1_avg > best_acc:
+                    best_acc = top1_avg
+                    if not config.expt.multiprocessing_distributed or (config.expt.multiprocessing_distributed
+                                                                       and config.expt.rank % ngpus_per_node == 0):
+                        save_checkpoint(
+                            {
+                                'epoch': epoch + 1,
+                                'arch': config.model.model_type,
+                                'state_dict': model.state_dict(),
+                                'optimizer': optimizer.state_dict(),
+                            }, is_best=False, filename=os.path.join(expt_dir, 'checkpoint_{:04d}.pth.tar'.format(epoch))
+                        )
 
     # shut down writer at end of training
     if config.expt.rank == 0:
@@ -346,7 +312,7 @@ def train(train_loader, model, criterion, optimizer, epoch, config, writer=None)
             progress.display(i)
         # write log epoch wise
         if config.expt.rank == 0:
-            writer.add_scalar('Loss/pre-training', loss.item(), epoch+1)
+            writer.add_scalar('Pre-training/Loss', loss.item(), epoch + 1)
 
 
 def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
