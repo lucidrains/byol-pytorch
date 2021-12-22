@@ -213,7 +213,7 @@ def calc_layer_wise_stats(backbone_grads_pt, backbone_grads_ft=None, metric_type
     return np.mean(metric_vals), np.std(metric_vals)
 
 
-def initialize_all_meters_global():
+def initialize_all_meters():
     # general meters
     batch_time_meter = AverageMeter('Time', ':6.3f')
     data_time_meter = AverageMeter('Data', ':6.3f')

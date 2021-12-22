@@ -35,7 +35,7 @@ try:
     # For execution in PyCharm
     from metassl.utils.data import get_train_valid_loader, get_test_loader, get_loaders
     from metassl.utils.config import AttrDict, _parse_args
-    from metassl.utils.meters import AverageMeter, ProgressMeter, ExponentialMovingAverageMeter, initialize_all_meters_global, update_grad_stats_meters
+    from metassl.utils.meters import AverageMeter, ProgressMeter, ExponentialMovingAverageMeter, initialize_all_meters, update_grad_stats_meters
     from metassl.utils.simsiam_alternating import SimSiam
     from metassl.utils.summary import write_to_summary_writer
     import metassl.models.resnet_cifar as our_cifar_resnets
@@ -43,7 +43,7 @@ except ImportError:
     # For execution in command line
     from .utils.data import get_train_valid_loader, get_test_loader, get_loaders
     from .utils.config import AttrDict, _parse_args
-    from .utils.meters import AverageMeter, ProgressMeter, ExponentialMovingAverageMeter, initialize_all_meters_global, update_grad_stats_meters
+    from .utils.meters import AverageMeter, ProgressMeter, ExponentialMovingAverageMeter, initialize_all_meters, update_grad_stats_meters
     from .utils.simsiam_alternating import SimSiam
     from .utils.summary import write_to_summary_writer
     from .models import resnet_cifar as our_cifar_resnets
@@ -246,7 +246,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
     if config.expt.rank == 0:
         writer = SummaryWriter(log_dir=os.path.join(expt_dir, "tensorboard"))
     
-    meters = initialize_all_meters_global()
+    meters = initialize_all_meters()
     
     for epoch in range(config.train.start_epoch, config.train.epochs):
         

@@ -1,9 +1,9 @@
 try:
     # For execution in PyCharm
-    from metassl.utils.meters import AverageMeter, ProgressMeter, ExponentialMovingAverageMeter, initialize_all_meters_global, update_grad_stats_meters
+    from metassl.utils.meters import AverageMeter, ProgressMeter, ExponentialMovingAverageMeter, initialize_all_meters, update_grad_stats_meters
 except ImportError:
     # For execution in command line
-    from .meters import AverageMeter, ProgressMeter, ExponentialMovingAverageMeter, initialize_all_meters_global, update_grad_stats_meters
+    from .meters import AverageMeter, ProgressMeter, ExponentialMovingAverageMeter, initialize_all_meters, update_grad_stats_meters
     
 
 def write_to_summary_writer(total_iter, loss_pt, loss_ft, data_time, batch_time, optimizer_pt, optimizer_ft, top1, top5, meters_to_plot, writer):
