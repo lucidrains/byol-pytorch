@@ -263,10 +263,10 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
         weight_decay=config.finetuning.weight_decay
         )
     
-    aug_w_b = torch.zeros(len(color_jitter_strengths_brightness), requires_grad=True)
-    aug_w_c = torch.zeros(len(color_jitter_strengths_contrast), requires_grad=True)
-    aug_w_s = torch.zeros(len(color_jitter_strengths_saturation), requires_grad=True)
-    aug_w_h = torch.zeros(len(color_jitter_strengths_hue), requires_grad=True)
+    aug_w_b = nn.Parameter(torch.zeros(len(color_jitter_strengths_brightness)), requires_grad=True)
+    aug_w_c = nn.Parameter(torch.zeros(len(color_jitter_strengths_contrast)), requires_grad=True)
+    aug_w_s = nn.Parameter(torch.zeros(len(color_jitter_strengths_saturation)), requires_grad=True)
+    aug_w_h = nn.Parameter(torch.zeros(len(color_jitter_strengths_hue)), requires_grad=True)
     
     bound = 1. / math.sqrt(aug_w_b.size(0))
     bound_h = 1. / math.sqrt(aug_w_h.size(0))
@@ -539,7 +539,9 @@ def train_one_epoch(
             color_jitter_logprob_h.backward()
             
             optimizer_aug.step()
+            
             reward_meter.update(reward)
+
             norm_aug_brightness_grad_meter.update(torch.linalg.norm(aug_w_b.grad.data, 2))
             norm_aug_contrast_grad_meter.update(torch.linalg.norm(aug_w_c.grad.data, 2))
             norm_aug_saturation_grad_meter.update(torch.linalg.norm(aug_w_s.grad.data, 2))
