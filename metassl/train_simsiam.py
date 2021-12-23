@@ -344,13 +344,15 @@ if __name__ == '__main__':
     parser.add_argument('--expt_mode', default="ImageNet", choices=["ImageNet", "CIFAR10"],
                         help='Define which dataset to use to select the correct yaml file.')
     parser.add_argument('--workers', default=32, type=int, metavar='N', help='number of data loading workers')
+    parser.add_argument('--val_freq', default=10, type=int, metavar='N',
+                        help='Frequency to evaluate kNN classifier accuracy # epochs')
+    parser.add_argument('--seed', default=123, type=int, metavar='N', help='random seed of numpy and torch')
     args = parser.parse_args()
 
     expt_name = args.expt_name
     epochs = args.epochs
     lr = args.lr
     ssl_model_checkpoint_path = args.ssl_model_checkpoint_path
-    workers = args.workers
 
     # Saving checkpoint and config pased on experiment mode
     if args.expt_mode == "ImageNet":
@@ -392,7 +394,9 @@ if __name__ == '__main__':
 
     config['train']['epochs'] = epochs
     config['train']['lr'] = lr
-    config['expt']['workers'] = workers
+    config['expt']['workers'] = args.workers
+    config['train']['val_freq'] = args.val_freq
+    config['expt']['seed'] = args.seed
 
     config = AttrDict(config)
 

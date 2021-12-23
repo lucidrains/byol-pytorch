@@ -16,7 +16,7 @@ pip list
 python3 -c "import torch; print(torch.__version__)"
 python3 -c "import torch; print(torch.cuda.is_available())"
 cd MetaSSL/metassl/
-echo "Pretrain Simsiam with CIFAR10 and Knn"
-python3 -m metassl.train_simsiam --expt_name simsiam_pretrain_cifar10 --epochs 500 --expt_mode CIFAR10
+echo "Pretrain Simsiam with CIFAR10 and Knn Run 2"
+python3 -m metassl.train_simsiam --expt_name run2_simsiam_cifar10 --epochs 500 --expt_mode CIFAR10 --workers 8 --seed 125
 
 deactivate
