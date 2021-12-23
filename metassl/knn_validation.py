@@ -28,8 +28,7 @@ def get_knn_data_loaders(batch_size, num_workers):
     return memory_loader, test_loader
 
 
-# Code from https://colab.research.google.com/github/facebookresearch/moco/blob/colab-notebook/colab
-# /moco_cifar10_demo.ipynb
+# Code from https://colab.research.google.com/github/facebookresearch/moco/blob/colab-notebook/colab/moco_cifar10_demo.ipynb
 # test using a knn monitor
 def knn_classifier(net, batch_size, workers, epoch, k=200, t=0.1, hide_progress=False):
     # Moco used 200

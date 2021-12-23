@@ -228,7 +228,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
     writer = None
 
     if config.expt.rank == 0:
-        writer = SummaryWriter(log_dir=os.path.join(expt_dir, "tensorboard"))
+        writer = SummaryWriter(log_dir=os.path.join(expt_dir, f"tensorboard_{config.train.epochs}_{init_lr}"))
 
     print(f"=> BEGIN PRE-TRAINING with config {config}")
     best_acc = 0.0
@@ -245,8 +245,8 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
         # evaluate on validation set
         if epoch % config.train.val_freq == 0:
             if config.expt.rank == 0:
-                top1_avg = knn_classifier(net=model.module.encoder, batch_size= config.train.batch_size,
-                                          workers=config.expt.workers,epoch=epoch)
+                top1_avg = knn_classifier(net=model.module.encoder, batch_size=config.train.batch_size,
+                                          workers=config.expt.workers, epoch=epoch)
                 writer.add_scalar('Pre-training/Accuracy@1', top1_avg, epoch)
                 print(f"=> Validation '{top1_avg}'")
 
@@ -261,7 +261,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
                                 'arch': config.model.model_type,
                                 'state_dict': model.state_dict(),
                                 'optimizer': optimizer.state_dict(),
-                            }, is_best=False, filename=os.path.join(expt_dir, 'checkpoint_{:04d}.pth.tar'.format(epoch))
+                            }, is_best=True, filename=os.path.join(expt_dir, 'checkpoint_{:04d}.pth.tar'.format(epoch))
                         )
 
     # shut down writer at end of training
@@ -343,12 +343,14 @@ if __name__ == '__main__':
     parser.add_argument('--ssl_model_checkpoint_path', default=None, type=str, help='pretrained model checkpoint path')
     parser.add_argument('--expt_mode', default="ImageNet", choices=["ImageNet", "CIFAR10"],
                         help='Define which dataset to use to select the correct yaml file.')
+    parser.add_argument('--workers', default=32, type=int, metavar='N', help='number of data loading workers')
     args = parser.parse_args()
 
     expt_name = args.expt_name
     epochs = args.epochs
     lr = args.lr
     ssl_model_checkpoint_path = args.ssl_model_checkpoint_path
+    workers = args.workers
 
     # Saving checkpoint and config pased on experiment mode
     if args.expt_mode == "ImageNet":
@@ -387,6 +389,10 @@ if __name__ == '__main__':
     with open(os.path.join(expt_sub_dir, "config.yaml"), "w") as f:
         yaml.dump(config, f)
         print(f"copied config to {expt_sub_dir}")
+
+    config['train']['epochs'] = epochs
+    config['train']['lr'] = lr
+    config['expt']['workers'] = workers
 
     config = AttrDict(config)
 
