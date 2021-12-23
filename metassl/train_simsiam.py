@@ -347,6 +347,9 @@ if __name__ == '__main__':
     parser.add_argument('--val_freq', default=10, type=int, metavar='N',
                         help='Frequency to evaluate kNN classifier accuracy # epochs')
     parser.add_argument('--seed', default=123, type=int, metavar='N', help='random seed of numpy and torch')
+    parser.add_argument('--scheduler_epochs', default=100, type=int, metavar='N', help='denotes when scheduler should '
+                                                                                       'step')
+
     args = parser.parse_args()
 
     expt_name = args.expt_name
@@ -392,11 +395,13 @@ if __name__ == '__main__':
         yaml.dump(config, f)
         print(f"copied config to {expt_sub_dir}")
 
+    # overwrite config yaml values from command line
     config['train']['epochs'] = epochs
     config['train']['lr'] = lr
     config['expt']['workers'] = args.workers
     config['train']['val_freq'] = args.val_freq
     config['expt']['seed'] = args.seed
+    config['train']['scheduler_epochs'] = args.scheduler_epochs
 
     config = AttrDict(config)
 
