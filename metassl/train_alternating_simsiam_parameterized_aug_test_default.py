@@ -292,6 +292,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
         config.expt.ssl_model_checkpoint_path = newest_model
     
     total_iter = 0
+    meters = None
     
     # optionally resume from a checkpoint
     if config.expt.ssl_model_checkpoint_path:
@@ -309,6 +310,8 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
             optimizer_ft.load_state_dict(checkpoint['optimizer_ft'])
             optimizer_aug.load_state_dict(checkpoint['optimizer_aug'])
             total_iter = checkpoint['total_iter']
+            meters = checkpoint['meters']
+            aug_param_dict = checkpoint['aug_param_dict']
             print(f"=> loaded checkpoint '{config.expt.ssl_model_checkpoint_path}' (epoch {checkpoint['epoch']})")
         else:
             print(f"=> no checkpoint found at '{config.expt.ssl_model_checkpoint_path}'")
@@ -324,7 +327,8 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
     if config.expt.rank == 0:
         writer = SummaryWriter(log_dir=os.path.join(expt_dir, "tensorboard"))
     
-    meters = initialize_all_meters()
+    if not meters:
+        meters = initialize_all_meters()
     
     for epoch in range(config.train.start_epoch, config.train.epochs):
         
@@ -368,7 +372,19 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
             if config.expt.rank == 0:
                 writer.add_scalar('Test/Accuracy@1', top1_avg, total_iter)
         
-        check_and_save_checkpoint(config, ngpus_per_node, total_iter, epoch, model, optimizer_pt, optimizer_ft, expt_dir, optimizer_aug=optimizer_aug)
+        check_and_save_checkpoint(
+            config=config,
+            ngpus_per_node=ngpus_per_node,
+            total_iter=total_iter,
+            epoch=epoch,
+            model=model,
+            optimizer_pt=optimizer_pt,
+            optimizer_ft=optimizer_ft,
+            expt_dir=expt_dir,
+            meters=meters,
+            optimizer_aug=optimizer_aug,
+            aug_param_dict=aug_param_dict,
+            )
     
     if config.expt.rank == 0:
         writer.close()
@@ -553,7 +569,7 @@ def train_one_epoch(
             # print("actual parameters BEFORE step:", aug_w_b)
             
             # optimizer_aug.step()
-
+            
             # print("actual parameters AFTER step:", aug_w_b)
             
             reward_meter.update(reward)
