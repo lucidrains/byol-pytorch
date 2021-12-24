@@ -286,7 +286,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
         }
     
     # color_jitter_dist = torch.distributions.Categorical(probs=torch.softmax(aug_w, dim=0))
-    optimizer_aug = torch.optim.Adam([aug_w_b, aug_w_c, aug_w_s, aug_w_h], 0.0001)
+    optimizer_aug = torch.optim.Adam([aug_w_b, aug_w_c, aug_w_s, aug_w_h], 0.001)
     
     # in case a dumped model exist and ssl_model_checkpoint is not set, load that dumped model
     newest_model = get_newest_model(expt_dir)
