@@ -198,13 +198,15 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
     print(f"init_lr_pt: {init_lr_pt}")
     
     optimizer_pt = torch.optim.SGD(
-        optim_params_pt, init_lr_pt,
+        params=optim_params_pt,
+        lr=init_lr_pt,
         momentum=config.train.momentum,
         weight_decay=config.train.weight_decay
         )
     
     optimizer_ft = torch.optim.SGD(
-        model.module.classifier_head.parameters(), init_lr_ft,
+        params=model.module.classifier_head.parameters(),
+        lr=init_lr_ft,
         momentum=config.finetuning.momentum,
         weight_decay=config.finetuning.weight_decay
         )
