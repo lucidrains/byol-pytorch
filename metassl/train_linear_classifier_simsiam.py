@@ -27,10 +27,21 @@ import torch.utils.data.distributed
 import torchvision.models as models
 import yaml
 
-from metassl.utils.data import get_train_valid_loader, get_test_loader
-from utils.config import AttrDict
-from utils.meters import AverageMeter, ProgressMeter
-from utils.torch_utils import accuracy, validate
+try:
+    # For execution in PyCharm
+    from metassl.utils.data import get_train_valid_loader, get_test_loader
+    from metassl.utils.config import AttrDict
+    from metassl.utils.meters import AverageMeter, ProgressMeter
+    from metassl.utils.torch_utils import accuracy, validate
+
+except ImportError:
+    # For execution in command line
+    from .utils.data import get_train_valid_loader, get_test_loader
+    from .utils.config import AttrDict
+    from .utils.meters import AverageMeter, ProgressMeter
+    from .utils.torch_utils import accuracy, validate
+
+
 
 model_names = sorted(
     name for name in models.__dict__
