@@ -25,8 +25,8 @@ import torch.utils.data
 import torch.utils.data.distributed
 import torchvision.models as models
 import yaml
-from backpack import backpack, extend
-from backpack.extensions import BatchGrad
+# from backpack import backpack, extend
+# from backpack.extensions import BatchGrad
 from jsonargparse import ArgumentParser
 from torch.utils.tensorboard import SummaryWriter
 
@@ -72,9 +72,9 @@ model_names = sorted(
     )
 
 # augmentation strengths
-color_jitter_strengths_brightness = [0.4]
-color_jitter_strengths_contrast = [0.4]
-color_jitter_strengths_saturation = [0.4]
+color_jitter_strengths_brightness = [0.39, 0.4]
+color_jitter_strengths_contrast = [0.39, 0.4]
+color_jitter_strengths_saturation = [0.39, 0.4]
 color_jitter_strengths_hue = [0.1]
 
 # histograms
@@ -169,10 +169,10 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
         model = SimSiam(models.__dict__[config.model.model_type], config.simsiam.dim, config.simsiam.pred_dim)
     
     # todo: check backpack + ddp + resnet with sam; backpack raises errors when using inplace operations
-    if config.expt.image_wise_gradients:
-        for module in model.modules():
-            if hasattr(module, "inplace"):
-                module.inplace = False
+    # if config.expt.image_wise_gradients:
+    #     for module in model.modules():
+    #         if hasattr(module, "inplace"):
+    #             module.inplace = False
     
     if config.model.turn_off_bn:
         print("Turning off BatchNorm in entire model.")
@@ -202,9 +202,9 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
             config.train.batch_size = int(config.train.batch_size / ngpus_per_node)
             config.workers = int((config.expt.workers + ngpus_per_node - 1) / ngpus_per_node)
             
-            if config.expt.image_wise_gradients:
-                model = extend(model)
-                print("using backpack")
+            # if config.expt.image_wise_gradients:
+            #     model = extend(model)
+            #     print("using backpack")
             
             model = torch.nn.parallel.DistributedDataParallel(
                 model, device_ids=[config.expt.gpu],
@@ -284,7 +284,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
         }
     
     # color_jitter_dist = torch.distributions.Categorical(probs=torch.softmax(aug_w, dim=0))
-    optimizer_aug = torch.optim.Adam([aug_w_b, aug_w_c, aug_w_s, aug_w_h], 0.01)
+    optimizer_aug = torch.optim.Adam([aug_w_b, aug_w_c, aug_w_s, aug_w_h], 0.001)
     
     # in case a dumped model exist and ssl_model_checkpoint is not set, load that dumped model
     newest_model = get_newest_model(expt_dir)
@@ -455,6 +455,8 @@ def train_one_epoch(
         
         total_iter += 1
         
+        # print(train_loader_ft)
+        
         color_jitter_action_idx_b, color_jitter_logprob_b, _ = get_sample_logprob(logits=aug_w_b)
         color_jitter_action_idx_c, color_jitter_logprob_c, _ = get_sample_logprob(logits=aug_w_c)
         color_jitter_action_idx_s, color_jitter_logprob_s, _ = get_sample_logprob(logits=aug_w_s)
@@ -465,7 +467,7 @@ def train_one_epoch(
         strength_s = color_jitter_strengths_saturation[color_jitter_action_idx_s]
         strength_h = color_jitter_strengths_hue[color_jitter_action_idx_h]
         
-        print("strengths:", strength_b, strength_c, strength_s, strength_h)
+        # print("strengths:", strength_b, strength_c, strength_s, strength_h)
         
         color_jitter_histogram_brightness[strength_b] += 1
         color_jitter_histogram_contrast[strength_c] += 1
@@ -480,16 +482,18 @@ def train_one_epoch(
         if config.expt.gpu is not None:
             images_pt = images_pt.cuda(config.expt.gpu, non_blocking=True)
         
-        if config.expt.image_wise_gradients:
-            parameterized_transform_list = create_transforms(strength_b, strength_c, strength_s, strength_h, image_height=images_pt.shape[2], image_width=images_pt.shape[3])
-            images_pt = augment_per_image(parameterized_transform_list, images_pt)
-        else:
-            parameterized_transform = create_transforms(strength_b, strength_c, strength_s, strength_h, image_height=images_pt.shape[2], image_width=images_pt.shape[3])[0]
-            images_pt = parameterized_transform(images_pt)
+        # if config.expt.image_wise_gradients:
+        #     parameterized_transform_list = create_transforms(strength_b, strength_c, strength_s, strength_h, image_height=images_pt.shape[2], image_width=images_pt.shape[3])
+        #     images_pt = augment_per_image(parameterized_transform_list, images_pt)
+        # else:
+        parameterized_transform = create_transforms(strength_b, strength_c, strength_s, strength_h, image_height=images_pt.shape[2], image_width=images_pt.shape[3])[0]
+        images_pt = parameterized_transform(images_pt)
         
         if config.expt.gpu is not None:
             images_pt[0] = images_pt[0].contiguous()
             images_pt[1] = images_pt[1].contiguous()
+            images_pt[0] = images_pt[0].cuda(config.expt.gpu, non_blocking=True)
+            images_pt[1] = images_pt[1].cuda(config.expt.gpu, non_blocking=True)
             images_ft = images_ft.cuda(config.expt.gpu, non_blocking=True)
             target_ft = target_ft.cuda(config.expt.gpu, non_blocking=True)
         
@@ -525,33 +529,39 @@ def train_one_epoch(
             update_grad_stats_meters(grads=grads, meters=meters, warmup=warmup)
             
             optimizer_aug.zero_grad()
-            print("after zero_grad():", aug_w_b.grad)
+            # print("after zero_grad():", aug_w_b.grad)
+            # print("after zero_grad():", aug_w_c.grad)
+            # print("after zero_grad():", aug_w_h.grad)
+            # print("after zero_grad():", aug_w_s.grad)
             
             reward = cos_sim_ema_meter_lw.val - cos_sim_ema_meter_lw.ema
             
             color_jitter_logprob_b = -(color_jitter_logprob_b * reward)
-            color_jitter_logprob_b.backward()
+            # color_jitter_logprob_b.backward()
             
             color_jitter_logprob_c = -(color_jitter_logprob_c * reward)
             color_jitter_logprob_c.backward()
             
             color_jitter_logprob_s = -(color_jitter_logprob_s * reward)
-            color_jitter_logprob_s.backward()
+            # color_jitter_logprob_s.backward()
             
             color_jitter_logprob_h = -(color_jitter_logprob_h * reward)
-            color_jitter_logprob_h.backward()
+            # color_jitter_logprob_h.backward()
             
-            print("before zero_grad():", aug_w_b.grad)
-            print("before zero_grad() (data):", aug_w_b.grad.data)
+            # print("before zero_grad():", aug_w_b.grad)
+            # print("before zero_grad() (data):", aug_w_b.grad.data)
+            # print("actual parameters BEFORE step:", aug_w_b)
             
-            optimizer_aug.step()
+            # optimizer_aug.step()
+
+            # print("actual parameters AFTER step:", aug_w_b)
             
             reward_meter.update(reward)
             
-            norm_aug_brightness_grad_meter.update(torch.linalg.norm(aug_w_b.grad.data, 2))
-            norm_aug_contrast_grad_meter.update(torch.linalg.norm(aug_w_c.grad.data, 2))
-            norm_aug_saturation_grad_meter.update(torch.linalg.norm(aug_w_s.grad.data, 2))
-            norm_aug_hue_grad_meter.update(torch.linalg.norm(aug_w_h.grad.data, 2))
+            # norm_aug_brightness_grad_meter.update(torch.linalg.norm(aug_w_b.grad.data, 2))
+            # norm_aug_contrast_grad_meter.update(torch.linalg.norm(aug_w_c.grad.data, 2))
+            # norm_aug_saturation_grad_meter.update(torch.linalg.norm(aug_w_s.grad.data, 2))
+            # norm_aug_hue_grad_meter.update(torch.linalg.norm(aug_w_h.grad.data, 2))
         
         else:
             update_grad_stats_meters(grads=grads, meters=meters, warmup=warmup)
@@ -658,11 +668,11 @@ def pretrain(model, images_pt, criterion_pt, optimizer_pt, losses_pt, data_time,
     
     # compute gradient and do SGD step
     optimizer_pt.zero_grad()
-    if config.expt.image_wise_gradients:
-        with backpack(BatchGrad()):
-            loss_pt.backward()
-    else:
-        loss_pt.backward()
+    # if config.expt.image_wise_gradients:
+    #     with backpack(BatchGrad()):
+    #         loss_pt.backward()
+    # else:
+    loss_pt.backward()
     # step does not change .grad field of the parameters.
     optimizer_pt.step()
     
@@ -695,11 +705,11 @@ def finetune(model, images_ft, target_ft, criterion_ft, optimizer_ft, losses_ft_
     # compute outputs
     output_ft = model(images_ft, finetuning=True)
     loss_ft = criterion_ft(output_ft, target_ft)
-    if config.expt.image_wise_gradients:
-        with backpack(BatchGrad()):
-            loss_ft.backward()
-    else:
-        loss_ft.backward()
+    # if config.expt.image_wise_gradients:
+    #     with backpack(BatchGrad()):
+    #         loss_ft.backward()
+    # else:
+    loss_ft.backward()
     
     if alternating_mode:
         for key, param in model.module.backbone.named_parameters():
@@ -734,7 +744,7 @@ if __name__ == '__main__':
     parser.add_argument('--expt.expt_name', default='pre-training-fix-lr-100-256', type=str, help='experiment name')
     parser.add_argument('--expt.expt_mode', default='ImageNet', choices=["ImageNet", "CIFAR10"], help='Define which dataset to use to select the correct yaml file.')
     parser.add_argument('--expt.save_model', action='store_false', help='save the model to disc or not (default: True)')
-    parser.add_argument('--expt.save_model_frequency', default=1, type=int, metavar='N', help='save model frequency in # of epochs')
+    parser.add_argument('--expt.save_model_frequency', default=5, type=int, metavar='N', help='save model frequency in # of epochs')
     parser.add_argument('--expt.ssl_model_checkpoint_path', type=str, help='path to the pre-trained model, resumes training if model with same config exists')
     parser.add_argument('--expt.target_model_checkpoint_path', type=str, help='path to the downstream task model, resumes training if model with same config exists')
     parser.add_argument('--expt.print_freq', default=10, type=int, metavar='N')
@@ -748,7 +758,7 @@ if __name__ == '__main__':
     parser.add_argument('--expt.eval_freq', default=10, type=int, metavar='N', help='every eval_freq epoch will the model be evaluated')
     parser.add_argument('--expt.seed', default=123, type=int, metavar='N', help='random seed of numpy and torch')
     parser.add_argument('--expt.evaluate', action='store_true', help='evaluate model on validation set once and terminate (default: False)')
-    parser.add_argument('--expt.image_wise_gradients', action='store_true', help='compute image wise gradients with backpack (default: False).')
+    # parser.add_argument('--expt.image_wise_gradients', action='store_true', help='compute image wise gradients with backpack (default: False).')
     # parser.add_argument('--expt.default_augmentation', action='store_true', help='this is a sanity-check flag. If set to True, the categories from which we sample augmentations only contain the default ones (default: False).')
     
     parser.add_argument('--train', default="train", type=str, metavar='N')

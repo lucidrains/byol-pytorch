@@ -23,6 +23,7 @@ def create_transforms(strengths_b, strengths_c, strengths_s, strengths_h, image_
         kernel_w -= 1
     
     for i in range(len(strengths_b)):
+        
         trans = TwoCropsTransform(
             transforms.Compose(
                 [
