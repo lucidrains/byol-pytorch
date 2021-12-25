@@ -75,7 +75,7 @@ model_names = sorted(
 color_jitter_strengths_brightness = [0.39, 0.4]
 color_jitter_strengths_contrast = [0.39, 0.4]
 color_jitter_strengths_saturation = [0.39, 0.4]
-color_jitter_strengths_hue = [0.1]
+color_jitter_strengths_hue = [0.099, 0.1]
 
 # histograms
 color_jitter_histogram_brightness = {k: 0 for k in color_jitter_strengths_brightness}
