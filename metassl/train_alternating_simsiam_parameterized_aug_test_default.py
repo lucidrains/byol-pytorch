@@ -72,10 +72,10 @@ model_names = sorted(
     )
 
 # augmentation strengths
-color_jitter_strengths_brightness = [0.39, 0.4]
-color_jitter_strengths_contrast = [0.39, 0.4]
-color_jitter_strengths_saturation = [0.39, 0.4]
-color_jitter_strengths_hue = [0.099, 0.1]
+color_jitter_strengths_brightness = [0.4]
+color_jitter_strengths_contrast = [0.4]
+color_jitter_strengths_saturation = [0.4]
+color_jitter_strengths_hue = [0.1]
 
 # histograms
 color_jitter_histogram_brightness = {k: 0 for k in color_jitter_strengths_brightness}
@@ -566,11 +566,11 @@ def train_one_epoch(
             color_jitter_logprob_h = -(color_jitter_logprob_h * reward)
             color_jitter_logprob_h.backward()
             
-            # print("before zero_grad():", aug_w_b.grad)
-            # print("before zero_grad() (data):", aug_w_b.grad.data)
+            # print("grad before step():", aug_w_b.grad)
+            # print("grad data before step():", aug_w_b.grad.data)
             # print("actual parameters BEFORE step:", aug_w_b)
             
-            # optimizer_aug.step()
+            optimizer_aug.step()
             
             # print("actual parameters AFTER step:", aug_w_b)
             
@@ -837,5 +837,6 @@ if __name__ == '__main__':
         print(f"copied config to {f.name}")
     
     config = AttrDict(jsonargparse.namespace_to_dict(args))
+    print("\n\nConfig being run:\n", config, "\n\n")
     
     main(config=config, expt_dir=expt_sub_dir)
