@@ -75,22 +75,22 @@ simsiam:
   fix_pred_lr:   True                        # Fix learning rate for the predictor
 
 
-#######################################
-###       BOHB Specific             ###
-#######################################
-bohb:
-  run_id:           "default_BOHB"
-  seed:             123
-  n_iterations:     10                          # How many BOHB iterations
-  min_budget:       1
-  max_budget:       3
-  budget_mode:      "epochs"                    # Choose your desired fidelity between 'epochs' and 'data'
-  eta:              3
-  configspace_mode: "color_jitter_strengths"    # Define which configspace to use
-                                                # choices=["imagenet_probability_augment",
-                                                # "cifar10_probability_augment", "color_jitter_strengths"]
-  nic_name:         "lo"                        # Define the network interface to use > local: "lo", cluster: "eth0"
-  port:             0
-  worker:           False                       # Make this execution a worker server, action="store_true"
-  warmstarting:     False
-  warmstarting_dir: None
+########################################
+####       BOHB Specific             ###
+########################################
+#bohb:
+#  run_id:           "default_BOHB"
+#  seed:             123
+#  n_iterations:     10                          # How many BOHB iterations
+#  min_budget:       1
+#  max_budget:       3
+#  budget_mode:      "epochs"                    # Choose your desired fidelity between 'epochs' and 'data'
+#  eta:              3
+#  configspace_mode: "color_jitter_strengths"    # Define which configspace to use
+#                                                # choices=["imagenet_probability_augment",
+#                                                # "cifar10_probability_augment", "color_jitter_strengths"]
+#  nic_name:         "lo"                        # Define the network interface to use > local: "lo", cluster: "eth0"
+#  port:             0
+#  worker:           False                       # Make this execution a worker server, action="store_true"
+#  warmstarting:     False
+#  warmstarting_dir: None

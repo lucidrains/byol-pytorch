@@ -823,5 +823,7 @@ if __name__ == '__main__':
         print(f"copied config to {f.name}")
     
     config = AttrDict(jsonargparse.namespace_to_dict(args))
+
+    print("\n\nConfig being run:\n", config, "\n\n")
     
     main(config=config, expt_dir=expt_sub_dir)

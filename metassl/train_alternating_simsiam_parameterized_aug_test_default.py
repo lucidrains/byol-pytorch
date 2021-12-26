@@ -555,16 +555,16 @@ def train_one_epoch(
             reward = cos_sim_ema_meter_lw.val - cos_sim_ema_meter_lw.ema
             
             color_jitter_logprob_b = -(color_jitter_logprob_b * reward)
-            # color_jitter_logprob_b.backward()
+            color_jitter_logprob_b.backward()
             
             color_jitter_logprob_c = -(color_jitter_logprob_c * reward)
             color_jitter_logprob_c.backward()
             
             color_jitter_logprob_s = -(color_jitter_logprob_s * reward)
-            # color_jitter_logprob_s.backward()
+            color_jitter_logprob_s.backward()
             
             color_jitter_logprob_h = -(color_jitter_logprob_h * reward)
-            # color_jitter_logprob_h.backward()
+            color_jitter_logprob_h.backward()
             
             # print("before zero_grad():", aug_w_b.grad)
             # print("before zero_grad() (data):", aug_w_b.grad.data)
@@ -576,10 +576,10 @@ def train_one_epoch(
             
             reward_meter.update(reward)
             
-            # norm_aug_brightness_grad_meter.update(torch.linalg.norm(aug_w_b.grad.data, 2))
-            # norm_aug_contrast_grad_meter.update(torch.linalg.norm(aug_w_c.grad.data, 2))
-            # norm_aug_saturation_grad_meter.update(torch.linalg.norm(aug_w_s.grad.data, 2))
-            # norm_aug_hue_grad_meter.update(torch.linalg.norm(aug_w_h.grad.data, 2))
+            norm_aug_brightness_grad_meter.update(torch.linalg.norm(aug_w_b.grad.data, 2))
+            norm_aug_contrast_grad_meter.update(torch.linalg.norm(aug_w_c.grad.data, 2))
+            norm_aug_saturation_grad_meter.update(torch.linalg.norm(aug_w_s.grad.data, 2))
+            norm_aug_hue_grad_meter.update(torch.linalg.norm(aug_w_h.grad.data, 2))
         
         else:
             update_grad_stats_meters(grads=grads, meters=meters, warmup=warmup)
