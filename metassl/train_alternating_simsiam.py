@@ -240,13 +240,15 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
     print(f"init_lr_pt: {init_lr_pt}")
     
     optimizer_pt = torch.optim.SGD(
-        optim_params_pt, init_lr_pt,
+        params=optim_params_pt,
+        lr=init_lr_pt,
         momentum=config.train.momentum,
         weight_decay=config.train.weight_decay
         )
     
     optimizer_ft = torch.optim.SGD(
-        model.module.classifier_head.parameters(), init_lr_ft,
+        params=model.module.classifier_head.parameters(),
+        lr=init_lr_ft,
         momentum=config.finetuning.momentum,
         weight_decay=config.finetuning.weight_decay
         )
@@ -257,6 +259,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
         config.expt.ssl_model_checkpoint_path = newest_model
     
     total_iter = 0
+    meters = None
     
     # optionally resume from a checkpoint
     if config.expt.ssl_model_checkpoint_path:
@@ -273,6 +276,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
             optimizer_pt.load_state_dict(checkpoint['optimizer_pt'])
             optimizer_ft.load_state_dict(checkpoint['optimizer_ft'])
             total_iter = checkpoint['total_iter']
+            meters = checkpoint['meters']
             print(f"=> loaded checkpoint '{config.expt.ssl_model_checkpoint_path}' (epoch {checkpoint['epoch']})")
         else:
             print(f"=> no checkpoint found at '{config.expt.ssl_model_checkpoint_path}'")
@@ -287,8 +291,8 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
     
     if config.expt.rank == 0:
         writer = SummaryWriter(log_dir=os.path.join(expt_dir, "tensorboard"))
-    
-    meters = initialize_all_meters()
+    if not meters:
+        meters = initialize_all_meters()
     
     for epoch in range(config.train.start_epoch, config.train.epochs):
         
@@ -348,7 +352,17 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
                 if config.expt.rank == 0:
                     writer.add_scalar('Test/Accuracy@1', top1_avg, total_iter)
         
-        check_and_save_checkpoint(config, ngpus_per_node, total_iter, epoch, model, optimizer_pt, optimizer_ft, expt_dir)
+        check_and_save_checkpoint(
+            config=config,
+            ngpus_per_node=ngpus_per_node,
+            total_iter=total_iter,
+            epoch=epoch,
+            model=model,
+            optimizer_pt=optimizer_pt,
+            optimizer_ft=optimizer_ft,
+            expt_dir=expt_dir,
+            meters=meters,
+            )
     
     if config.expt.rank == 0:
         writer.close()
@@ -626,7 +640,7 @@ if __name__ == '__main__':
     parser.add_argument('--expt.expt_name', default='pre-training-fix-lr-100-256', type=str, help='experiment name')
     parser.add_argument('--expt.expt_mode', default='ImageNet', choices=["ImageNet", "CIFAR10", "ImageNet_BOHB", "CIFAR10_BOHB"], help='Define which dataset to use to select the correct yaml file.')
     parser.add_argument('--expt.save_model', action='store_false', help='save the model to disc or not (default: True)')
-    parser.add_argument('--expt.save_model_frequency', default=1, type=int, metavar='N', help='save model frequency in # of epochs')
+    parser.add_argument('--expt.save_model_frequency', default=5, type=int, metavar='N', help='save model frequency in # of epochs')
     parser.add_argument('--expt.ssl_model_checkpoint_path', type=str, help='path to the pre-trained model, resumes training if model with same config exists')
     parser.add_argument('--expt.target_model_checkpoint_path', type=str, help='path to the downstream task model, resumes training if model with same config exists')
     parser.add_argument('--expt.print_freq', default=10, type=int, metavar='N')
