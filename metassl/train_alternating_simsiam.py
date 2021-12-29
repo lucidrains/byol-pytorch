@@ -708,7 +708,7 @@ if __name__ == '__main__':
     parser.add_argument("--bohb.warmstarting", type=bool, default=False)
     parser.add_argument("--bohb.warmstarting_dir", type=str, default=None)
 
-    parser.add_argument("--use_fixed_args", action="store_true")
+    parser.add_argument("--use_fixed_args", action="store_true", help="Flag to control whether to take arguments from yaml file as default or from arg parse")
 
     config = _parse_args(config_parser, parser)
     config = AttrDict(jsonargparse.namespace_to_dict(config))
