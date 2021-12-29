@@ -701,7 +701,7 @@ if __name__ == '__main__':
     parser.add_argument("--bohb.max_budget", type=int, default=4)
     parser.add_argument("--bohb.budget_mode", type=str, default="epochs", choices=["epochs", "data"], help="Choose your desired fidelity")
     parser.add_argument("--bohb.eta", type=int, default=2)
-    parser.add_argument("--bohb.configspace_mode", type=str, default='color_jitter_strengths', choices=["imagenet_probability_augment", "cifar10_probability_augment", "color_jitter_strengths"], help='Define which configspace to use.')
+    parser.add_argument("--bohb.configspace_mode", type=str, default='color_jitter_strengths', choices=["imagenet_probability_augment", "cifar10_probability_augment", "color_jitter_strengths", "randaugment", "probabilityaugment"], help='Define which configspace to use.')
     parser.add_argument("--bohb.nic_name", default="lo", help="The network interface to use")  # local: "lo", cluster: "eth0"
     parser.add_argument("--bohb.port", type=int, default=0)
     parser.add_argument("--bohb.worker", action="store_true", help="Make this execution a worker server")
