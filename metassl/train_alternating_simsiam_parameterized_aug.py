@@ -30,17 +30,6 @@ from backpack.extensions import BatchGrad
 from jsonargparse import ArgumentParser
 from torch.utils.tensorboard import SummaryWriter
 
-from utils.torch_utils import (
-    hist_to_image,
-    tensor_to_image,
-    get_newest_model,
-    check_and_save_checkpoint,
-    deactivate_bn,
-    validate,
-    accuracy,
-    get_sample_logprob,
-    adjust_learning_rate,
-    )
 
 warnings.filterwarnings("ignore", category=UserWarning)
 
@@ -54,6 +43,17 @@ try:
     from metassl.utils.simsiam import TwoCropsTransform, GaussianBlur
     from metassl.utils.augment import create_transforms, augment_per_image
     from metassl.utils.summary import write_to_summary_writer
+    from metassl.utils.torch_utils import (
+        hist_to_image,
+        tensor_to_image,
+        get_newest_model,
+        check_and_save_checkpoint,
+        deactivate_bn,
+        validate,
+        accuracy,
+        get_sample_logprob,
+        adjust_learning_rate,
+        )
 except ImportError:
     # For execution in command line
     from .utils.data import get_train_valid_loader, get_test_loader, get_loaders, normalize_imagenet
@@ -64,6 +64,17 @@ except ImportError:
     from .models import resnet_cifar as our_cifar_resnets
     from .utils.summary import write_to_summary_writer
     from .utils.augment import create_transforms, augment_per_image
+    from .utils.torch_utils import (
+        hist_to_image,
+        tensor_to_image,
+        get_newest_model,
+        check_and_save_checkpoint,
+        deactivate_bn,
+        validate,
+        accuracy,
+        get_sample_logprob,
+        adjust_learning_rate,
+        )
 
 model_names = sorted(
     name for name in models.__dict__
@@ -763,7 +774,6 @@ if __name__ == '__main__':
     parser.add_argument('--expt.seed', default=123, type=int, metavar='N', help='random seed of numpy and torch')
     parser.add_argument('--expt.evaluate', action='store_true', help='evaluate model on validation set once and terminate (default: False)')
     parser.add_argument('--expt.image_wise_gradients', action='store_true', help='compute image wise gradients with backpack (default: False).')
-    # parser.add_argument('--expt.default_augmentation', action='store_true', help='this is a sanity-check flag. If set to True, the categories from which we sample augmentations only contain the default ones (default: False).')
     
     parser.add_argument('--train', default="train", type=str, metavar='N')
     parser.add_argument('--train.batch_size', default=256, type=int, metavar='N', help='in distributed setting this is the total batch size, i.e. batch size = individual bs * number of GPUs')
@@ -811,9 +821,8 @@ if __name__ == '__main__':
         expt_dir = "experiments"
     else:
         raise ValueError(f"Experiment mode {args.expt.expt_mode} is undefined!")
+   
     expt_sub_dir = os.path.join(expt_dir, args.expt.expt_name)
-    
-    expt_dir = pathlib.Path(expt_dir)
     
     if not os.path.exists(expt_sub_dir):
         os.makedirs(expt_sub_dir)

@@ -6,7 +6,7 @@ import argparse
 import builtins
 import math
 import os
-import pathlib
+from utils.augment import DataAugmentation
 import random
 import time
 import warnings
@@ -30,18 +30,6 @@ import yaml
 from jsonargparse import ArgumentParser
 from torch.utils.tensorboard import SummaryWriter
 
-from utils.torch_utils import (
-    hist_to_image,
-    tensor_to_image,
-    get_newest_model,
-    check_and_save_checkpoint,
-    deactivate_bn,
-    validate,
-    accuracy,
-    get_sample_logprob,
-    adjust_learning_rate,
-    )
-
 warnings.filterwarnings("ignore", category=UserWarning)
 
 try:
@@ -54,6 +42,16 @@ try:
     from metassl.utils.simsiam import TwoCropsTransform, GaussianBlur
     from metassl.utils.augment import create_transforms, augment_per_image
     from metassl.utils.summary import write_to_summary_writer
+    from metassl.utils.torch_utils import (
+        hist_to_image,
+        tensor_to_image,
+        get_newest_model,
+        check_and_save_checkpoint,
+        deactivate_bn,
+        validate,
+        accuracy,
+        adjust_learning_rate,
+        )
 except ImportError:
     # For execution in command line
     from .utils.data import get_train_valid_loader, get_test_loader, get_loaders, normalize_imagenet
@@ -64,6 +62,16 @@ except ImportError:
     from .models import resnet_cifar as our_cifar_resnets
     from .utils.summary import write_to_summary_writer
     from .utils.augment import create_transforms, augment_per_image
+    from .utils.torch_utils import (
+        hist_to_image,
+        tensor_to_image,
+        get_newest_model,
+        check_and_save_checkpoint,
+        deactivate_bn,
+        validate,
+        accuracy,
+        adjust_learning_rate,
+        )
 
 model_names = sorted(
     name for name in models.__dict__
@@ -71,31 +79,6 @@ model_names = sorted(
     and callable(models.__dict__[name])
     )
 
-# augmentation strengths
-color_jitter_strengths_brightness = [0.4]
-color_jitter_strengths_contrast = [0.4]
-color_jitter_strengths_saturation = [0.4]
-color_jitter_strengths_hue = [0.1]
-
-# histograms
-color_jitter_histogram_brightness = {k: 0 for k in color_jitter_strengths_brightness}
-color_jitter_histogram_contrast = {k: 0 for k in color_jitter_strengths_contrast}
-color_jitter_histogram_saturation = {k: 0 for k in color_jitter_strengths_saturation}
-color_jitter_histogram_hue = {k: 0 for k in color_jitter_strengths_hue}
-
-color_jitter_hists = {
-    "b": color_jitter_histogram_brightness,
-    "c": color_jitter_histogram_contrast,
-    "s": color_jitter_histogram_saturation,
-    "h": color_jitter_histogram_hue
-    }
-
-color_jitter_strengths = {
-    "b": color_jitter_strengths_brightness,
-    "c": color_jitter_strengths_contrast,
-    "s": color_jitter_strengths_saturation,
-    "h": color_jitter_strengths_hue
-    }
 
 
 def main(config, expt_dir):
@@ -265,28 +248,10 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
         weight_decay=config.finetuning.weight_decay
         )
     
-    aug_w_b = nn.Parameter(torch.zeros(len(color_jitter_strengths_brightness)), requires_grad=True)
-    aug_w_c = nn.Parameter(torch.zeros(len(color_jitter_strengths_contrast)), requires_grad=True)
-    aug_w_s = nn.Parameter(torch.zeros(len(color_jitter_strengths_saturation)), requires_grad=True)
-    aug_w_h = nn.Parameter(torch.zeros(len(color_jitter_strengths_hue)), requires_grad=True)
-    
-    bound = 1. / math.sqrt(aug_w_b.size(0))
-    bound_h = 1. / math.sqrt(aug_w_h.size(0))
-    
-    nn.init.uniform(aug_w_b, -bound, bound)
-    nn.init.uniform(aug_w_c, -bound, bound)
-    nn.init.uniform(aug_w_s, -bound, bound)
-    nn.init.uniform(aug_w_h, -bound_h, bound_h)
-    
-    aug_param_dict = {
-        "aug_w_b": aug_w_b,
-        "aug_w_c": aug_w_c,
-        "aug_w_s": aug_w_s,
-        "aug_w_h": aug_w_h
-        }
+    data_aug_model = DataAugmentation()
     
     # color_jitter_dist = torch.distributions.Categorical(probs=torch.softmax(aug_w, dim=0))
-    optimizer_aug = torch.optim.Adam([aug_w_b, aug_w_c, aug_w_s, aug_w_h], 0.001)
+    optimizer_aug = torch.optim.Adam(data_aug_model.parameters(), 0.001)
     
     # in case a dumped model exist and ssl_model_checkpoint is not set, load that dumped model
     newest_model = get_newest_model(expt_dir)
@@ -313,7 +278,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
             optimizer_aug.load_state_dict(checkpoint['optimizer_aug'])
             total_iter = checkpoint['total_iter']
             meters = checkpoint['meters']
-            aug_param_dict = checkpoint['aug_param_dict']
+            data_aug_model = checkpoint['data_aug_model']
             print(f"=> loaded checkpoint '{config.expt.ssl_model_checkpoint_path}' (epoch {checkpoint['epoch']})")
         else:
             print(f"=> no checkpoint found at '{config.expt.ssl_model_checkpoint_path}'")
@@ -321,7 +286,8 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
     # Data loading code
     traindir = os.path.join(config.data.dataset, 'train')
     
-    train_loader_pt, train_sampler_pt, train_loader_ft, train_sampler_ft, test_loader_ft = get_loaders(traindir, config, parameterize_augmentation=True)
+    print("parameterize_augmentation set to False")
+    train_loader_pt, train_sampler_pt, train_loader_ft, train_sampler_ft, test_loader_ft = get_loaders(traindir, config, parameterize_augmentation=False)
     
     cudnn.benchmark = True
     writer = None
@@ -359,7 +325,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
             optimizer_pt=optimizer_pt,
             optimizer_ft=optimizer_ft,
             optimizer_aug=optimizer_aug,
-            aug_param_dict=aug_param_dict,
+            data_aug_model=data_aug_model,
             epoch=epoch,
             total_iter=total_iter,
             config=config,
@@ -401,7 +367,7 @@ def train_one_epoch(
     optimizer_pt,
     optimizer_ft,
     optimizer_aug,
-    aug_param_dict,
+    data_aug_model,
     epoch,
     total_iter,
     config,
@@ -448,8 +414,6 @@ def train_one_epoch(
     norm_aug_saturation_grad_meter = AverageMeter('Norm Aug. saturation gradient', ':6.4f')
     norm_aug_hue_grad_meter = AverageMeter('Norm Aug. hue gradient', ':6.4f')
     
-    aug_w_b, aug_w_c, aug_w_s, aug_w_h = aug_param_dict["aug_w_b"], aug_param_dict["aug_w_c"], aug_param_dict["aug_w_s"], aug_param_dict["aug_w_h"]
-    
     meters_to_print = [
         batch_time_meter,
         losses_pt_meter,
@@ -473,39 +437,17 @@ def train_one_epoch(
         
         total_iter += 1
         
-        # print(train_loader_ft)
-        
-        color_jitter_action_idx_b, color_jitter_logprob_b, _ = get_sample_logprob(logits=aug_w_b)
-        color_jitter_action_idx_c, color_jitter_logprob_c, _ = get_sample_logprob(logits=aug_w_c)
-        color_jitter_action_idx_s, color_jitter_logprob_s, _ = get_sample_logprob(logits=aug_w_s)
-        color_jitter_action_idx_h, color_jitter_logprob_h, _ = get_sample_logprob(logits=aug_w_h)
-        
-        strength_b = color_jitter_strengths_brightness[color_jitter_action_idx_b]
-        strength_c = color_jitter_strengths_contrast[color_jitter_action_idx_c]
-        strength_s = color_jitter_strengths_saturation[color_jitter_action_idx_s]
-        strength_h = color_jitter_strengths_hue[color_jitter_action_idx_h]
-        
-        # print("strengths:", strength_b, strength_c, strength_s, strength_h)
-        
-        color_jitter_histogram_brightness[strength_b] += 1
-        color_jitter_histogram_contrast[strength_c] += 1
-        color_jitter_histogram_saturation[strength_s] += 1
-        color_jitter_histogram_hue[strength_h] += 1
-        
         if config.expt.rank == 0 and i % (config.expt.print_freq * 100) == 0:
-            rand_int = torch.randint(high=images_pt.shape[0], size=(1,))
+            # rand_int = torch.randint(high=images_pt.shape[0], size=(1,))
+            rand_int = torch.randint(high=images_pt[0].shape[0], size=(1,))
             # permute from CHW to HWC for pyplot
-            untransformed_image = torch.permute(images_pt[rand_int].squeeze(), (1, 2, 0)).cpu()
+            untransformed_image = torch.permute(images_pt[0][rand_int].squeeze(), (1, 2, 0)).cpu()
         
-        if config.expt.gpu is not None:
+        if config.expt.gpu is not None and not isinstance(images_pt, list):
             images_pt = images_pt.cuda(config.expt.gpu, non_blocking=True)
-        
-        # if config.expt.image_wise_gradients:
-        #     parameterized_transform_list = create_transforms(strength_b, strength_c, strength_s, strength_h, image_height=images_pt.shape[2], image_width=images_pt.shape[3])
-        #     images_pt = augment_per_image(parameterized_transform_list, images_pt)
-        # else:
-        parameterized_transform = create_transforms(strength_b, strength_c, strength_s, strength_h, image_height=images_pt.shape[2], image_width=images_pt.shape[3])[0]
-        images_pt = parameterized_transform(images_pt)
+
+        indices, logprobs = data_aug_model.sample_logprobs()
+        images_pt = data_aug_model(images_pt, idx_b=indices["idx_b"], idx_c=indices["idx_c"], idx_s=indices["idx_s"], idx_h=indices["idx_h"])
         
         if config.expt.gpu is not None:
             images_pt[0] = images_pt[0].contiguous()
@@ -519,7 +461,7 @@ def train_one_epoch(
             # permute from CHW to HWC for pyplot
             img0 = torch.permute(images_pt[0][rand_int].squeeze(), (1, 2, 0)).cpu()
             img1 = torch.permute(images_pt[1][rand_int].squeeze(), (1, 2, 0)).cpu()
-            title = f"b: {strength_b}, c: {strength_c}, s: {strength_s}, h: {strength_h}"
+            # title = f"b: {strength_b}, c: {strength_c}, s: {strength_s}, h: {strength_h}"
             image_data_to_plot = {
                 "untransformed_image": untransformed_image,
                 "img0":                img0,
@@ -554,16 +496,16 @@ def train_one_epoch(
             
             reward = cos_sim_ema_meter_lw.val - cos_sim_ema_meter_lw.ema
             
-            color_jitter_logprob_b = -(color_jitter_logprob_b * reward)
+            color_jitter_logprob_b = -(logprobs["logprob_b"] * reward)
             color_jitter_logprob_b.backward()
             
-            color_jitter_logprob_c = -(color_jitter_logprob_c * reward)
+            color_jitter_logprob_c = -(logprobs["logprob_c"] * reward)
             color_jitter_logprob_c.backward()
             
-            color_jitter_logprob_s = -(color_jitter_logprob_s * reward)
+            color_jitter_logprob_s = -(logprobs["logprob_s"] * reward)
             color_jitter_logprob_s.backward()
             
-            color_jitter_logprob_h = -(color_jitter_logprob_h * reward)
+            color_jitter_logprob_h = -(logprobs["logprob_h"] * reward)
             color_jitter_logprob_h.backward()
             
             # print("grad before step():", aug_w_b.grad)
@@ -576,10 +518,10 @@ def train_one_epoch(
             
             reward_meter.update(reward)
             
-            norm_aug_brightness_grad_meter.update(torch.linalg.norm(aug_w_b.grad.data, 2))
-            norm_aug_contrast_grad_meter.update(torch.linalg.norm(aug_w_c.grad.data, 2))
-            norm_aug_saturation_grad_meter.update(torch.linalg.norm(aug_w_s.grad.data, 2))
-            norm_aug_hue_grad_meter.update(torch.linalg.norm(aug_w_h.grad.data, 2))
+            norm_aug_brightness_grad_meter.update(torch.linalg.norm(data_aug_model.aug_w_b.grad.data, 2))
+            norm_aug_contrast_grad_meter.update(torch.linalg.norm(data_aug_model.aug_w_c.grad.data, 2))
+            norm_aug_saturation_grad_meter.update(torch.linalg.norm(data_aug_model.aug_w_s.grad.data, 2))
+            norm_aug_hue_grad_meter.update(torch.linalg.norm(data_aug_model.aug_w_h.grad.data, 2))
         
         else:
             update_grad_stats_meters(grads=grads, meters=meters, warmup=warmup)
@@ -825,9 +767,8 @@ if __name__ == '__main__':
         expt_dir = "experiments"
     else:
         raise ValueError(f"Experiment mode {args.expt.expt_mode} is undefined!")
-    expt_sub_dir = os.path.join(expt_dir, args.expt.expt_name)
     
-    expt_dir = pathlib.Path(expt_dir)
+    expt_sub_dir = os.path.join(expt_dir, args.expt.expt_name)
     
     if not os.path.exists(expt_sub_dir):
         os.makedirs(expt_sub_dir)
