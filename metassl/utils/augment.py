@@ -46,7 +46,7 @@ class DataAugmentation(nn.Module):
         # histograms
         self.color_jitter_histogram_brightness = {k: 0 for k in self.color_jitter_strengths_brightness}
         self.color_jitter_histogram_contrast = {k: 0 for k in self.color_jitter_strengths_contrast}
-        self.color_jitter_histogram_saturation = {k: 0 for k in self.olor_jitter_strengths_saturation}
+        self.color_jitter_histogram_saturation = {k: 0 for k in self.color_jitter_strengths_saturation}
         self.color_jitter_histogram_hue = {k: 0 for k in self.color_jitter_strengths_hue}
         
         self.color_jitter_hists = {

@@ -285,9 +285,8 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
     
     # Data loading code
     traindir = os.path.join(config.data.dataset, 'train')
-    
-    print("parameterize_augmentation set to False")
-    train_loader_pt, train_sampler_pt, train_loader_ft, train_sampler_ft, test_loader_ft = get_loaders(traindir, config, parameterize_augmentation=False)
+
+    train_loader_pt, train_sampler_pt, train_loader_ft, train_sampler_ft, test_loader_ft = get_loaders(traindir, config, parameterize_augmentation=True)
     
     cudnn.benchmark = True
     writer = None
