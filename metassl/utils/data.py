@@ -176,11 +176,10 @@ def get_train_valid_loader(
             # MoCo v2's aug: similar to SimCLR https://arxiv.org/abs/2002.05709
             if parameterize_augmentation:
                 # rest is done outside
-                # train_transform = transforms.Compose([
-                #     transforms.RandomResizedCrop(224, scale=(0.2, 1.)),
-                #     transforms.ToTensor(),
-                #     ])
-                train_transform = None
+                train_transform = transforms.Compose([
+                    # transforms.RandomResizedCrop(224, scale=(0.2, 1.)),
+                    transforms.ToTensor(),
+                    ])
             else:
                 train_transform = TwoCropsTransform(
                     transforms.Compose(
