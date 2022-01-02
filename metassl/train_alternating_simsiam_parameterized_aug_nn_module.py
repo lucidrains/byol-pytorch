@@ -100,7 +100,7 @@ def main(config, expt_dir):
             'disable data parallelism.'
             )
 
-    assert (config.expt.warmup_both and not config.expt.warmup_epochs == 0, "warmup_epochs should be higher than 0 if warmup_both is set to True.")
+    assert (config.expt.warmup_both and not (config.expt.warmup_epochs == 0), "warmup_epochs should be higher than 0 if warmup_both is set to True.")
     
     if config.expt.dist_url == "env://" and config.expt.world_size == -1:
         config.expt.world_size = int(os.environ["WORLD_SIZE"])
