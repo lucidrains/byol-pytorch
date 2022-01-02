@@ -350,7 +350,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
             expt_dir=expt_dir,
             meters=meters,
             optimizer_aug=optimizer_aug,
-            aug_param_dict=data_aug_model,
+            data_aug_model=data_aug_model,
             )
     
     if config.expt.rank == 0:
