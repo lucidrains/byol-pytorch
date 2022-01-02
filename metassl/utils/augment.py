@@ -69,6 +69,11 @@ class DataAugmentation(nn.Module):
         color_jitter_action_idx_s, color_jitter_logprob_s, _ = get_sample_logprob(logits=self.aug_w_s)
         color_jitter_action_idx_h, color_jitter_logprob_h, _ = get_sample_logprob(logits=self.aug_w_h)
         
+        strength_b = self.color_jitter_strengths_brightness[color_jitter_action_idx_b]
+        strength_c = self.color_jitter_strengths_contrast[color_jitter_action_idx_c]
+        strength_s = self.color_jitter_strengths_saturation[color_jitter_action_idx_s]
+        strength_h = self.color_jitter_strengths_hue[color_jitter_action_idx_h]
+        
         indices = {
             "idx_b": color_jitter_action_idx_b,
             "idx_c": color_jitter_action_idx_c,
@@ -83,7 +88,14 @@ class DataAugmentation(nn.Module):
             "logprob_h": color_jitter_logprob_h
             }
         
-        return indices, logprobs
+        strengths = {
+            "strength_b": strength_b,
+            "strength_c": strength_c,
+            "strength_s": strength_s,
+            "strength_h": strength_h,
+            }
+        
+        return indices, logprobs, strengths
     
     def forward(self, x: Tensor, idx_b: int, idx_c: int, idx_s: int, idx_h: int) -> Tensor:
         strength_b = self.color_jitter_strengths_brightness[idx_b]
@@ -95,18 +107,27 @@ class DataAugmentation(nn.Module):
         self.color_jitter_histogram_contrast[strength_c] += 1
         self.color_jitter_histogram_saturation[strength_s] += 1
         self.color_jitter_histogram_hue[strength_h] += 1
-        
+
+        kernel_h = 224 // 10
+        kernel_w = 224 // 10
+
+        if kernel_h % 2 == 0:
+            kernel_h -= 1
+        if kernel_w % 2 == 0:
+            kernel_w -= 1
+
         trans = nn.Sequential(
-            RandomResizedCrop(224, scale=(0.2, 1.)),
+            # RandomResizedCrop(224, scale=(0.2, 1.)),
             RandomApply([ColorJitter(brightness=strength_b, contrast=strength_c, saturation=strength_s, hue=strength_h)], p=0.8),
             RandomGrayscale(p=0.2),
-            RandomApply([GaussianBlur([.1, 2.])], p=0.5),
+            # RandomApply([GaussianBlur([.1, 2.])], p=0.5),
+            RandomApply([torchvision.transforms.GaussianBlur([kernel_h, kernel_w], [.1, 2.])], p=0.5),
             RandomHorizontalFlip(),
             normalize_imagenet
             )
         
+        trans = TwoCropsTransform(trans)
         x_out = trans(x)  # BxCxHxW
-        x_out = TwoCropsTransform(x_out)
         return x_out
 
 

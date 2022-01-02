@@ -177,7 +177,7 @@ def get_train_valid_loader(
             if parameterize_augmentation:
                 # rest is done outside
                 train_transform = transforms.Compose([
-                    # transforms.RandomResizedCrop(224, scale=(0.2, 1.)),
+                    transforms.RandomResizedCrop(224, scale=(0.2, 1.)),
                     transforms.ToTensor(),
                     ])
             else:

@@ -278,7 +278,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
             optimizer_aug.load_state_dict(checkpoint['optimizer_aug'])
             total_iter = checkpoint['total_iter']
             meters = checkpoint['meters']
-            data_aug_model = checkpoint['data_aug_model']
+            data_aug_model.load_state_dict(checkpoint['data_aug_model'])
             print(f"=> loaded checkpoint '{config.expt.ssl_model_checkpoint_path}' (epoch {checkpoint['epoch']})")
         else:
             print(f"=> no checkpoint found at '{config.expt.ssl_model_checkpoint_path}'")
@@ -350,7 +350,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
             expt_dir=expt_dir,
             meters=meters,
             optimizer_aug=optimizer_aug,
-            aug_param_dict=aug_param_dict,
+            aug_param_dict=data_aug_model,
             )
     
     if config.expt.rank == 0:
@@ -437,15 +437,16 @@ def train_one_epoch(
         total_iter += 1
         
         if config.expt.rank == 0 and i % (config.expt.print_freq * 100) == 0:
-            # rand_int = torch.randint(high=images_pt.shape[0], size=(1,))
-            rand_int = torch.randint(high=images_pt[0].shape[0], size=(1,))
+            rand_int = torch.randint(high=images_pt.shape[0], size=(1,))
+            # rand_int = torch.randint(high=images_pt[0].shape[0], size=(1,))
             # permute from CHW to HWC for pyplot
-            untransformed_image = torch.permute(images_pt[0][rand_int].squeeze(), (1, 2, 0)).cpu()
+            # untransformed_image = torch.permute(images_pt[0][rand_int].squeeze(), (1, 2, 0)).cpu()
+            untransformed_image = torch.permute(images_pt[rand_int].squeeze(), (1, 2, 0)).cpu()
         
         if config.expt.gpu is not None and not isinstance(images_pt, list):
             images_pt = images_pt.cuda(config.expt.gpu, non_blocking=True)
 
-        indices, logprobs = data_aug_model.sample_logprobs()
+        indices, logprobs, strengths = data_aug_model.sample_logprobs()
         images_pt = data_aug_model(images_pt, idx_b=indices["idx_b"], idx_c=indices["idx_c"], idx_s=indices["idx_s"], idx_h=indices["idx_h"])
         
         if config.expt.gpu is not None:
@@ -460,7 +461,7 @@ def train_one_epoch(
             # permute from CHW to HWC for pyplot
             img0 = torch.permute(images_pt[0][rand_int].squeeze(), (1, 2, 0)).cpu()
             img1 = torch.permute(images_pt[1][rand_int].squeeze(), (1, 2, 0)).cpu()
-            # title = f"b: {strength_b}, c: {strength_c}, s: {strength_s}, h: {strength_h}"
+            title = f"b:{strengths['strength_b']}, c: {strengths['strength_c']}, s: {strengths['strength_s']}, h: {strengths['strength_h']}"
             image_data_to_plot = {
                 "untransformed_image": untransformed_image,
                 "img0":                img0,
@@ -579,16 +580,16 @@ def train_one_epoch(
             write_to_summary_writer(total_iter, loss_pt, loss_ft, data_time_meter, batch_time_meter, optimizer_pt, optimizer_ft, top1_meter, top5_meter, meters_to_plot, writer)
         # expensive stats
         if config.expt.rank == 0 and i % (config.expt.print_freq * 100) == 0:
-            img = hist_to_image(color_jitter_histogram_brightness, "Color Jitter Strength Brightness Counts")
+            img = hist_to_image(data_aug_model.color_jitter_histogram_brightness, "Color Jitter Strength Brightness Counts")
             writer.add_image(tag="Advanced Stats/color jitter strength brightness", img_tensor=img, global_step=total_iter)
             
-            img = hist_to_image(color_jitter_histogram_contrast, "Color Jitter Strength Contrast Counts")
+            img = hist_to_image(data_aug_model.color_jitter_histogram_contrast, "Color Jitter Strength Contrast Counts")
             writer.add_image(tag="Advanced Stats/color jitter strength contrast", img_tensor=img, global_step=total_iter)
             
-            img = hist_to_image(color_jitter_histogram_saturation, "Color Jitter Strength Saturation Counts")
+            img = hist_to_image(data_aug_model.color_jitter_histogram_saturation, "Color Jitter Strength Saturation Counts")
             writer.add_image(tag="Advanced Stats/color jitter strength saturation", img_tensor=img, global_step=total_iter)
             
-            img = hist_to_image(color_jitter_histogram_hue, "Color Jitter Strength Hue Counts")
+            img = hist_to_image(data_aug_model.color_jitter_histogram_hue, "Color Jitter Strength Hue Counts")
             writer.add_image(tag="Advanced Stats/color jitter strength hue", img_tensor=img, global_step=total_iter)
             
             img = tensor_to_image(image_data_to_plot["untransformed_image"], f"Randomly sampled untransformed image")
