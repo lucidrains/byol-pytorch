@@ -241,12 +241,12 @@ def get_train_valid_loader(
             transform=valid_transform, ignore_archive=True,
             )
     elif dataset_name == "CIFAR10":
-        # TODO: Check out how to split train / val
+        print(f"{valid_size=}")
         train_dataset = torchvision.datasets.CIFAR10(root='datasets/CIFAR10', train=True,
                                                 download=True, transform=train_transform)
 
 
-        valid_dataset = torchvision.datasets.CIFAR10(root='datasets/CIFAR10', train=False,
+        valid_dataset = torchvision.datasets.CIFAR10(root='datasets/CIFAR10', train=True,
                                                download=True, transform=valid_transform)
     else:
         # not supported
@@ -449,11 +449,11 @@ def get_loaders(traindir, config, parameterize_augmentation=False, bohb_infos=No
         bohb_infos=bohb_infos,
         )
     
-    train_loader_ft, _, train_sampler_ft, _ = get_train_valid_loader(
+    train_loader_ft, valid_loader_ft, train_sampler_ft, _ = get_train_valid_loader(
         data_dir=traindir,
         batch_size=config.finetuning.batch_size,
         random_seed=config.expt.seed,
-        valid_size=0.0,
+        valid_size=config.finetuning.valid_size,
         dataset_name=config.data.dataset,
         shuffle=True,
         num_workers=config.expt.workers,
@@ -477,5 +477,8 @@ def get_loaders(traindir, config, parameterize_augmentation=False, bohb_infos=No
         drop_last=False,
         )
     
-    return train_loader_pt, train_sampler_pt, train_loader_ft, train_sampler_ft, test_loader_ft
+    if config.finetuning.valid_size > 0:
+        return train_loader_pt, train_sampler_pt, train_loader_ft, train_sampler_ft, valid_loader_ft, test_loader_ft
+    else:  # TODO: @Diane - Checkout and test on *parameterized_aug*
+        return train_loader_pt, train_sampler_pt, train_loader_ft, train_sampler_ft, test_loader_ft
 

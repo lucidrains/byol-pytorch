@@ -286,9 +286,12 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
     
     # Data loading code
     traindir = os.path.join(config.data.dataset, 'train')
-    
-    train_loader_pt, train_sampler_pt, train_loader_ft, train_sampler_ft, test_loader_ft = get_loaders(traindir, config, parameterize_augmentation=False, bohb_infos=bohb_infos)
-    
+
+    if config.finetuning.valid_size > 0:
+        train_loader_pt, train_sampler_pt, train_loader_ft, train_sampler_ft, valid_loader_ft, test_loader_ft = get_loaders(traindir, config, parameterize_augmentation=False, bohb_infos=bohb_infos)
+    else:  # TODO: @Diane - Checkout and test on *parameterized_aug*
+        train_loader_pt, train_sampler_pt, train_loader_ft, train_sampler_ft, test_loader_ft = get_loaders(traindir, config, parameterize_augmentation=False, bohb_infos=bohb_infos)
+
     cudnn.benchmark = True
     writer = None
     
@@ -337,29 +340,28 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
             warmup=warmup,
             )
 
+        # Determine wheter to evaluate on the validation or test set
+        if config.finetuning.valid_size > 0:
+            loader_ft = valid_loader_ft
+            writer_scalar_mode = "Valid"
+        else:
+            loader_ft = test_loader_ft
+            writer_scalar_mode = "Test"
         # BOHB only ----------------------------------------------------------------------------------------------------
         # TODO: @Diane - Refactor - no priority
-        if bohb_infos is not None:
+        if bohb_infos is not None and config.bohb.budget_mode == "epochs":
             if config.bohb.budget_mode == "epochs":
                 if epoch % config.expt.eval_freq == 0 or epoch % int(bohb_infos['bohb_budget'] - 1) == 0:
-                    # TODO: @Diane - validate on the validation set!!!!! - priority!
-                    top1_avg = validate(test_loader_ft, model, criterion_ft, config, finetuning=True)
+                    top1_avg = validate(loader_ft, model, criterion_ft, config, finetuning=True)
                     if config.expt.rank == 0:
-                        writer.add_scalar('Test/Accuracy@1', top1_avg, total_iter)
-
-            else:
-                if epoch % config.expt.eval_freq == 0:
-                    # TODO: @Diane - validate on the validation set!!!!! - priority!
-                    top1_avg = validate(test_loader_ft, model, criterion_ft, config, finetuning=True)
-                    if config.expt.rank == 0:
-                        writer.add_scalar('Test/Accuracy@1', top1_avg, total_iter)
+                        writer.add_scalar(writer_scalar_mode + '/Accuracy@1', top1_avg, total_iter)
         # --------------------------------------------------------------------------------------------------------------
         else:
-            # evaluate on validation set
+            # evaluate on validation/test set
             if epoch % config.expt.eval_freq == 0:
-                top1_avg = validate(test_loader_ft, model, criterion_ft, config, finetuning=True)
+                top1_avg = validate(loader_ft, model, criterion_ft, config, finetuning=True)
                 if config.expt.rank == 0:
-                    writer.add_scalar('Test/Accuracy@1', top1_avg, total_iter)
+                    writer.add_scalar(writer_scalar_mode + '/Accuracy@1', top1_avg, total_iter)
         
         check_and_save_checkpoint(
             config=config,
@@ -449,7 +451,12 @@ def train_one_epoch(
     
     end = time.time()
     # TODO @Fabio
-    assert len(train_loader_pt) <= len(train_loader_ft), 'So since this seems to break, we should write code to run multiple finetune epoch per pretrain epoch'
+    if config.finetuning.valid_size > 0:
+        # As we only need a validation set for finetuning: len(train_loader_pt) < len(train_loader_ft)
+        # TODO @Diane - Check out if this won't cause any problems
+        pass
+    else:
+        assert len(train_loader_pt) <= len(train_loader_ft), 'So since this seems to break, we should write code to run multiple finetune epoch per pretrain epoch'
     for i, ((images_pt, _), (images_ft, target_ft)) in enumerate(zip(train_loader_pt, train_loader_ft)):
         
         total_iter += 1
@@ -687,6 +694,7 @@ if __name__ == '__main__':
     parser.add_argument('--finetuning.weight_decay', default=0.0, type=float, metavar='N')
     parser.add_argument('--finetuning.momentum', default=0.9, type=float, metavar='N', help='SGD momentum')
     parser.add_argument('--finetuning.lr', default=100, type=float, metavar='N', help='finetuning learning rate')
+    parser.add_argument('--finetuning.valid_size', default=0.0, type=float, help='If valid_size > 0, pick some images from the trainset to do evaluation on. If valid_size=0 evaluation is done on the testset.')
     
     parser.add_argument('--model', default="model", type=str, metavar='N')
     parser.add_argument('--model.model_type', type=str, default='resnet50', help='all torchvision ResNets')
@@ -731,6 +739,7 @@ if __name__ == '__main__':
     # Run BOHB / main
     if is_bohb_run:
         from metassl.hyperparameter_optimization.master import start_bohb_master
+        assert config.finetuning.valid_size > 0.0, "BOHB requires a valid_size > 0.0"
         start_bohb_master(yaml_config=config, expt_dir=expt_dir)
 
     else:
