@@ -90,6 +90,14 @@ def main(config, expt_dir, bohb_infos=None):
         print(f"\n\n\n\n\n\n{bohb_infos=}\n\n\n\n\n\n")
     # ------------------------------------------------------------------------------------------------------------------
 
+    if config.data.dataset == "CIFAR10":
+        # Define master port (for preventing 'Address already in use error' when submitting more than 1 jobs on 1 node)
+        # Code from: https://stackoverflow.com/questions/1365265/on-localhost-how-do-i-pick-a-free-port-number
+        master_port = find_free_port()
+        config.expt.dist_url = "tcp://localhost:" + str(master_port)
+        # if this should still fail: do it via filesystem initialization
+        # https://pytorch.org/docs/stable/distributed.html#shared-file-system-initialization
+
     if config.expt.seed is not None:
         random.seed(config.expt.seed)
         torch.manual_seed(config.expt.seed)
@@ -643,6 +651,14 @@ def get_expt_dir_with_bohb_config_id(expt_dir, bohb_config_id):
     config_id_path = "-".join(str(sub_id) for sub_id in bohb_config_id)
     expt_dir_id = os.path.join(expt_dir, config_id_path)
     return expt_dir_id
+
+def find_free_port():
+    import socket
+    from contextlib import closing
+    with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
+        s.bind(('', 0))
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        return s.getsockname()[1]
 
 
 if __name__ == '__main__':
