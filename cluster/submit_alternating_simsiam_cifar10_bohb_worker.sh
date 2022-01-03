@@ -3,7 +3,8 @@
 #SBATCH -p mlhiwidlc_gpu-rtx2080
 #SBATCH -t 1-00:00 # time (D-HH:MM)
 #SBATCH --gres=gpu:1
-#SBATCH -J mssl-d-cifar10-simsiam # sets the job name. If not specified, the file name will be used as job name
+#SBATCH -J mssl-w-cifar10-simsiam # sets the job name. If not specified, the file name will be used as job name
+#SBATCH --array 0-1000%9
 # Print some information about the job to STDOUT
 echo "Workingdir: $PWD";
 echo "Started at $(date)";
