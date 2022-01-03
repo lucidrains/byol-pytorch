@@ -1,0 +1,96 @@
+#######################################
+###       Logging Configuration     ###
+#######################################
+expt:
+  expt_name:                   'pre-training-full-train-data-fix-lr-100-256'
+  expt_mode:                    'ImageNet'                    # Define which dataset to use to select the correct yaml file.
+  save_model:                   True                          # save the model to disc
+  save_model_frequency:         1                            # save model frequency in # of epochs
+#  ssl_model_checkpoint_path:    "/home/ferreira/workspace/experiments/metassl/pre-training-full-train-data-fix-lr-100-256/checkpoint_0099.pth.tar"    # resumes training if model with same config exists
+  ssl_model_checkpoint_path:    null                          # path to the pre-trained model, resumes training if model with same config exists
+  target_model_checkpoint_path: null                          # path to the downstream task model, resumes training if model with same config exists
+  print_freq:                   10                            # print frequency
+  gpu:                          null                          # GPU ID to train on (if not distributed)
+  multiprocessing_distributed:  True                          # Use multi-processing distributed training to launch N processes per node, which has N GPUs.
+                                                              # This is the fastest way to use PyTorch for either single node or multi node data parallel training'
+  dist_backend:                 'nccl'                        # distributed backend
+  dist_url:                     'tcp://localhost:10001'       # url used to set up distributed training
+  workers:                      32                            # number of data loading workers
+  rank:                         0                             # node rank for distributed training
+  world_size:                   1                             # number of nodes for distributed training
+  eval_freq:                    5                             # every eval_freq epoch will the model be evaluated
+  seed:                         123                           # random seed of numpy and torch
+  evaluate:                     False                         # evaluate model on validation set once and terminate
+  advanced_stats:               True                          # compute advanced stats such as cosine similarity and dot product, only used in alternating mode
+  is_non_grad_based:            False                         # Set this flag to run default SimSiam or BOHB runs
+
+#######################################
+###     Training Configuration      ###
+#######################################
+train:
+  batch_size:       256                   # in distributed setting this is the total batch size, i.e. batch size = individual bs * number of GPUs
+  epochs:           100                   # number of pre-training epochs
+  start_epoch:      0                     # start training at epoch n
+  optimizer:        "sgd"                 # optimizer type, options: sgd
+  schedule:         "cosine"              # learning rate schedule, not implemented
+  warmup:           0                     # denotes the number of epochs that we only pre-train without finetuning afterwards; warmup is turned off when set to 0
+  weight_decay:     0.0001
+  momentum:         0.9                   # momentum of SGD solver
+  lr:               0.05                  # the default LR
+
+
+finetuning:
+  batch_size:       256                  # in distributed setting this is the total batch size, i.e. batch size = individual bs * number of GPUs
+  epochs:           90                    # number of finetuning epochs
+  start_epoch:      0                     # start training at epoch n
+  optimizer:        "sgd"                # optimizer type, options: lars adam adamW rmsprop adabelief sgd
+  schedule:         "cosine"              # learning rate schedule, options: 'cosine' 'cosineW' 'plateau' 'step' 'const' 'cosineWarm' 'exponential' 'None' (BOHO case)
+  weight_decay:     0.
+  momentum:         0.9                   # momentum of SGD solver
+  lr:               100                    # the default LR
+
+#######################################
+###       Model Configuration       ###
+#######################################
+model:
+  model_type: "resnet50"                  # supported models: all torchvision ResNets
+  seed:       123
+
+
+#######################################
+###       Data Configuration        ###
+#######################################
+data:
+  seed:     123
+  dataset:  'ImageNet'                    # supported datasets: CIFAR10, CIFAR100, ImageNet
+  data_dir: '/home/ferreira/workspace/data/metassl'
+
+
+#######################################
+###       SimSiam Specific          ###
+#######################################
+simsiam:
+  dim: 2048                                  # feature dimension (default: 2048)
+  pred_dim: 512                              # hidden dimension of the predictor (default: 512)
+  fix_pred_lr:   True                        # Fix learning rate for the predictor
+
+
+########################################
+####       BOHB Specific             ###
+########################################
+bohb:
+  run_id:           "default_BOHB"
+  seed:             123
+  n_iterations:     10                          # How many BOHB iterations
+  min_budget:       5
+  max_budget:       20
+  budget_mode:      "epochs"                    # Choose your desired fidelity between 'epochs' and 'data'
+  eta:              2
+  configspace_mode: "color_jitter_strengths"    # Define which configspace to use
+                                                # choices=["imagenet_probability_augment",
+                                                # "cifar10_probability_augment", "color_jitter_strengths"]
+  nic_name:         "lo"                        # Define the network interface to use > local: "lo", cluster: "eth0"
+  port:             0
+  worker:           False                       # Make this execution a worker server, action="store_true"
+  warmstarting:     False
+  warmstarting_dir: None
