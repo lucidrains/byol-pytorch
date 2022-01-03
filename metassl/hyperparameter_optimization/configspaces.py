@@ -31,16 +31,16 @@ def get_cifar10_probability_augment_configspace():
 def get_color_jitter_strengths_configspace():
     cs = CS.ConfigurationSpace()
     brightness_strength = CSH.UniformFloatHyperparameter(
-        "brightness_strength", lower=0, upper=1.2, log=False, default_value=0.6,
+        "brightness_strength", lower=0, upper=1.2, log=False, default_value=0.4,
     )
     contrast_strength = CSH.UniformFloatHyperparameter(
-        "contrast_strength", lower=0, upper=1.2, log=False, default_value=0.6,
+        "contrast_strength", lower=0, upper=1.2, log=False, default_value=0.4,
     )
     saturation_strength = CSH.UniformFloatHyperparameter(
-        "saturation_strength", lower=0, upper=1.2, log=False, default_value=0.6,
+        "saturation_strength", lower=0, upper=1.2, log=False, default_value=0.4,
     )
     hue_strength = CSH.UniformFloatHyperparameter(
-        "hue_strength", lower=0, upper=0.4, log=False, default_value=0.2,
+        "hue_strength", lower=0, upper=0.4, log=False, default_value=0.1,
     )
     cs.add_hyperparameters([brightness_strength, contrast_strength, saturation_strength, hue_strength])
     return cs
