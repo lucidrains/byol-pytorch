@@ -605,7 +605,7 @@ def organize_experiment_saving(user, config, is_bohb_run):
     if config.expt.expt_mode.startswith("ImageNet"):
         expt_root_dir = f"/home/{user}/workspace/experiments/metassl"
     elif config.expt.expt_mode.startswith("CIFAR10"):
-        expt_root_dir = "experiments"
+        expt_root_dir = "experiments/CIFAR10"
     else:
         raise ValueError(f"Experiment mode {config.expt.expt_mode} is undefined!")
 
