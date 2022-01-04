@@ -616,24 +616,23 @@ def finetune(model, images_ft, target_ft, criterion_ft, optimizer_ft, losses_ft_
 
 def organize_experiment_saving(user, config, is_bohb_run):
     # TODO: @Diane - Move to a separate file in 'utils' together with 'get_expt_dir_with_bohb_config_id'
-    # Set expt_root_dir based on experiment mode
-    if config.expt.expt_mode.startswith("ImageNet"):
-        expt_root_dir = f"/home/{user}/workspace/experiments/metassl"
-    elif config.expt.expt_mode.startswith("CIFAR10"):
-        if is_bohb_run:
-            expt_root_dir = "experiments"
-        else:
-            expt_root_dir = "experiments/CIFAR10"
+    # Set expt_root_dir based on user and experiment mode
+    if user == "wagn3rd":  # Diane's local machine
+        expt_root_dir = "experiments"
+    elif user == "wagnerd":  # Diane cluster
+        expt_root_dir = "work/dlclarge2/wagnerd-metassl_experiments"
     else:
-        raise ValueError(f"Experiment mode {config.expt.expt_mode} is undefined!")
+        expt_root_dir = f"/home/{user}/workspace/experiments/metassl"
 
-    # Set expt_dir based on whether it is a BOHB run or not
+    # Set expt_dir based on whether it is a BOHB run or not + differenciate between users
     if is_bohb_run:
         # for start_bohb_master (directory where config.json and results.json are being saved)
         expt_dir = os.path.join(expt_root_dir, "BOHB", config.data.dataset, config.expt.expt_name)
-
     else:
-        expt_dir = os.path.join(expt_root_dir, config.expt.expt_name)
+        if user == "wagn3rd" or user == "wagnerd":
+            expt_dir = os.path.join(expt_root_dir, config.data.dataset, config.expt.expt_name)
+        else:
+            expt_dir = os.path.join(expt_root_dir, config.expt.expt_name)
 
     # TODO: @Fabio - Do we need this line below?
     expt_root_dir = pathlib.Path(expt_root_dir)
