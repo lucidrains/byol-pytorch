@@ -358,11 +358,10 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
         # BOHB only ----------------------------------------------------------------------------------------------------
         # TODO: @Diane - Refactor - no priority
         if bohb_infos is not None and config.bohb.budget_mode == "epochs":
-            if config.bohb.budget_mode == "epochs":
-                if epoch % config.expt.eval_freq == 0 or epoch % int(bohb_infos['bohb_budget'] - 1) == 0:
-                    top1_avg = validate(loader_ft, model, criterion_ft, config, finetuning=True)
-                    if config.expt.rank == 0:
-                        writer.add_scalar(writer_scalar_mode + '/Accuracy@1', top1_avg, total_iter)
+            if epoch % config.expt.eval_freq == 0 or epoch % int(bohb_infos['bohb_budget'] - 1) == 0:
+                top1_avg = validate(loader_ft, model, criterion_ft, config, finetuning=True)
+                if config.expt.rank == 0:
+                    writer.add_scalar(writer_scalar_mode + '/Accuracy@1', top1_avg, total_iter)
         # --------------------------------------------------------------------------------------------------------------
         else:
             # evaluate on validation/test set
@@ -370,18 +369,31 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
                 top1_avg = validate(loader_ft, model, criterion_ft, config, finetuning=True)
                 if config.expt.rank == 0:
                     writer.add_scalar(writer_scalar_mode + '/Accuracy@1', top1_avg, total_iter)
-        
-        check_and_save_checkpoint(
-            config=config,
-            ngpus_per_node=ngpus_per_node,
-            total_iter=total_iter,
-            epoch=epoch,
-            model=model,
-            optimizer_pt=optimizer_pt,
-            optimizer_ft=optimizer_ft,
-            expt_dir=expt_dir,
-            meters=meters,
+
+        if bohb_infos is not None and config.bohb.budget_mode == "epochs" and epoch % int(bohb_infos['bohb_budget'] - 1) == 0:
+            check_and_save_checkpoint(
+                config=config,
+                ngpus_per_node=ngpus_per_node,
+                total_iter=total_iter,
+                epoch=epoch,
+                model=model,
+                optimizer_pt=optimizer_pt,
+                optimizer_ft=optimizer_ft,
+                expt_dir=expt_dir,
+                meters=meters,
             )
+        else:
+            check_and_save_checkpoint(
+                config=config,
+                ngpus_per_node=ngpus_per_node,
+                total_iter=total_iter,
+                epoch=epoch,
+                model=model,
+                optimizer_pt=optimizer_pt,
+                optimizer_ft=optimizer_ft,
+                expt_dir=expt_dir,
+                meters=meters,
+                )
     
     if config.expt.rank == 0:
         writer.close()
