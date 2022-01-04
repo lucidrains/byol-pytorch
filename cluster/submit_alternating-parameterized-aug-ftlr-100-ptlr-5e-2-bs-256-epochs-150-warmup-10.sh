@@ -1,14 +1,14 @@
 #!/bin/bash
 #SBATCH -p alldlc_gpu-rtx2080
 #SBATCH --gres=gpu:8
-#SBATCH --job-name=alternating-parameterized-aug-ftlr-100-ptlr-5e-2-bs-256-epochs-150-warmup-10
+#SBATCH --job-name=alternating-parameterized-aug-nn-ftlr-100-ptlr-5e-2-bs-256-epochs-150-warmup-10
 #SBATCH -o /home/ferreira/workspace/experiments/metassl/logs/%x.%N.%A.%a.out
 #SBATCH --array=0-10%1
 
 TRAIN_EPOCHS=150
 FINETUNING_EPOCHS=150
 WARMUP=10
-EXPT_NAME="alternating-parameterized-aug-ftlr-100-ptlr-5e-2-bs-256-epochs-150-warmup-10"
+EXPT_NAME="alternating-parameterized-aug-nn-ftlr-100-ptlr-5e-2-bs-256-epochs-150-warmup-10"
 
 echo "TRAIN EPOCHS $TRAIN_EPOCHS"
 echo "FINETUNING EPOCHS $FINETUNING_EPOCHS"
