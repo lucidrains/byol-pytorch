@@ -447,9 +447,7 @@ def train_one_epoch(
         
         if config.expt.rank == 0 and i % (config.expt.print_freq * 100) == 0:
             rand_int = torch.randint(high=images_pt.shape[0], size=(1,))
-            # rand_int = torch.randint(high=images_pt[0].shape[0], size=(1,))
             # permute from CHW to HWC for pyplot
-            # untransformed_image = torch.permute(images_pt[0][rand_int].squeeze(), (1, 2, 0)).cpu()
             untransformed_image = torch.permute(images_pt[rand_int].squeeze(), (1, 2, 0)).cpu()
         
         if config.expt.gpu is not None and not isinstance(images_pt, list):
@@ -459,8 +457,9 @@ def train_one_epoch(
         images_pt = data_aug_model(images_pt, idx_b=indices["idx_b"], idx_c=indices["idx_c"], idx_s=indices["idx_s"], idx_h=indices["idx_h"])
         
         if config.expt.gpu is not None:
-            images_pt[0] = images_pt[0].contiguous()
-            images_pt[1] = images_pt[1].contiguous()
+            # todo: check if contiguous is still needed with nn module
+            # images_pt[0] = images_pt[0].contiguous()
+            # images_pt[1] = images_pt[1].contiguous()
             images_pt[0] = images_pt[0].cuda(config.expt.gpu, non_blocking=True)
             images_pt[1] = images_pt[1].cuda(config.expt.gpu, non_blocking=True)
             images_ft = images_ft.cuda(config.expt.gpu, non_blocking=True)
@@ -470,12 +469,16 @@ def train_one_epoch(
             # permute from CHW to HWC for pyplot
             img0 = torch.permute(images_pt[0][rand_int].squeeze(), (1, 2, 0)).cpu()
             img1 = torch.permute(images_pt[1][rand_int].squeeze(), (1, 2, 0)).cpu()
+            img_ft = torch.permute(images_ft[rand_int].squeeze(), (1, 2, 0)).cpu()
+            label_ft = target_ft[rand_int].item()
             title = f"b:{strengths['strength_b']}, c: {strengths['strength_c']}, s: {strengths['strength_s']}, h: {strengths['strength_h']}"
             image_data_to_plot = {
                 "untransformed_image": untransformed_image,
                 "img0":                img0,
                 "img1":                img1,
                 "title":               title,
+                "ft_img":              img_ft,
+                "ft_label":            label_ft,
                 }
         
         loss_pt, backbone_grads_pt_lw, backbone_grads_pt_global = pretrain(model, images_pt, criterion_pt, optimizer_pt, losses_pt_meter, data_time_meter, end, config=config, alternating_mode=True)
@@ -602,7 +605,7 @@ def train_one_epoch(
             writer.add_image(tag="Advanced Stats/color jitter strength hue", img_tensor=img, global_step=total_iter)
             
             img = tensor_to_image(image_data_to_plot["untransformed_image"], f"Randomly sampled untransformed image")
-            writer.add_image(tag="Advanced Stats/sampled untransformed image 1", img_tensor=img, global_step=total_iter)
+            writer.add_image(tag="Advanced Stats/sampled untransformed image", img_tensor=img, global_step=total_iter)
             
             title = image_data_to_plot["title"]
             
@@ -611,6 +614,9 @@ def train_one_epoch(
             
             img = tensor_to_image(image_data_to_plot["img1"], f"Randomly sampled transformed image 2\n {title}")
             writer.add_image(tag="Advanced Stats/sampled transformed image 2", img_tensor=img, global_step=total_iter)
+
+            ft_img = tensor_to_image(image_data_to_plot["ft_img"], f"Randomly sampled finetuning image\n with label {image_data_to_plot['ft_label']}")
+            writer.add_image(tag="Advanced Stats/sampled finetuning image", img_tensor=ft_img, global_step=total_iter)
     
     return total_iter
 

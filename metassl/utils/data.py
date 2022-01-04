@@ -206,6 +206,7 @@ def get_train_valid_loader(
                     )
                 )
         else:
+            # same as above without two crop transform
             train_transform = transforms.Compose([
                                 transforms.RandomResizedCrop(224),
                                 transforms.RandomHorizontalFlip(),
@@ -452,7 +453,7 @@ def get_loaders(traindir, config, parameterize_augmentation=False, bohb_infos=No
     train_loader_ft, _, train_sampler_ft, _ = get_train_valid_loader(
         data_dir=traindir,
         batch_size=config.finetuning.batch_size,
-        random_seed=config.expt.seed,
+        random_seed=config.expt.seed+1,
         valid_size=0.0,
         dataset_name=config.data.dataset,
         shuffle=True,
