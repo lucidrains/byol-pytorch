@@ -741,6 +741,7 @@ if __name__ == '__main__':
     parser.add_argument('--data.seed', type=int, default=123, help='the seed')
     parser.add_argument('--data.dataset', type=str, default="ImageNet", help='supported datasets: CIFAR10, CIFAR100, ImageNet')
     parser.add_argument('--data.data_dir', type=str, default=f"/home/{user}/workspace/data/metassl", help='supported datasets: CIFAR10, CIFAR100, ImageNet')
+    parser.add_argument('--data.dataset_percentage_usage', type=float, default=100.0, help='Indicates what percentage of the data is used for the experiments.')
     
     parser.add_argument('--simsiam', default="simsiam", type=str, metavar='N')
     parser.add_argument('--simsiam.dim', type=int, default=2048, help='the feature dimension')

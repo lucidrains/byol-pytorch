@@ -34,6 +34,7 @@ def get_train_valid_loader(
     get_fine_tuning_loaders=False,
     parameterize_augmentation=False,
     bohb_infos=None,
+    dataset_percentage_usage=100,
     ):
     """
     Utility function for loading and returning train and valid
@@ -252,7 +253,7 @@ def get_train_valid_loader(
         # not supported
         raise ValueError('invalid dataset name=%s' % dataset)
     
-    num_train = len(train_dataset)
+    num_train = int(len(train_dataset) / 100 * dataset_percentage_usage)
     indices = list(range(num_train))
     split = int(np.floor(valid_size * num_train))
     
@@ -447,6 +448,7 @@ def get_loaders(traindir, config, parameterize_augmentation=False, bohb_infos=No
         get_fine_tuning_loaders=False,
         parameterize_augmentation=parameterize_augmentation,
         bohb_infos=bohb_infos,
+        dataset_percentage_usage=config.data.dataset_percentage_usage,
         )
     
     train_loader_ft, valid_loader_ft, train_sampler_ft, _ = get_train_valid_loader(
@@ -464,6 +466,7 @@ def get_loaders(traindir, config, parameterize_augmentation=False, bohb_infos=No
         get_fine_tuning_loaders=True,
         parameterize_augmentation=False,
         bohb_infos=None,
+        dataset_percentage_usage=config.data.dataset_percentage_usage
         )
     
     test_loader_ft = get_test_loader(
