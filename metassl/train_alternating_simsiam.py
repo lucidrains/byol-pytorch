@@ -370,18 +370,24 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
                 if config.expt.rank == 0:
                     writer.add_scalar(writer_scalar_mode + '/Accuracy@1', top1_avg, total_iter)
 
-        if bohb_infos is not None and config.bohb.budget_mode == "epochs" and epoch % int(bohb_infos['bohb_budget'] - 1) == 0:
-            check_and_save_checkpoint(
-                config=config,
-                ngpus_per_node=ngpus_per_node,
-                total_iter=total_iter,
-                epoch=epoch,
-                model=model,
-                optimizer_pt=optimizer_pt,
-                optimizer_ft=optimizer_ft,
-                expt_dir=expt_dir,
-                meters=meters,
-            )
+        if bohb_infos is not None:
+            if config.bohb.budget_mode == "epochs" and epoch % int(bohb_infos['bohb_budget'] - 1) == 0:
+                check_and_save_checkpoint(
+                    config=config,
+                    ngpus_per_node=ngpus_per_node,
+                    total_iter=total_iter,
+                    epoch=epoch,
+                    model=model,
+                    optimizer_pt=optimizer_pt,
+                    optimizer_ft=optimizer_ft,
+                    expt_dir=expt_dir,
+                    meters=meters,
+                )
+            elif config.bohb.budget_mode != "epochs":
+                raise ValueError("Not implemented yet!")
+            else:
+                # We can't save all checkpoints in BOHB-runs because of memory problems
+                pass
         else:
             check_and_save_checkpoint(
                 config=config,
