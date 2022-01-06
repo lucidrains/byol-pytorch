@@ -75,6 +75,7 @@ data:
   seed:     123
   dataset:  'CIFAR10'                    # supported datasets: CIFAR10, CIFAR100, ImageNet
   data_dir: 'datasets/CIFAR10'
+  dataset_percentage_usage:  100         # Indicates what percentage of the data is used for the experiments.
 
 
 #######################################
