@@ -1,0 +1,3 @@
+Best found configuration:
+{'brightness_strength': 0.7010349298181272, 'contrast_strength': 0.9073876174772093, 'hue_strength': 0.2574724686669075, 'saturation_strength': 0.825345536109084}
+
