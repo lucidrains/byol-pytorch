@@ -6,7 +6,6 @@ import argparse
 import builtins
 import math
 import os
-from utils.augment import DataAugmentation
 import random
 import time
 import warnings
@@ -52,6 +51,8 @@ try:
         accuracy,
         adjust_learning_rate,
         )
+    from metassl.utils.augment import DataAugmentation
+
 except ImportError:
     # For execution in command line
     from .utils.data import get_train_valid_loader, get_test_loader, get_loaders, normalize_imagenet
@@ -72,6 +73,7 @@ except ImportError:
         accuracy,
         adjust_learning_rate,
         )
+    from .utils.augment import DataAugmentation
 
 model_names = sorted(
     name for name in models.__dict__
