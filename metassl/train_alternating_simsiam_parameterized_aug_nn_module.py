@@ -751,6 +751,7 @@ if __name__ == '__main__':
     parser.add_argument('--finetuning.weight_decay', default=0.0, type=float, metavar='N')
     parser.add_argument('--finetuning.momentum', default=0.9, type=float, metavar='N', help='SGD momentum')
     parser.add_argument('--finetuning.lr', default=100, type=float, metavar='N', help='finetuning learning rate')
+    parser.add_argument('--finetuning.valid_size', default=0.0, type=float, help='If valid_size > 0, pick some images from the trainset to do evaluation on. If valid_size=0 evaluation is done on the testset.')
     
     parser.add_argument('--model', default="model", type=str, metavar='N')
     parser.add_argument('--model.model_type', type=str, default='resnet50', help='all torchvision ResNets')
