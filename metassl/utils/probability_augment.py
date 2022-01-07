@@ -1,6 +1,6 @@
 
 import torchvision.transforms as transforms
-from albumentations.pytorch.transforms import ToTensor
+from albumentations.pytorch.transforms import ToTensorV2
 
 from .simsiam import TwoCropsTransform
 
@@ -25,8 +25,7 @@ def probability_augment(
     # TODO: @Diane - Think about the seleted ops for: color, exotic, quality
     if dataset_name == "CIFAR10":
         if not get_fine_tuning_loaders:
-            train_transform = TwoCropsTransform(
-                Compose([
+            train_transform = Compose([
                     # color transformations
                     OneOf([
                         ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.1, p=1),
@@ -60,10 +59,9 @@ def probability_augment(
                         RandomGridShuffle(p=1),
                         RandomShadow(p=1),
                     ], p=p_exotic_transformations),
-                    ToTensor(),
-                    Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.2023, 0.1994, 0.2010])
+                    Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.2023, 0.1994, 0.2010]),
+                    ToTensorV2(),
                 ], p=1)
-                )
 
             valid_transform = TwoCropsTransform(
                 transforms.Compose([

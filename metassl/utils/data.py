@@ -9,6 +9,8 @@ from torch.utils.data.distributed import DistributedSampler
 from torch.utils.data.sampler import SubsetRandomSampler
 
 from metassl.utils.imagenet import ImageNet
+from .probability_augment import probability_augment
+from .albumentation_datasets import Cifar10Albumentations
 from .simsiam import GaussianBlur, TwoCropsTransform
 from .torch_utils import DistributedSampler
 import torchvision.datasets as datasets  # do not remove this
@@ -243,7 +245,13 @@ def get_train_valid_loader(
             )
     elif dataset_name == "CIFAR10":
         print(f"{valid_size=}")
-        train_dataset = torchvision.datasets.CIFAR10(root='datasets/CIFAR10', train=True,
+        apply_probability_augment = False  # TODO: @Diane - Refactor + implement flag for this
+        if apply_probability_augment and not get_fine_tuning_loaders:
+            train_transform_a, valid_transform_a = probability_augment(dataset_name, get_fine_tuning_loaders)
+            train_dataset = Cifar10Albumentations(root='datasets/CIFAR10', train=True,
+                                                         download=True, transform=train_transform_a)
+        else:
+            train_dataset = torchvision.datasets.CIFAR10(root='datasets/CIFAR10', train=True,
                                                 download=True, transform=train_transform)
 
 
