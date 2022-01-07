@@ -758,7 +758,7 @@ if __name__ == '__main__':
     parser.add_argument("--bohb.max_budget", type=int, default=4)
     parser.add_argument("--bohb.budget_mode", type=str, default="epochs", choices=["epochs", "data"], help="Choose your desired fidelity")
     parser.add_argument("--bohb.eta", type=int, default=2)
-    parser.add_argument("--bohb.configspace_mode", type=str, default='color_jitter_strengths', choices=["imagenet_probability_augment", "cifar10_probability_augment", "color_jitter_strengths", "randaugment", "probabilityaugment"], help='Define which configspace to use.')
+    parser.add_argument("--bohb.configspace_mode", type=str, default='color_jitter_strengths', choices=["imagenet_probability_simsiam_augment", "cifar10_probability_simsiam_augment", "color_jitter_strengths", "rand_augment", "probability_augment"], help='Define which configspace to use.')
     parser.add_argument("--bohb.nic_name", default="lo", help="The network interface to use")  # local: "lo", cluster: "eth0"
     parser.add_argument("--bohb.port", type=int, default=0)
     parser.add_argument("--bohb.worker", action="store_true", help="Make this execution a worker server")
@@ -779,6 +779,8 @@ if __name__ == '__main__':
     if is_bohb_run:
         from metassl.hyperparameter_optimization.master import start_bohb_master
         assert config.finetuning.valid_size > 0.0, "BOHB requires a valid_size > 0.0"
+        if config.bohb.configspace_mode == 'probability_augment' and config.expt.data_augmentation_mode != 'probability_augment':
+            raise ValueError("If you run a BOHB experiment with 'probability_augment' configspace mode, you also need to select 'probability_augment' as data augmentation mode!")
         start_bohb_master(yaml_config=config, expt_dir=expt_dir)
 
     else:

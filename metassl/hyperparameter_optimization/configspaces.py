@@ -2,7 +2,7 @@ import ConfigSpace as CS
 import ConfigSpace.hyperparameters as CSH
 
 
-def get_imagenet_probability_augment_configspace():
+def get_imagenet_probability_simsiam_augment_configspace():
     cs = CS.ConfigurationSpace()
     p_colorjitter = CSH.UniformFloatHyperparameter(
         "p_colorjitter", lower=0, upper=1, log=False, default_value=0.8,
@@ -17,7 +17,7 @@ def get_imagenet_probability_augment_configspace():
     return cs
 
 
-def get_cifar10_probability_augment_configspace():
+def get_cifar10_probability_simsiam_augment_configspace():
     cs = CS.ConfigurationSpace()
     p_colorjitter = CSH.UniformFloatHyperparameter(
         "p_colorjitter", lower=0, upper=1, log=False, default_value=0.8,
@@ -46,7 +46,7 @@ def get_color_jitter_strengths_configspace():
     return cs
 
 
-def get_randaugment_configspace():
+def get_rand_augment_configspace():
     cs = CS.ConfigurationSpace()
     num_ops = CSH.UniformIntegerHyperparameter(
         "num_ops", lower=1, upper=3, log=False, default_value=2,
@@ -58,7 +58,7 @@ def get_randaugment_configspace():
     return cs
 
 
-def get_probabilityaugment_configspace():
+def get_probability_augment_configspace():
     cs = CS.ConfigurationSpace()
     p_color_transformations = CSH.UniformFloatHyperparameter(
         "p_color_transformations", lower=0.0, upper=1.0, log=False, default_value=0.5,

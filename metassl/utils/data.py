@@ -83,7 +83,7 @@ def get_train_valid_loader(
         train_transform, valid_transform = get_train_valid_transforms(dataset_name, use_fix_aug_params, bohb_infos, get_fine_tuning_loaders, parameterize_augmentation)
     elif data_augmentation_mode == 'probability_augment':
         from .probability_augment import probability_augment
-        train_transform, valid_transform = probability_augment(dataset_name, get_fine_tuning_loaders)
+        train_transform, valid_transform = probability_augment(dataset_name, get_fine_tuning_loaders, bohb_infos, use_fix_aug_params)
     else:
         raise ValueError(f"Data augmentation mode {data_augmentation_mode} is not implemented yet!")
 
@@ -323,7 +323,7 @@ def get_train_valid_transforms(dataset_name, use_fix_aug_params, bohb_infos, get
         hue_strength = 0.19030216963226004
 
     # BOHB - probability augment configspace
-    if bohb_infos is not None and bohb_infos['bohb_configspace'].endswith('probability_augment'):
+    if bohb_infos is not None and bohb_infos['bohb_configspace'].endswith('probability_simsiam_augment'):
         p_colorjitter = bohb_infos['bohb_config']['p_colorjitter']
         p_grayscale = bohb_infos['bohb_config']['p_grayscale']
         p_gaussianblur =  bohb_infos['bohb_config']['p_gaussianblur'] if dataset_name == 'ImageNet' else 0

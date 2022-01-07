@@ -15,13 +15,48 @@ from albumentations import Compose, OneOf
 def probability_augment(
     dataset_name,
     get_fine_tuning_loaders,
-    p_color_transformations=0.25,
-    p_geometric_transformations=0.25,
-    p_non_rigid_transformations=0.25,
-    p_quality_transformations=0.25,
-    p_exotic_transformations=0,
+    bohb_infos,
+    use_fix_aug_params,
     augment_finetuning = False,
 ):
+    # ------------------------------------------------------------------------------------------------------------------
+    # Specify data augmentation hyperparameters
+    # ------------------------------------------------------------------------------------------------------------------
+    p_color_transformations = 0.25
+    p_geometric_transformations = 0.25
+    p_non_rigid_transformations = 0.25
+    p_quality_transformations = 0.25
+    p_exotic_transformations = 0
+
+    if use_fix_aug_params:
+        # You can overwrite parameters here if you want to try out a specific setting.
+        # Due to the flag, default experiments won't be affected by this.
+        p_color_transformations = 0.25
+        p_geometric_transformations = 0.25
+        p_non_rigid_transformations = 0.25
+        p_quality_transformations = 0.25
+        p_exotic_transformations = 0
+
+    # BOHB - probability_augment configspace
+    if bohb_infos is not None:
+        if bohb_infos['bohb_configspace'] == 'probability_augment':
+            p_color_transformations = bohb_infos['bohb_config']['p_color_transformations']
+            p_geometric_transformations = bohb_infos['bohb_config']['p_geometric_transformations']
+            p_non_rigid_transformations = bohb_infos['bohb_config']['p_non_rigid_transformations']
+            p_quality_transformations = bohb_infos['bohb_config']['p_quality_transformations']
+            p_exotic_transformations = bohb_infos['bohb_config']['p_exotic_transformations']
+            p_exotic_transformations = 0  # TODO: remove
+        else:
+            raise ValueError("Select 'probability_augment' configspace if this is a BOHB run with 'probability_augment' data_augmentation_mode!")
+
+    # For testing
+    print(f"{p_color_transformations=}")
+    print(f"{p_geometric_transformations=}")
+    print(f"{p_non_rigid_transformations=}")
+    print(f"{p_quality_transformations=}")
+    print(f"{p_exotic_transformations=}")
+    # ------------------------------------------------------------------------------------------------------------------
+
     # TODO: @Diane - Think about the seleted ops for: color, exotic, quality
     if dataset_name == "CIFAR10":
         if not get_fine_tuning_loaders:
