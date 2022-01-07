@@ -45,7 +45,6 @@ def probability_augment(
             p_non_rigid_transformations = bohb_infos['bohb_config']['p_non_rigid_transformations']
             p_quality_transformations = bohb_infos['bohb_config']['p_quality_transformations']
             p_exotic_transformations = bohb_infos['bohb_config']['p_exotic_transformations']
-            p_exotic_transformations = 0  # TODO: remove
         else:
             raise ValueError("Select 'probability_augment' configspace if this is a BOHB run with 'probability_augment' data_augmentation_mode!")
 
@@ -92,7 +91,7 @@ def probability_augment(
                     # exotic transformations
                     OneOf([
                         RandomGridShuffle(p=1),
-                        RandomShadow(p=1),
+                        # RandomShadow(p=1),
                     ], p=p_exotic_transformations),
                     Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.2023, 0.1994, 0.2010]),
                     ToTensorV2(),
