@@ -1,0 +1,10 @@
+Used config space:
+==================
+Configuration space object:
+  Hyperparameters:
+    brightness_strength, Type: UniformFloat, Range: [0.0, 1.2], Default: 0.4
+    contrast_strength, Type: UniformFloat, Range: [0.0, 1.2], Default: 0.4
+    hue_strength, Type: UniformFloat, Range: [0.0, 0.4], Default: 0.1
+    saturation_strength, Type: UniformFloat, Range: [0.0, 1.2], Default: 0.4
+
+
