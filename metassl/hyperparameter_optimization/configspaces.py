@@ -80,3 +80,41 @@ def get_probability_augment_configspace():
 
     )
     return cs
+
+def get_double_probability_augment_configspace():
+    cs = CS.ConfigurationSpace()
+    p_color_transformations = CSH.UniformFloatHyperparameter(
+        "p_color_transformations", lower=0.0, upper=1.0, log=False, default_value=0.5,
+    )
+    p_geometric_transformations = CSH.UniformFloatHyperparameter(
+        "p_geometric_transformations", lower=0.0, upper=1.0, log=False, default_value=0.5,
+    )
+    p_non_rigid_transformations = CSH.UniformFloatHyperparameter(
+        "p_non_rigid_transformations", lower=0.0, upper=1.0, log=False, default_value=0.5,
+    )
+    p_quality_transformations = CSH.UniformFloatHyperparameter(
+        "p_quality_transformations", lower=0.0, upper=1.0, log=False, default_value=0.5,
+    )
+    p_exotic_transformations = CSH.UniformFloatHyperparameter(
+        "p_exotic_transformations", lower=0.0, upper=1.0, log=False, default_value=0.5,
+    )
+    p_color_transformations_ft = CSH.UniformFloatHyperparameter(
+        "p_color_transformations_ft", lower=0.0, upper=1.0, log=False, default_value=0.5,
+    )
+    p_geometric_transformations_ft = CSH.UniformFloatHyperparameter(
+        "p_geometric_transformations_ft", lower=0.0, upper=1.0, log=False, default_value=0.5,
+    )
+    p_non_rigid_transformations_ft = CSH.UniformFloatHyperparameter(
+        "p_non_rigid_transformations_ft", lower=0.0, upper=1.0, log=False, default_value=0.5,
+    )
+    p_quality_transformations_ft = CSH.UniformFloatHyperparameter(
+        "p_quality_transformations_ft", lower=0.0, upper=1.0, log=False, default_value=0.5,
+    )
+    p_exotic_transformations_ft = CSH.UniformFloatHyperparameter(
+        "p_exotic_transformations_ft", lower=0.0, upper=1.0, log=False, default_value=0.5,
+    )
+    cs.add_hyperparameters(
+        [p_color_transformations, p_geometric_transformations, p_non_rigid_transformations, p_quality_transformations, p_exotic_transformations, p_color_transformations_ft, p_geometric_transformations_ft, p_non_rigid_transformations_ft, p_quality_transformations_ft, p_exotic_transformations_ft]
+
+    )
+    return cs

@@ -11,7 +11,7 @@ import numpy as np
 
 from hpbandster.optimizers import BOHB as BOHB
 
-from metassl.hyperparameter_optimization.configspaces import get_imagenet_probability_simsiam_augment_configspace, get_cifar10_probability_simsiam_augment_configspace, get_color_jitter_strengths_configspace, get_rand_augment_configspace, get_probability_augment_configspace
+from metassl.hyperparameter_optimization.configspaces import get_imagenet_probability_simsiam_augment_configspace, get_cifar10_probability_simsiam_augment_configspace, get_color_jitter_strengths_configspace, get_rand_augment_configspace, get_probability_augment_configspace, get_double_probability_augment_configspace
 from metassl.hyperparameter_optimization.worker import HPOWorker
 from metassl.hyperparameter_optimization.dispatcher import add_shutdown_worker_to_register_result
 
@@ -82,6 +82,8 @@ def run_master(yaml_config, expt_dir):
         configspace = get_rand_augment_configspace()
     elif yaml_config.bohb.configspace_mode == "probability_augment":
         configspace = get_probability_augment_configspace()
+    elif yaml_config.bohb.configspace_mode == "double_probability_augment":
+        configspace = get_double_probability_augment_configspace()
     else:
         raise ValueError(f"Configspace {yaml_config.bohb.configspace_mode} is not implemented yet!")
 
