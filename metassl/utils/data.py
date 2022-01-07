@@ -37,6 +37,7 @@ def get_train_valid_loader(
     parameterize_augmentation=False,
     bohb_infos=None,
     dataset_percentage_usage=100,
+    use_fix_aug_params=False,
     ):
     """
     Utility function for loading and returning train and valid
@@ -89,6 +90,16 @@ def get_train_valid_loader(
     contrast_strength = 0.4
     saturation_strength = 0.4
     hue_strength = 0.1
+    if use_fix_aug_params:
+        # You can overwrite parameters here if you want to try out a specific setting.
+        # Due to the flag, default experiments won't be affected by this.
+        p_colorjitter = 0.8
+        p_grayscale = 0.2
+        p_gaussianblur = 0.5 if dataset_name == 'ImageNet' else 0
+        brightness_strength = 1.1592547258007664
+        contrast_strength = 1.160211615089221
+        saturation_strength = 0.9843846879329252
+        hue_strength = 0.19030216963226004
 
     # BOHB - probability augment configspace
     if bohb_infos is not None and bohb_infos['bohb_configspace'].endswith('probability_augment'):
@@ -457,6 +468,7 @@ def get_loaders(traindir, config, parameterize_augmentation=False, bohb_infos=No
         parameterize_augmentation=parameterize_augmentation,
         bohb_infos=bohb_infos,
         dataset_percentage_usage=config.data.dataset_percentage_usage,
+        use_fix_aug_params=config.expt.use_fix_aug_params,
         )
     
     train_loader_ft, valid_loader_ft, train_sampler_ft, _ = get_train_valid_loader(
@@ -474,7 +486,8 @@ def get_loaders(traindir, config, parameterize_augmentation=False, bohb_infos=No
         get_fine_tuning_loaders=True,
         parameterize_augmentation=False,
         bohb_infos=None,
-        dataset_percentage_usage=config.data.dataset_percentage_usage
+        dataset_percentage_usage=config.data.dataset_percentage_usage,
+        use_fix_aug_params=config.expt.use_fix_aug_params,
         )
     
     test_loader_ft = get_test_loader(
