@@ -18,6 +18,16 @@ normalize_imagenet = transforms.Normalize(
     std=[0.229, 0.224, 0.225]
     )
 
+normalize_cifar10 = transforms.Normalize(
+    mean=[0.4914, 0.4822, 0.4465],
+    std=[0.2023, 0.1994, 0.2010]
+    )
+
+normalize_cifar100 = transforms.Normalize(
+    mean=(0.5071, 0.4865, 0.4409),
+    std=(0.2673, 0.2564, 0.2762)
+    )
+
 def get_train_valid_loader(
     data_dir,
     batch_size,
@@ -129,7 +139,7 @@ def get_train_valid_loader(
                             transforms.RandomGrayscale(p=p_grayscale),
                             transforms.RandomHorizontalFlip(),
                             transforms.ToTensor(),
-                            transforms.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.2023, 0.1994, 0.2010])
+                            normalize_cifar10,
                             ]
                         )
                     )
@@ -137,20 +147,20 @@ def get_train_valid_loader(
             valid_transform = TwoCropsTransform(
                 transforms.Compose([
                     transforms.ToTensor(),
-                    transforms.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.2023, 0.1994, 0.2010])
+                    normalize_cifar10,
                     ]
                 )
             )
         else:  # TODO: Check out which data augmentations are being used here!
             train_transform = transforms.Compose([
                     transforms.ToTensor(),
-                    transforms.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.2023, 0.1994, 0.2010])
+                    normalize_cifar10,
                 ]
             )
 
             valid_transform = transforms.Compose([
                     transforms.ToTensor(),
-                    transforms.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.2023, 0.1994, 0.2010])
+                    normalize_cifar10,
                 ]
             )
     
@@ -160,14 +170,14 @@ def get_train_valid_loader(
                 transforms.RandomCrop(32, padding=4),
                 transforms.RandomHorizontalFlip(),
                 transforms.ToTensor(),
-                transforms.Normalize(mean=(0.5071, 0.4865, 0.4409), std=(0.2673, 0.2564, 0.2762))
+                normalize_cifar100,
                 ]
             )
         
         valid_transform = transforms.Compose(
             [
                 transforms.ToTensor(),
-                transforms.Normalize(mean=(0.5071, 0.4865, 0.4409), std=(0.2673, 0.2564, 0.2762))
+                normalize_cifar100,
                 ]
             )
     
@@ -206,6 +216,7 @@ def get_train_valid_loader(
                     )
                 )
         else:
+            # same as above without two crop transform
             train_transform = transforms.Compose([
                                 transforms.RandomResizedCrop(224),
                                 transforms.RandomHorizontalFlip(),
@@ -452,7 +463,7 @@ def get_loaders(traindir, config, parameterize_augmentation=False, bohb_infos=No
     train_loader_ft, _, train_sampler_ft, _ = get_train_valid_loader(
         data_dir=traindir,
         batch_size=config.finetuning.batch_size,
-        random_seed=config.expt.seed,
+        random_seed=config.expt.seed+1,
         valid_size=0.0,
         dataset_name=config.data.dataset,
         shuffle=True,

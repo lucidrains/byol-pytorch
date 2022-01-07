@@ -4,9 +4,7 @@
 # code taken from https://github.com/facebookresearch/simsiam
 import argparse
 import builtins
-import math
 import os
-from utils.augment import DataAugmentation
 import random
 import time
 import warnings
@@ -29,6 +27,8 @@ import yaml
 # from backpack.extensions import BatchGrad
 from jsonargparse import ArgumentParser
 from torch.utils.tensorboard import SummaryWriter
+
+from utils.augment import DataAugmentation
 
 warnings.filterwarnings("ignore", category=UserWarning)
 
@@ -78,7 +78,6 @@ model_names = sorted(
     if name.islower() and not name.startswith("__")
     and callable(models.__dict__[name])
     )
-
 
 
 def main(config, expt_dir):
@@ -215,10 +214,11 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
     criterion_pt = nn.CosineSimilarity(dim=1).cuda(config.expt.gpu)
     criterion_ft = nn.CrossEntropyLoss().cuda(config.expt.gpu)
     
-    optim_params_pt = [{
-        'params': model.module.backbone.parameters(),
-        'fix_lr': False
-        },
+    optim_params_pt = [
+        {
+            'params': model.module.backbone.parameters(),
+            'fix_lr': False
+            },
         {
             'params': model.module.encoder_head.parameters(),
             'fix_lr': False
@@ -251,7 +251,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
         weight_decay=config.finetuning.weight_decay
         )
     
-    data_aug_model = DataAugmentation()
+    data_aug_model = DataAugmentation(config=config)
     
     # color_jitter_dist = torch.distributions.Categorical(probs=torch.softmax(aug_w, dim=0))
     optimizer_aug = torch.optim.Adam(data_aug_model.parameters(), 0.001)
@@ -288,7 +288,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
     
     # Data loading code
     traindir = os.path.join(config.data.dataset, 'train')
-
+    
     train_loader_pt, train_sampler_pt, train_loader_ft, train_sampler_ft, test_loader_ft = get_loaders(traindir, config, parameterize_augmentation=True)
     
     cudnn.benchmark = True
@@ -296,7 +296,6 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
     
     if config.expt.rank == 0:
         writer = SummaryWriter(log_dir=os.path.join(expt_dir, "tensorboard"))
-    
     if not meters:
         meters = initialize_all_meters()
     
@@ -308,20 +307,20 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
         
         warmup = config.expt.warmup_epochs > epoch
         print(f"Warmup status: {warmup}")
-
+        
         if warmup:
             cur_lr_pt = adjust_learning_rate(optimizer_pt, init_lr_pt, epoch, total_epochs=config.expt.warmup_epochs, warmup=True, multiplier=config.expt.warmup_multiplier)
             print(f"warming up phase (PT)")
         else:
             cur_lr_pt = adjust_learning_rate(optimizer_pt, init_lr_pt, epoch, total_epochs=config.train.epochs)
-
+        
         if config.expt.warmup_both and warmup:
             # we intend to reach the pt learning rate when warming up the head
             cur_lr_ft = adjust_learning_rate(optimizer_ft, init_lr_pt, epoch, total_epochs=config.expt.warmup_epochs, warmup=True, multiplier=config.expt.warmup_multiplier)
             print(f"warming up phase (FT)")
         else:
             cur_lr_ft = adjust_learning_rate(optimizer_ft, init_lr_ft, epoch, total_epochs=config.finetuning.epochs)
-
+        
         print(f"current pretrain lr: {cur_lr_pt}, finetune lr: {cur_lr_ft}")
         
         total_iter = train_one_epoch(
@@ -430,7 +429,7 @@ def train_one_epoch(
         cos_sim_ema_meter_lw,
         cos_sim_ema_meter_standardized_lw,
         cos_sim_ema_meter_global,
-        cos_sim_ema_meter_standardized_global
+        cos_sim_ema_meter_standardized_global,
         ]
     
     progress = ProgressMeter(
@@ -441,26 +440,25 @@ def train_one_epoch(
     
     end = time.time()
     assert len(train_loader_pt) <= len(train_loader_ft), 'So since this seems to break, we should write code to run multiple finetune epoch per pretrain epoch'
-    for i, ((images_pt, _), (images_ft, target_ft)) in enumerate(zip(train_loader_pt, train_loader_ft)):
-        
+    # for i, ((images_pt, _), (images_ft, target_ft)) in enumerate(zip(train_loader_pt, train_loader_ft)):
+    for i, ((images_pt, _), (images_ft, target_ft)) in enumerate(zip(train_loader_pt, train_loader_pt)):
         total_iter += 1
         
         if config.expt.rank == 0 and i % (config.expt.print_freq * 100) == 0:
             rand_int = torch.randint(high=images_pt.shape[0], size=(1,))
-            # rand_int = torch.randint(high=images_pt[0].shape[0], size=(1,))
             # permute from CHW to HWC for pyplot
-            # untransformed_image = torch.permute(images_pt[0][rand_int].squeeze(), (1, 2, 0)).cpu()
             untransformed_image = torch.permute(images_pt[rand_int].squeeze(), (1, 2, 0)).cpu()
         
         if config.expt.gpu is not None and not isinstance(images_pt, list):
             images_pt = images_pt.cuda(config.expt.gpu, non_blocking=True)
-
+        
         indices, logprobs, strengths = data_aug_model.sample_logprobs()
         images_pt = data_aug_model(images_pt, idx_b=indices["idx_b"], idx_c=indices["idx_c"], idx_s=indices["idx_s"], idx_h=indices["idx_h"])
         
         if config.expt.gpu is not None:
-            images_pt[0] = images_pt[0].contiguous()
-            images_pt[1] = images_pt[1].contiguous()
+            # todo: check if contiguous is still needed with nn module
+            # images_pt[0] = images_pt[0].contiguous()
+            # images_pt[1] = images_pt[1].contiguous()
             images_pt[0] = images_pt[0].cuda(config.expt.gpu, non_blocking=True)
             images_pt[1] = images_pt[1].cuda(config.expt.gpu, non_blocking=True)
             images_ft = images_ft.cuda(config.expt.gpu, non_blocking=True)
@@ -470,12 +468,16 @@ def train_one_epoch(
             # permute from CHW to HWC for pyplot
             img0 = torch.permute(images_pt[0][rand_int].squeeze(), (1, 2, 0)).cpu()
             img1 = torch.permute(images_pt[1][rand_int].squeeze(), (1, 2, 0)).cpu()
+            img_ft = torch.permute(images_ft[rand_int].squeeze(), (1, 2, 0)).cpu()
+            label_ft = target_ft[rand_int].item()
             title = f"b:{strengths['strength_b']}, c: {strengths['strength_c']}, s: {strengths['strength_s']}, h: {strengths['strength_h']}"
             image_data_to_plot = {
                 "untransformed_image": untransformed_image,
                 "img0":                img0,
                 "img1":                img1,
                 "title":               title,
+                "ft_img":              img_ft,
+                "ft_label":            label_ft,
                 }
         
         loss_pt, backbone_grads_pt_lw, backbone_grads_pt_global = pretrain(model, images_pt, criterion_pt, optimizer_pt, losses_pt_meter, data_time_meter, end, config=config, alternating_mode=True)
@@ -555,7 +557,7 @@ def train_one_epoch(
             norm_pt_meter_global,
             norm_pt_avg_meter_lw,
             norm_ft_meter_global,
-            norm_ft_avg_meter_lw,
+            norm_ft_avg_meter_lw
             ]
         
         additional_stats_meters = [
@@ -585,7 +587,7 @@ def train_one_epoch(
         
         if i % config.expt.print_freq == 0:
             progress.display(i)
-        if config.expt.rank == 0:
+        if config.expt.rank == 0 and i % 5 == 0:
             write_to_summary_writer(total_iter, loss_pt, loss_ft, data_time_meter, batch_time_meter, optimizer_pt, optimizer_ft, top1_meter, top5_meter, meters_to_plot, writer)
         # expensive stats
         if config.expt.rank == 0 and i % (config.expt.print_freq * 100) == 0:
@@ -602,7 +604,7 @@ def train_one_epoch(
             writer.add_image(tag="Advanced Stats/color jitter strength hue", img_tensor=img, global_step=total_iter)
             
             img = tensor_to_image(image_data_to_plot["untransformed_image"], f"Randomly sampled untransformed image")
-            writer.add_image(tag="Advanced Stats/sampled untransformed image 1", img_tensor=img, global_step=total_iter)
+            writer.add_image(tag="Advanced Stats/sampled untransformed image", img_tensor=img, global_step=total_iter)
             
             title = image_data_to_plot["title"]
             
@@ -611,6 +613,9 @@ def train_one_epoch(
             
             img = tensor_to_image(image_data_to_plot["img1"], f"Randomly sampled transformed image 2\n {title}")
             writer.add_image(tag="Advanced Stats/sampled transformed image 2", img_tensor=img, global_step=total_iter)
+            
+            ft_img = tensor_to_image(image_data_to_plot["ft_img"], f"Randomly sampled finetuning image\n with label {image_data_to_plot['ft_label']}")
+            writer.add_image(tag="Advanced Stats/sampled finetuning image", img_tensor=ft_img, global_step=total_iter)
     
     return total_iter
 

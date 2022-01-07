@@ -27,8 +27,6 @@ import yaml
 from jsonargparse import ArgumentParser
 from torch.utils.tensorboard import SummaryWriter
 
-
-
 warnings.filterwarnings("ignore", category=UserWarning)
 
 try:
@@ -68,14 +66,14 @@ def main(config, expt_dir, bohb_infos=None):
             config.finetuning.epochs = int(bohb_infos['bohb_budget'])
         else:
             raise ValueError(f"Budget mode '{config.bohb.budget_mode}' not implemented yet!")
-
+        
         # Add --bohb.configspace_mode to bohb_infos
         bohb_infos['bohb_configspace'] = config.bohb.configspace_mode
-
+        
         # Create subfoler for each config_id (directory where tensorboard and checkpoints are being saved)
         expt_dir_id = get_expt_dir_with_bohb_config_id(expt_dir, bohb_infos['bohb_config_id'])
         expt_dir = expt_dir_id
-
+        
         # Define master port (for preventing 'Address already in use error' when more than 1 submitted worker on 1 node)
         # TODO: @Diane - Think for another strategy to handle the problem
         # str_config_id = "".join(str(sub_id) for sub_id in bohb_infos['bohb_config_id'])
@@ -86,10 +84,10 @@ def main(config, expt_dir, bohb_infos=None):
         # print(f"{master_port=}")
         # config.expt.dist_url = "tcp://localhost:" + master_port
         # print(f"{config.expt.dist_url=}")
-
+        
         print(f"\n\n\n\n\n\n{bohb_infos=}\n\n\n\n\n\n")
     # ------------------------------------------------------------------------------------------------------------------
-
+    
     if config.expt.seed is not None:
         random.seed(config.expt.seed)
         torch.manual_seed(config.expt.seed)
@@ -107,7 +105,7 @@ def main(config, expt_dir, bohb_infos=None):
             'You have chosen a specific GPU. This will completely '
             'disable data parallelism.'
             )
-
+    
     if config.expt.warmup_both:
         assert config.expt.warmup_epochs > 0, "warmup_epochs should be higher than 0 if warmup_both is set to True."
     
@@ -127,7 +125,7 @@ def main(config, expt_dir, bohb_infos=None):
     else:
         # Simply call main_worker function
         main_worker(config.expt.gpu, ngpus_per_node, config, expt_dir, bohb_infos)
-
+    
     # BOHB only --------------------------------------------------------------------------------------------------------
     # Read validation metric from the .txt (as for mp.spawn returning values is not trivial)
     if bohb_infos is not None:
@@ -137,9 +135,10 @@ def main(config, expt_dir, bohb_infos=None):
         return float(val_metric)
     # ------------------------------------------------------------------------------------------------------------------
 
+
 def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
     config.expt.gpu = gpu
-
+    
     # suppress printing if not master
     if config.expt.multiprocessing_distributed and config.expt.gpu != 0:
         def print_pass(*args):
@@ -220,10 +219,11 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
     criterion_pt = nn.CosineSimilarity(dim=1).cuda(config.expt.gpu)
     criterion_ft = nn.CrossEntropyLoss().cuda(config.expt.gpu)
     
-    optim_params_pt = [{
-        'params': model.module.backbone.parameters(),
-        'fix_lr': False
-        },
+    optim_params_pt = [
+        {
+            'params': model.module.backbone.parameters(),
+            'fix_lr': False
+            },
         {
             'params': model.module.encoder_head.parameters(),
             'fix_lr': False
@@ -318,7 +318,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
             print(f"warming up phase (FT)")
         else:
             cur_lr_ft = adjust_learning_rate(optimizer_ft, init_lr_ft, epoch, total_epochs=config.finetuning.epochs)
-            
+        
         print(f"current pretrain lr: {cur_lr_pt}, finetune lr: {cur_lr_ft}")
         
         total_iter = train_one_epoch(
@@ -336,7 +336,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
             meters=meters,
             warmup=warmup,
             )
-
+        
         # BOHB only ----------------------------------------------------------------------------------------------------
         # TODO: @Diane - Refactor - no priority
         if bohb_infos is not None:
@@ -346,7 +346,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
                     top1_avg = validate(test_loader_ft, model, criterion_ft, config, finetuning=True)
                     if config.expt.rank == 0:
                         writer.add_scalar('Test/Accuracy@1', top1_avg, total_iter)
-
+            
             else:
                 if epoch % config.expt.eval_freq == 0:
                     # TODO: @Diane - validate on the validation set!!!!! - priority!
@@ -375,13 +375,14 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
     
     if config.expt.rank == 0:
         writer.close()
-
+    
     # BOHB only --------------------------------------------------------------------------------------------------------
     # Save validation metric in a .txt (as for mp.spawn returning values is not trivial)
     if bohb_infos is not None:
         with open(expt_dir + "/current_val_metric.txt", 'w+') as f:
             f.write(f"{top1_avg.item()}\n")
     # ------------------------------------------------------------------------------------------------------------------
+
 
 def train_one_epoch(
     train_loader_pt,
@@ -459,7 +460,7 @@ def train_one_epoch(
             images_pt[1] = images_pt[1].cuda(config.expt.gpu, non_blocking=True)
             images_ft = images_ft.cuda(config.expt.gpu, non_blocking=True)
             target_ft = target_ft.cuda(config.expt.gpu, non_blocking=True)
-
+        
         alternating_mode = False if config.expt.is_non_grad_based else True  # default is True
         loss_pt, backbone_grads_pt_lw, backbone_grads_pt_global = pretrain(model, images_pt, criterion_pt, optimizer_pt, losses_pt_meter, data_time_meter, end, config=config, alternating_mode=alternating_mode)
         
@@ -608,26 +609,26 @@ def organize_experiment_saving(user, config, is_bohb_run):
         expt_root_dir = "experiments"
     else:
         raise ValueError(f"Experiment mode {config.expt.expt_mode} is undefined!")
-
+    
     # Set expt_dir based on whether it is a BOHB run or not
     if is_bohb_run:
         # for start_bohb_master (directory where config.json and results.json are being saved)
         expt_dir = os.path.join(expt_root_dir, "BOHB", config.data.dataset, config.expt.expt_name)
-
+    
     else:
         expt_dir = os.path.join(expt_root_dir, config.expt.expt_name)
-
+    
     # TODO: @Fabio - Do we need this line below?
     expt_root_dir = pathlib.Path(expt_root_dir)
-
+    
     # Create directory (if not yet existing) and save config.yaml
     if not os.path.exists(expt_dir):
         os.makedirs(expt_dir)
-
+    
     with open(os.path.join(expt_dir, "config.yaml"), "w") as f:
         yaml.dump(config, f)
         print(f"copied config to {f.name}")
-
+    
     return expt_dir
 
 
@@ -663,7 +664,7 @@ if __name__ == '__main__':
     parser.add_argument('--expt.eval_freq', default=10, type=int, metavar='N', help='every eval_freq epoch will the model be evaluated')
     parser.add_argument('--expt.seed', default=123, type=int, metavar='N', help='random seed of numpy and torch')
     parser.add_argument('--expt.evaluate', action='store_true', help='evaluate model on validation set once and terminate (default: False)')
-    parser.add_argument('--expt.is_non_grad_based', action='store_true',help='Set this flag to run default SimSiam or BOHB runs')
+    parser.add_argument('--expt.is_non_grad_based', action='store_true', help='Set this flag to run default SimSiam or BOHB runs')
     parser.add_argument('--expt.warmup_epochs', default=10, type=int, metavar='N', help='denotes the number of epochs that we only pre-train without finetuning afterwards; warmup is turned off when set to 0; we use a linear incremental schedule during warmup')
     parser.add_argument('--expt.warmup_multiplier', default=2., type=float, metavar='N', help='A factor that is multiplied with the pretraining lr used in the linear incremental learning rate scheduler during warmup. The final lr is multiplier * pre-training lr')
     parser.add_argument('--expt.warmup_both', action='store_true', help='Whether backbone and head should be both warmed up.')
@@ -702,7 +703,7 @@ if __name__ == '__main__':
     parser.add_argument('--simsiam.dim', type=int, default=2048, help='the feature dimension')
     parser.add_argument('--simsiam.pred_dim', type=int, default=512, help='the hidden dimension of the predictor')
     parser.add_argument('--simsiam.fix_pred_lr', action="store_false", help='fix learning rate for the predictor (default: True')
-
+    
     # parser.add_argument('--bohb', default="bohb", type=str, metavar='N')
     # parser.add_argument("--bohb.run_id", default="default_BOHB")
     # parser.add_argument("--bohb.seed", type=int, default=123, help="random seed")
@@ -717,21 +718,22 @@ if __name__ == '__main__':
     # parser.add_argument("--bohb.worker", action="store_true", help="Make this execution a worker server")
     # parser.add_argument("--bohb.warmstarting", type=bool, default=False)
     # parser.add_argument("--bohb.warmstarting_dir", type=str, default=None)
-
+    
     parser.add_argument("--use_fixed_args", action="store_true", help="Flag to control whether to take arguments from yaml file as default or from arg parse")
-
+    
     config = _parse_args(config_parser, parser)
     config = AttrDict(jsonargparse.namespace_to_dict(config))
     print("\n\n\n\nConfig:\n", config, "\n\n\n\n")
-
+    
     # Check whether it is a BOHB run or not + organize expt_dir accordingly
     is_bohb_run = True if config.expt.expt_mode.endswith("BOHB") else False
     expt_dir = organize_experiment_saving(user=user, config=config, is_bohb_run=is_bohb_run)
-
+    
     # Run BOHB / main
     if is_bohb_run:
         from metassl.hyperparameter_optimization.master import start_bohb_master
+        
         start_bohb_master(yaml_config=config, expt_dir=expt_dir)
-
+    
     else:
         main(config=config, expt_dir=expt_dir)

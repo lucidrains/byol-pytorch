@@ -1,5 +1,5 @@
 import math
-
+import kornia as K
 import torch
 import torchvision.transforms
 import torchvision.transforms as transforms
@@ -10,18 +10,28 @@ from metassl.utils.data import normalize_imagenet
 from metassl.utils.simsiam import TwoCropsTransform
 from metassl.utils.torch_utils import get_sample_logprob
 
+try:
+    from metassl.utils.data import normalize_imagenet, normalize_cifar10, normalize_cifar100
+except ImportError:
+    from .data import normalize_imagenet, normalize_cifar10, normalize_cifar100
+
 
 class DataAugmentation(nn.Module):
     """Module to perform data augmentation."""
     
-    def __init__(self) -> None:
+    def __init__(self, config) -> None:
         super().__init__()
         
         # augmentation strengths
-        self.color_jitter_strengths_brightness = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2]
-        self.color_jitter_strengths_contrast = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2]
-        self.color_jitter_strengths_saturation = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2]
-        self.color_jitter_strengths_hue = [0.0, 0.1, 0.2, 0.3, 0.4]
+        # self.color_jitter_strengths_brightness = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2]
+        # self.color_jitter_strengths_contrast = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2]
+        # self.color_jitter_strengths_saturation = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2]
+        # self.color_jitter_strengths_hue = [0.0, 0.1, 0.2, 0.3, 0.4]
+
+        self.color_jitter_strengths_brightness = [0.4]
+        self.color_jitter_strengths_contrast = [0.4]
+        self.color_jitter_strengths_saturation = [0.4]
+        self.color_jitter_strengths_hue = [0.1]
         
         self.aug_w_b = nn.Parameter(torch.zeros(len(self.color_jitter_strengths_brightness)), requires_grad=True)
         self.aug_w_c = nn.Parameter(torch.zeros(len(self.color_jitter_strengths_contrast)), requires_grad=True)
@@ -62,7 +72,16 @@ class DataAugmentation(nn.Module):
             "s": self.color_jitter_strengths_saturation,
             "h": self.color_jitter_strengths_hue
             }
-    
+        
+        self.expt_mode = config.expt.expt_mode
+        if self.expt_mode == "ImageNet":
+            self.norm = normalize_imagenet
+        elif self.expt_mode == "CIFAR10":
+            self.norm = normalize_cifar10
+        elif self.expt_mode == "CIFAR100":
+            self.norm = normalize_cifar10
+            
+        
     def sample_logprobs(self):
         color_jitter_action_idx_b, color_jitter_logprob_b, _ = get_sample_logprob(logits=self.aug_w_b)
         color_jitter_action_idx_c, color_jitter_logprob_c, _ = get_sample_logprob(logits=self.aug_w_c)
@@ -119,11 +138,15 @@ class DataAugmentation(nn.Module):
         trans = nn.Sequential(
             # RandomResizedCrop(224, scale=(0.2, 1.)),
             RandomApply([ColorJitter(brightness=strength_b, contrast=strength_c, saturation=strength_s, hue=strength_h)], p=0.8),
+            # K.augmentation.ColorJitter(brightness=strength_b, contrast=strength_c, saturation=strength_s, hue=strength_h),
             RandomGrayscale(p=0.2),
+            # K.augmentation.RandomGrayscale(p=0.2),
             # RandomApply([GaussianBlur([.1, 2.])], p=0.5),
             RandomApply([torchvision.transforms.GaussianBlur([kernel_h, kernel_w], [.1, 2.])], p=0.5),
+            # K.augmentation.RandomGaussianBlur((kernel_h, kernel_w), (0.1, 2.0), p=0.5),
             RandomHorizontalFlip(),
-            normalize_imagenet
+            # K.augmentation.RandomHorizontalFlip(),
+            self.norm,
             )
         
         trans = TwoCropsTransform(trans)

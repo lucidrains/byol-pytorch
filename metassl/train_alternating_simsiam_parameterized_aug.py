@@ -6,7 +6,6 @@ import argparse
 import builtins
 import math
 import os
-import pathlib
 import random
 import time
 import warnings
@@ -29,7 +28,6 @@ from backpack import backpack, extend
 from backpack.extensions import BatchGrad
 from jsonargparse import ArgumentParser
 from torch.utils.tensorboard import SummaryWriter
-
 
 warnings.filterwarnings("ignore", category=UserWarning)
 
@@ -127,7 +125,7 @@ def main(config, expt_dir):
             'You have chosen a specific GPU. This will completely '
             'disable data parallelism.'
             )
-
+    
     if config.expt.warmup_both:
         assert config.expt.warmup_epochs > 0, "warmup_epochs should be higher than 0 if warmup_both is set to True."
     
@@ -243,10 +241,11 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
     criterion_pt = nn.CosineSimilarity(dim=1).cuda(config.expt.gpu)
     criterion_ft = nn.CrossEntropyLoss().cuda(config.expt.gpu)
     
-    optim_params_pt = [{
-        'params': model.module.backbone.parameters(),
-        'fix_lr': False
-        },
+    optim_params_pt = [
+        {
+            'params': model.module.backbone.parameters(),
+            'fix_lr': False
+            },
         {
             'params': model.module.encoder_head.parameters(),
             'fix_lr': False
@@ -342,7 +341,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
     
     if config.expt.rank == 0:
         writer = SummaryWriter(log_dir=os.path.join(expt_dir, "tensorboard"))
-
+    
     if not meters:
         meters = initialize_all_meters()
     
@@ -354,20 +353,20 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
         
         warmup = config.expt.warmup_epochs > epoch
         print(f"Warmup status: {warmup}")
-
+        
         if warmup:
             cur_lr_pt = adjust_learning_rate(optimizer_pt, init_lr_pt, epoch, total_epochs=config.expt.warmup_epochs, warmup=True, multiplier=config.expt.warmup_multiplier)
             print(f"warming up phase (PT)")
         else:
             cur_lr_pt = adjust_learning_rate(optimizer_pt, init_lr_pt, epoch, total_epochs=config.train.epochs)
-
+        
         if config.expt.warmup_both and warmup:
             # we intend to reach the pt learning rate when warming up the head
             cur_lr_ft = adjust_learning_rate(optimizer_ft, init_lr_pt, epoch, total_epochs=config.expt.warmup_epochs, warmup=True, multiplier=config.expt.warmup_multiplier)
             print(f"warming up phase (FT)")
         else:
             cur_lr_ft = adjust_learning_rate(optimizer_ft, init_lr_ft, epoch, total_epochs=config.finetuning.epochs)
-
+        
         print(f"current pretrain lr: {cur_lr_pt}, finetune lr: {cur_lr_ft}")
         
         total_iter = train_one_epoch(
@@ -831,7 +830,7 @@ if __name__ == '__main__':
         expt_dir = "experiments"
     else:
         raise ValueError(f"Experiment mode {args.expt.expt_mode} is undefined!")
-   
+    
     expt_sub_dir = os.path.join(expt_dir, args.expt.expt_name)
     
     if not os.path.exists(expt_sub_dir):
@@ -842,7 +841,7 @@ if __name__ == '__main__':
         print(f"copied config to {f.name}")
     
     config = AttrDict(jsonargparse.namespace_to_dict(args))
-
+    
     print("\n\nConfig being run:\n", config, "\n\n")
     
     main(config=config, expt_dir=expt_sub_dir)
