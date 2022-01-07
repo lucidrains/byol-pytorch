@@ -250,7 +250,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
         weight_decay=config.finetuning.weight_decay
         )
     
-    data_aug_model = DataAugmentation()
+    data_aug_model = DataAugmentation(config)
     
     # color_jitter_dist = torch.distributions.Categorical(probs=torch.softmax(aug_w, dim=0))
     optimizer_aug = torch.optim.Adam(data_aug_model.parameters(), 0.001)
