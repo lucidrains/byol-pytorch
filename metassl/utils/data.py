@@ -37,6 +37,8 @@ def get_train_valid_loader(
     dataset_percentage_usage=100,
     use_fix_aug_params=False,
     data_augmentation_mode='default',
+    finetuning_data_augmentation='none',
+
     ):
     """
     Utility function for loading and returning train and valid
@@ -83,7 +85,7 @@ def get_train_valid_loader(
         train_transform, valid_transform = get_train_valid_transforms(dataset_name, use_fix_aug_params, bohb_infos, get_fine_tuning_loaders, parameterize_augmentation)
     elif data_augmentation_mode == 'probability_augment':
         from .probability_augment import probability_augment
-        train_transform, valid_transform = probability_augment(dataset_name, get_fine_tuning_loaders, bohb_infos, use_fix_aug_params)
+        train_transform, valid_transform = probability_augment(dataset_name, get_fine_tuning_loaders, bohb_infos, use_fix_aug_params, finetuning_data_augmentation)
     else:
         raise ValueError(f"Data augmentation mode {data_augmentation_mode} is not implemented yet!")
 
@@ -103,18 +105,30 @@ def get_train_valid_loader(
             transform=valid_transform, ignore_archive=True,
             )
     elif dataset_name == "CIFAR10":
-        print(f"{valid_size=}")
-        if data_augmentation_mode == 'probability_augment' and not get_fine_tuning_loaders:
-            from .albumentation_datasets import Cifar10Albumentations
-            train_dataset = Cifar10Albumentations(root='datasets/CIFAR10', train=True,
-                                                         download=True, transform=train_transform)
+        # train_dataset
+        # --------------------------------------------------------------------------------------------------------------
+        if data_augmentation_mode == 'probability_augment':
+            from .albumentation_datasets import Cifar10AlbumentationsPT
+            if not get_fine_tuning_loaders:
+                train_dataset = Cifar10AlbumentationsPT(root='datasets/CIFAR10', train=True,
+                                                        download=True, transform=train_transform)
+            else:
+                if finetuning_data_augmentation != 'none':
+                    from .albumentation_datasets import Cifar10AlbumentationsFT
+                    train_dataset = Cifar10AlbumentationsFT(root='datasets/CIFAR10', train=True,
+                                                               download=True, transform=train_transform)
+                # TODO: @Diane - Refactor
+                else:
+                    train_dataset = torchvision.datasets.CIFAR10(root='datasets/CIFAR10', train=True,
+                                                                 download=True, transform=train_transform)
         else:
             train_dataset = torchvision.datasets.CIFAR10(root='datasets/CIFAR10', train=True,
                                                 download=True, transform=train_transform)
-
-
+        # valid_dataset
+        # --------------------------------------------------------------------------------------------------------------
+        print(f"{valid_size=}")
         valid_dataset = torchvision.datasets.CIFAR10(root='datasets/CIFAR10', train=True,
-                                               download=True, transform=valid_transform)
+                                           download=True, transform=valid_transform)
     else:
         # not supported
         raise ValueError('invalid dataset name=%s' % dataset)
@@ -482,6 +496,7 @@ def get_loaders(traindir, config, parameterize_augmentation=False, bohb_infos=No
         dataset_percentage_usage=config.data.dataset_percentage_usage,
         use_fix_aug_params=config.expt.use_fix_aug_params,
         data_augmentation_mode=config.expt.data_augmentation_mode,
+        finetuning_data_augmentation=config.finetuning.data_augmentation,
         )
     
     train_loader_ft, valid_loader_ft, train_sampler_ft, _ = get_train_valid_loader(
@@ -498,10 +513,11 @@ def get_loaders(traindir, config, parameterize_augmentation=False, bohb_infos=No
         drop_last=True,
         get_fine_tuning_loaders=True,
         parameterize_augmentation=False,
-        bohb_infos=None,
+        bohb_infos=bohb_infos,
         dataset_percentage_usage=config.data.dataset_percentage_usage,
         use_fix_aug_params=config.expt.use_fix_aug_params,
         data_augmentation_mode=config.expt.data_augmentation_mode,
+        finetuning_data_augmentation=config.finetuning.data_augmentation,
         )
     
     test_loader_ft = get_test_loader(

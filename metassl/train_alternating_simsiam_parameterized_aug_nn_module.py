@@ -756,6 +756,7 @@ if __name__ == '__main__':
     parser.add_argument('--finetuning.momentum', default=0.9, type=float, metavar='N', help='SGD momentum')
     parser.add_argument('--finetuning.lr', default=100, type=float, metavar='N', help='finetuning learning rate')
     parser.add_argument('--finetuning.valid_size', default=0.0, type=float, help='If valid_size > 0, pick some images from the trainset to do evaluation on. If valid_size=0 evaluation is done on the testset.')
+    parser.add_argument('--finetuning.data_augmentation', default='none', choices=['none', 'p_probability_augment_pt', 'p_probability_augment_ft', 'p_probability_augment_1-pt'], help='Select if and how finetuning gets augmented.')
     
     parser.add_argument('--model', default="model", type=str, metavar='N')
     parser.add_argument('--model.model_type', type=str, default='resnet50', help='all torchvision ResNets')
@@ -794,5 +795,9 @@ if __name__ == '__main__':
     
     config = AttrDict(jsonargparse.namespace_to_dict(args))
     print("\n\nConfig being run:\n", config, "\n\n")
-    
+
+    # Error check
+    if config.finetuning.data_augmentation != "none" and config.expt.data_augmentation_mode != 'probability_augment':
+        raise ValueError("If you use data augmentation for finetuning, 'probability_augment' is required as the data_augmentation_mode!")
+
     main(config=config, expt_dir=expt_sub_dir)

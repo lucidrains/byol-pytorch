@@ -59,6 +59,7 @@ finetuning:
   clip_grad:        False                 # gradient cliping, options: 0.1 ... 100, False
   scheduler_epochs: 100                   # T_max or T_0 in 'cosine' and 'cosineWarm' scheduler, in case of 'step' scheduler this denotes when scheduler should step
   valid_size:       0.0                   # If valid_size > 0, pick some images from the trainset to do evaluation on. If valid_size=0 evaluation is done on the testset.
+  data_augmentation: "none"               # Select if and how finetuning gets augmented. choices=['none', 'p_probability_augment_pt', 'p_probability_augment_ft', 'p_probability_augment_1-pt']
 
 
 #######################################
