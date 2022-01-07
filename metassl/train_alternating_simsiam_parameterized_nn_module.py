@@ -507,6 +507,8 @@ def train_one_epoch(
             
             reward = cos_sim_ema_meter_lw.val - cos_sim_ema_meter_lw.ema
             
+            print(f"--------------------------- reward.requires_grad: {reward.requires_grad}")
+            
             color_jitter_logprob_b = -(logprobs["logprob_b"] * reward)
             color_jitter_logprob_b.backward()
             
