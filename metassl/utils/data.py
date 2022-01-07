@@ -36,6 +36,7 @@ def get_train_valid_loader(
     bohb_infos=None,
     dataset_percentage_usage=100,
     use_fix_aug_params=False,
+    data_augmentation_mode='default',
     ):
     """
     Utility function for loading and returning train and valid
@@ -76,167 +77,16 @@ def get_train_valid_loader(
     else:
         print(f"using pretraining dataset: {dataset}")
 
-    # ------------------------------------------------------------------------------------------------------------------
-    # Specify data augmentation hyperparameters for the pretraining part
-    # ------------------------------------------------------------------------------------------------------------------
-    # TODO: @Diane - put that into a separate function
-    # Defaults
-    p_colorjitter = 0.8
-    p_grayscale = 0.2
-    p_gaussianblur = 0.5 if dataset_name == 'ImageNet' else 0
-    brightness_strength = 0.4
-    contrast_strength = 0.4
-    saturation_strength = 0.4
-    hue_strength = 0.1
-    if use_fix_aug_params:
-        # You can overwrite parameters here if you want to try out a specific setting.
-        # Due to the flag, default experiments won't be affected by this.
-        p_colorjitter = 0.8
-        p_grayscale = 0.2
-        p_gaussianblur = 0.5 if dataset_name == 'ImageNet' else 0
-        brightness_strength = 1.1592547258007664
-        contrast_strength = 1.160211615089221
-        saturation_strength = 0.9843846879329252
-        hue_strength = 0.19030216963226004
-
-    # BOHB - probability augment configspace
-    if bohb_infos is not None and bohb_infos['bohb_configspace'].endswith('probability_augment'):
-        p_colorjitter = bohb_infos['bohb_config']['p_colorjitter']
-        p_grayscale = bohb_infos['bohb_config']['p_grayscale']
-        p_gaussianblur =  bohb_infos['bohb_config']['p_gaussianblur'] if dataset_name == 'ImageNet' else 0
-
-    # BOHB - color jitter strengths configspace
-    if bohb_infos is not None and bohb_infos['bohb_configspace'] == 'color_jitter_strengths':
-        brightness_strength = bohb_infos['bohb_config']['brightness_strength']
-        contrast_strength = bohb_infos['bohb_config']['contrast_strength']
-        saturation_strength = bohb_infos['bohb_config']['saturation_strength']
-        hue_strength = bohb_infos['bohb_config']['hue_strength']
-
-    # For testing
-    # print(f"{p_colorjitter=}")
-    # print(f"{p_grayscale=}")
-    # print(f"{p_gaussianblur=}")
-    # print(f"{brightness_strength=}")
-    # print(f"{contrast_strength=}")
-    # print(f"{saturation_strength=}")
-    # print(f"{hue_strength=}")
-    # ------------------------------------------------------------------------------------------------------------------
-
-    if dataset_name == "CIFAR10":
-        # No blur augmentation for CIFAR10!
-        if not get_fine_tuning_loaders:
-            if parameterize_augmentation:
-                # rest is done outside
-                # train_transform = transforms.Compose([
-                #     transforms.RandomResizedCrop(size=32, scale=(0.2, 1.)),
-                #     transforms.ToTensor(),
-                #     ])
-                train_transform = None
-            else:
-                train_transform = TwoCropsTransform(
-                    transforms.Compose(
-                        [
-                            transforms.RandomResizedCrop(size=32, scale=(0.2, 1.)),
-                            transforms.RandomApply([transforms.ColorJitter(brightness=brightness_strength, contrast=contrast_strength, saturation=saturation_strength, hue=hue_strength)], p=p_colorjitter),
-                            transforms.RandomGrayscale(p=p_grayscale),
-                            transforms.RandomHorizontalFlip(),
-                            transforms.ToTensor(),
-                            transforms.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.2023, 0.1994, 0.2010])
-                            ]
-                        )
-                    )
-
-            valid_transform = TwoCropsTransform(
-                transforms.Compose([
-                    transforms.ToTensor(),
-                    transforms.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.2023, 0.1994, 0.2010])
-                    ]
-                )
-            )
-        else:  # TODO: Check out which data augmentations are being used here!
-            train_transform = transforms.Compose([
-                    transforms.ToTensor(),
-                    transforms.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.2023, 0.1994, 0.2010])
-                ]
-            )
-
-            valid_transform = transforms.Compose([
-                    transforms.ToTensor(),
-                    transforms.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.2023, 0.1994, 0.2010])
-                ]
-            )
-    
-    elif dataset_name == "CIFAR100":
-        train_transform = transforms.Compose(
-            [
-                transforms.RandomCrop(32, padding=4),
-                transforms.RandomHorizontalFlip(),
-                transforms.ToTensor(),
-                transforms.Normalize(mean=(0.5071, 0.4865, 0.4409), std=(0.2673, 0.2564, 0.2762))
-                ]
-            )
-        
-        valid_transform = transforms.Compose(
-            [
-                transforms.ToTensor(),
-                transforms.Normalize(mean=(0.5071, 0.4865, 0.4409), std=(0.2673, 0.2564, 0.2762))
-                ]
-            )
-    
-    elif dataset_name == "ImageNet":
-        if not get_fine_tuning_loaders:
-            # MoCo v2's aug: similar to SimCLR https://arxiv.org/abs/2002.05709
-            if parameterize_augmentation:
-                # rest is done outside
-                train_transform = transforms.Compose([
-                    transforms.RandomResizedCrop(224, scale=(0.2, 1.)),
-                    transforms.ToTensor(),
-                    ])
-            else:
-                train_transform = TwoCropsTransform(
-                    transforms.Compose(
-                        [
-                            transforms.RandomResizedCrop(224, scale=(0.2, 1.)),
-                            transforms.RandomApply([transforms.ColorJitter(brightness=brightness_strength, contrast=contrast_strength, saturation=saturation_strength, hue=hue_strength)], p=p_colorjitter),
-                            transforms.RandomGrayscale(p=p_grayscale),
-                            transforms.RandomApply([GaussianBlur([.1, 2.])], p=p_gaussianblur),
-                            transforms.RandomHorizontalFlip(),
-                            transforms.ToTensor(),
-                            normalize_imagenet
-                            ]
-                        )
-                    )
-                
-            valid_transform = TwoCropsTransform(
-                transforms.Compose(
-                    [
-                        transforms.Resize(256, interpolation=Image.BICUBIC),
-                        transforms.CenterCrop((224, 224)),
-                        transforms.ToTensor(),
-                        normalize_imagenet
-                        ]
-                    )
-                )
-        else:
-            train_transform = transforms.Compose([
-                                transforms.RandomResizedCrop(224),
-                                transforms.RandomHorizontalFlip(),
-                                transforms.ToTensor(),
-                                normalize_imagenet,
-                            ])
-            # same as above without two crop transform
-            valid_transform = transforms.Compose(
-                    [
-                        transforms.Resize(256, interpolation=Image.BICUBIC),
-                        transforms.CenterCrop((224, 224)),
-                        transforms.ToTensor(),
-                        normalize_imagenet
-                        ]
-                    )
+    if data_augmentation_mode == 'default':
+        # default SimSiam Stuff + Fabio Stuff
+        # TODO @Fabio/Diane - generate specific mode for Fabio stuff
+        train_transform, valid_transform = get_train_valid_transforms(dataset_name, use_fix_aug_params, bohb_infos, get_fine_tuning_loaders, parameterize_augmentation)
+    elif data_augmentation_mode == 'probability_augment':
+        from .probability_augment import probability_augment
+        train_transform, valid_transform = probability_augment(dataset_name, get_fine_tuning_loaders)
     else:
-        # not supported
-        raise ValueError('invalid dataset name=%s' % dataset)
-    
+        raise ValueError(f"Data augmentation mode {data_augmentation_mode} is not implemented yet!")
+
     if dataset_name == "ImageNet":
         # hardcoded for now
         root = "/data/datasets/ImageNet/imagenet-pytorch"
@@ -254,13 +104,10 @@ def get_train_valid_loader(
             )
     elif dataset_name == "CIFAR10":
         print(f"{valid_size=}")
-        apply_probability_augment = False  # TODO: @Diane - Refactor + implement flag for this
-        if apply_probability_augment and not get_fine_tuning_loaders:
-            from .probability_augment import probability_augment
+        if data_augmentation_mode == 'probability_augment' and not get_fine_tuning_loaders:
             from .albumentation_datasets import Cifar10Albumentations
-            train_transform_a, valid_transform_a = probability_augment(dataset_name, get_fine_tuning_loaders)
             train_dataset = Cifar10Albumentations(root='datasets/CIFAR10', train=True,
-                                                         download=True, transform=train_transform_a)
+                                                         download=True, transform=train_transform)
         else:
             train_dataset = torchvision.datasets.CIFAR10(root='datasets/CIFAR10', train=True,
                                                 download=True, transform=train_transform)
@@ -451,6 +298,171 @@ def plot_images(images, cls_true, cls_pred=None):
     plt.show()
 
 
+def get_train_valid_transforms(dataset_name, use_fix_aug_params, bohb_infos, get_fine_tuning_loaders, parameterize_augmentation):
+    # ------------------------------------------------------------------------------------------------------------------
+    # Specify data augmentation hyperparameters for the pretraining part
+    # ------------------------------------------------------------------------------------------------------------------
+    # TODO: @Diane - put that into a separate function
+    # Defaults
+    p_colorjitter = 0.8
+    p_grayscale = 0.2
+    p_gaussianblur = 0.5 if dataset_name == 'ImageNet' else 0
+    brightness_strength = 0.4
+    contrast_strength = 0.4
+    saturation_strength = 0.4
+    hue_strength = 0.1
+    if use_fix_aug_params:
+        # You can overwrite parameters here if you want to try out a specific setting.
+        # Due to the flag, default experiments won't be affected by this.
+        p_colorjitter = 0.8
+        p_grayscale = 0.2
+        p_gaussianblur = 0.5 if dataset_name == 'ImageNet' else 0
+        brightness_strength = 1.1592547258007664
+        contrast_strength = 1.160211615089221
+        saturation_strength = 0.9843846879329252
+        hue_strength = 0.19030216963226004
+
+    # BOHB - probability augment configspace
+    if bohb_infos is not None and bohb_infos['bohb_configspace'].endswith('probability_augment'):
+        p_colorjitter = bohb_infos['bohb_config']['p_colorjitter']
+        p_grayscale = bohb_infos['bohb_config']['p_grayscale']
+        p_gaussianblur =  bohb_infos['bohb_config']['p_gaussianblur'] if dataset_name == 'ImageNet' else 0
+
+    # BOHB - color jitter strengths configspace
+    if bohb_infos is not None and bohb_infos['bohb_configspace'] == 'color_jitter_strengths':
+        brightness_strength = bohb_infos['bohb_config']['brightness_strength']
+        contrast_strength = bohb_infos['bohb_config']['contrast_strength']
+        saturation_strength = bohb_infos['bohb_config']['saturation_strength']
+        hue_strength = bohb_infos['bohb_config']['hue_strength']
+
+    # For testing
+    # print(f"{p_colorjitter=}")
+    # print(f"{p_grayscale=}")
+    # print(f"{p_gaussianblur=}")
+    # print(f"{brightness_strength=}")
+    # print(f"{contrast_strength=}")
+    # print(f"{saturation_strength=}")
+    # print(f"{hue_strength=}")
+    # ------------------------------------------------------------------------------------------------------------------
+
+    if dataset_name == "CIFAR10":
+        # No blur augmentation for CIFAR10!
+        if not get_fine_tuning_loaders:
+            if parameterize_augmentation:
+                # rest is done outside
+                # train_transform = transforms.Compose([
+                #     transforms.RandomResizedCrop(size=32, scale=(0.2, 1.)),
+                #     transforms.ToTensor(),
+                #     ])
+                train_transform = None
+            else:
+                train_transform = TwoCropsTransform(
+                    transforms.Compose(
+                        [
+                            transforms.RandomResizedCrop(size=32, scale=(0.2, 1.)),
+                            transforms.RandomApply([transforms.ColorJitter(brightness=brightness_strength, contrast=contrast_strength, saturation=saturation_strength, hue=hue_strength)], p=p_colorjitter),
+                            transforms.RandomGrayscale(p=p_grayscale),
+                            transforms.RandomHorizontalFlip(),
+                            transforms.ToTensor(),
+                            transforms.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.2023, 0.1994, 0.2010])
+                            ]
+                        )
+                    )
+
+            valid_transform = TwoCropsTransform(
+                transforms.Compose([
+                    transforms.ToTensor(),
+                    transforms.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.2023, 0.1994, 0.2010])
+                    ]
+                )
+            )
+        else:  # TODO: Check out which data augmentations are being used here!
+            train_transform = transforms.Compose([
+                    transforms.ToTensor(),
+                    transforms.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.2023, 0.1994, 0.2010])
+                ]
+            )
+
+            valid_transform = transforms.Compose([
+                    transforms.ToTensor(),
+                    transforms.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.2023, 0.1994, 0.2010])
+                ]
+            )
+
+    elif dataset_name == "CIFAR100":
+        train_transform = transforms.Compose(
+            [
+                transforms.RandomCrop(32, padding=4),
+                transforms.RandomHorizontalFlip(),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=(0.5071, 0.4865, 0.4409), std=(0.2673, 0.2564, 0.2762))
+                ]
+            )
+
+        valid_transform = transforms.Compose(
+            [
+                transforms.ToTensor(),
+                transforms.Normalize(mean=(0.5071, 0.4865, 0.4409), std=(0.2673, 0.2564, 0.2762))
+                ]
+            )
+
+    elif dataset_name == "ImageNet":
+        if not get_fine_tuning_loaders:
+            # MoCo v2's aug: similar to SimCLR https://arxiv.org/abs/2002.05709
+            if parameterize_augmentation:
+                # rest is done outside
+                train_transform = transforms.Compose([
+                    transforms.RandomResizedCrop(224, scale=(0.2, 1.)),
+                    transforms.ToTensor(),
+                    ])
+            else:
+                train_transform = TwoCropsTransform(
+                    transforms.Compose(
+                        [
+                            transforms.RandomResizedCrop(224, scale=(0.2, 1.)),
+                            transforms.RandomApply([transforms.ColorJitter(brightness=brightness_strength, contrast=contrast_strength, saturation=saturation_strength, hue=hue_strength)], p=p_colorjitter),
+                            transforms.RandomGrayscale(p=p_grayscale),
+                            transforms.RandomApply([GaussianBlur([.1, 2.])], p=p_gaussianblur),
+                            transforms.RandomHorizontalFlip(),
+                            transforms.ToTensor(),
+                            normalize_imagenet
+                            ]
+                        )
+                    )
+
+            valid_transform = TwoCropsTransform(
+                transforms.Compose(
+                    [
+                        transforms.Resize(256, interpolation=Image.BICUBIC),
+                        transforms.CenterCrop((224, 224)),
+                        transforms.ToTensor(),
+                        normalize_imagenet
+                        ]
+                    )
+                )
+        else:
+            train_transform = transforms.Compose([
+                                transforms.RandomResizedCrop(224),
+                                transforms.RandomHorizontalFlip(),
+                                transforms.ToTensor(),
+                                normalize_imagenet,
+                            ])
+            # same as above without two crop transform
+            valid_transform = transforms.Compose(
+                    [
+                        transforms.Resize(256, interpolation=Image.BICUBIC),
+                        transforms.CenterCrop((224, 224)),
+                        transforms.ToTensor(),
+                        normalize_imagenet
+                        ]
+                    )
+    else:
+        # not supported
+        raise ValueError('invalid dataset name=%s' % dataset_name)
+
+    return train_transform, valid_transform
+
+
 def get_loaders(traindir, config, parameterize_augmentation=False, bohb_infos=None):
     train_loader_pt, _, train_sampler_pt, _ = get_train_valid_loader(
         data_dir=traindir,
@@ -469,6 +481,7 @@ def get_loaders(traindir, config, parameterize_augmentation=False, bohb_infos=No
         bohb_infos=bohb_infos,
         dataset_percentage_usage=config.data.dataset_percentage_usage,
         use_fix_aug_params=config.expt.use_fix_aug_params,
+        data_augmentation_mode=config.expt.data_augmentation_mode,
         )
     
     train_loader_ft, valid_loader_ft, train_sampler_ft, _ = get_train_valid_loader(
@@ -488,6 +501,7 @@ def get_loaders(traindir, config, parameterize_augmentation=False, bohb_infos=No
         bohb_infos=None,
         dataset_percentage_usage=config.data.dataset_percentage_usage,
         use_fix_aug_params=config.expt.use_fix_aug_params,
+        data_augmentation_mode=config.expt.data_augmentation_mode,
         )
     
     test_loader_ft = get_test_loader(
