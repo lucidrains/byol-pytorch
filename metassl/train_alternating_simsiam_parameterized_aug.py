@@ -639,7 +639,7 @@ def train_one_epoch(
         
         if i % config.expt.print_freq == 0:
             progress.display(i)
-        if config.expt.rank == 0:
+        if config.expt.rank == 0 and i % 3 == 0:
             write_to_summary_writer(total_iter, loss_pt, loss_ft, data_time_meter, batch_time_meter, optimizer_pt, optimizer_ft, top1_meter, top5_meter, meters_to_plot, writer)
         # expensive stats
         if config.expt.rank == 0 and i % (config.expt.print_freq * 100) == 0:

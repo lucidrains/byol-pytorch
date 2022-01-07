@@ -457,8 +457,8 @@ def train_one_epoch(
         
         if config.expt.gpu is not None:
             # todo: check if contiguous is still needed with nn module
-            # images_pt[0] = images_pt[0].contiguous()
-            # images_pt[1] = images_pt[1].contiguous()
+            images_pt[0] = images_pt[0].contiguous()
+            images_pt[1] = images_pt[1].contiguous()
             images_pt[0] = images_pt[0].cuda(config.expt.gpu, non_blocking=True)
             images_pt[1] = images_pt[1].cuda(config.expt.gpu, non_blocking=True)
             images_ft = images_ft.cuda(config.expt.gpu, non_blocking=True)
@@ -507,28 +507,30 @@ def train_one_epoch(
             
             reward = cos_sim_ema_meter_lw.val - cos_sim_ema_meter_lw.ema
             
-            print(f"--------------------------- reward.requires_grad: {reward.requires_grad}")
-            
             color_jitter_logprob_b = -(logprobs["logprob_b"] * reward)
-            
-            print(f"--------------------------- logprob_b.requires_grad: {logprobs['logprob_b'].requires_grad}")
-            
-            color_jitter_logprob_b.backward()
+            # color_jitter_logprob_b.backward(retain_graph=True)
             
             color_jitter_logprob_c = -(logprobs["logprob_c"] * reward)
-            color_jitter_logprob_c.backward()
+            # color_jitter_logprob_c.backward(retain_graph=True)
+            
+            # manual = data_aug_model.aug_w_c.detach().numpy() + (logprobs["logprob_c"].detach().cpu().numpy() * reward)
             
             color_jitter_logprob_s = -(logprobs["logprob_s"] * reward)
-            color_jitter_logprob_s.backward()
+            # color_jitter_logprob_s.backward(retain_graph=True)
             
             color_jitter_logprob_h = -(logprobs["logprob_h"] * reward)
-            color_jitter_logprob_h.backward()
+            # color_jitter_logprob_h.backward(retain_graph=True)
+            
+            loss = color_jitter_logprob_b + color_jitter_logprob_c + color_jitter_logprob_s + color_jitter_logprob_h
+            loss.backward()
             
             # print("grad before step():", aug_w_b.grad)
             # print("grad data before step():", aug_w_b.grad.data)
             # print("actual parameters BEFORE step:", aug_w_b)
             
             optimizer_aug.step()
+            
+            # assert np.allclose(data_aug_model.aug_w_c.cpu().detach().numpy(), manual)
             
             # print("actual parameters AFTER step:", aug_w_b)
             
@@ -592,7 +594,7 @@ def train_one_epoch(
         
         if i % config.expt.print_freq == 0:
             progress.display(i)
-        if config.expt.rank == 0:
+        if config.expt.rank == 0 and i % 3 == 0:
             write_to_summary_writer(total_iter, loss_pt, loss_ft, data_time_meter, batch_time_meter, optimizer_pt, optimizer_ft, top1_meter, top5_meter, meters_to_plot, writer)
         # expensive stats
         if config.expt.rank == 0 and i % (config.expt.print_freq * 100) == 0:
