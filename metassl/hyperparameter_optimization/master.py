@@ -66,7 +66,10 @@ def run_master(yaml_config, expt_dir):
         nameserver=ns_host,
         nameserver_port=ns_port,
     )
-    # w.run(background=True)
+    if yaml_config.bohb.test_env:
+        w.run(background=True)
+    else:
+        pass
 
     # Select a configspace based on configspace_mode
     if yaml_config.bohb.configspace_mode == "imagenet_probability_simsiam_augment":
@@ -103,8 +106,11 @@ def run_master(yaml_config, expt_dir):
         previous_result=previous_run,
     )
 
-    # Overwrite the register results of the dispatcher to shutdown workers once they are finished
-    add_shutdown_worker_to_register_result(optimizer.dispatcher)
+    # Overwrite the register results of the dispatcher to shutdown workers once they are finished if not in testing env
+    if yaml_config.bohb.test_env:
+        pass
+    else:
+        add_shutdown_worker_to_register_result(optimizer.dispatcher)
 
     try:
         optimizer.run(n_iterations=yaml_config.bohb.n_iterations)

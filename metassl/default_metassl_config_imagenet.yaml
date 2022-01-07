@@ -102,3 +102,4 @@ bohb:
   worker:           False                       # Make this execution a worker server, action="store_true"
   warmstarting:     False
   warmstarting_dir: None
+  test_env:         False                       # If using this flag, the master runs a worker in the background and workers are not being shutdown after registering results.
