@@ -137,6 +137,7 @@ class DataAugmentation(nn.Module):
 
         trans = nn.Sequential(
             # RandomResizedCrop(224, scale=(0.2, 1.)),
+<<<<<<< HEAD
             RandomApply([ColorJitter(brightness=strength_b, contrast=strength_c, saturation=strength_s, hue=strength_h)], p=0.8),
             # K.augmentation.ColorJitter(brightness=strength_b, contrast=strength_c, saturation=strength_s, hue=strength_h),
             RandomGrayscale(p=0.2),
@@ -147,6 +148,19 @@ class DataAugmentation(nn.Module):
             RandomHorizontalFlip(),
             # K.augmentation.RandomHorizontalFlip(),
             self.norm,
+=======
+            # RandomApply([ColorJitter(brightness=strength_b, contrast=strength_c, saturation=strength_s, hue=strength_h)], p=0.8),
+            K.augmentation.ColorJitter(brightness=strength_b, contrast=strength_c, saturation=strength_s, hue=strength_h),
+            # RandomGrayscale(p=0.2),
+            K.augmentation.RandomGrayscale(p=0.2),
+            # RandomApply([GaussianBlur([.1, 2.])], p=0.5),
+            # RandomApply([torchvision.transforms.GaussianBlur([kernel_h, kernel_w], [.1, 2.])], p=0.5),
+            K.augmentation.RandomGaussianBlur((kernel_h, kernel_w), (0.1, 2.0), p=0.5),
+            # RandomHorizontalFlip(),
+            K.augmentation.RandomHorizontalFlip(),
+            # normalize_imagenet
+            K.augmentation.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+>>>>>>> 76b689e47cff05600f7c07904eeb12ea2ce07ff8
             )
         
         trans = TwoCropsTransform(trans)
