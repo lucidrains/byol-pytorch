@@ -510,6 +510,9 @@ def train_one_epoch(
             print(f"--------------------------- reward.requires_grad: {reward.requires_grad}")
             
             color_jitter_logprob_b = -(logprobs["logprob_b"] * reward)
+            
+            print(f"--------------------------- logprob_b.requires_grad: {logprobs['logprob_b'].requires_grad}")
+            
             color_jitter_logprob_b.backward()
             
             color_jitter_logprob_c = -(logprobs["logprob_c"] * reward)
