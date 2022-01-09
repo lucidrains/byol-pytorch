@@ -1,9 +1,9 @@
 try:
     # For execution in PyCharm
-    from metassl.utils.meters import AverageMeter, ProgressMeter, ExponentialMovingAverageMeter, initialize_all_meters_global, update_grad_stats_meters
+    from metassl.utils.meters import AverageMeter, ProgressMeter, ExponentialMovingAverageMeter, initialize_all_meters, update_grad_stats_meters
 except ImportError:
     # For execution in command line
-    from .meters import AverageMeter, ProgressMeter, ExponentialMovingAverageMeter, initialize_all_meters_global, update_grad_stats_meters
+    from .meters import AverageMeter, ProgressMeter, ExponentialMovingAverageMeter, initialize_all_meters, update_grad_stats_meters
     
 
 def write_to_summary_writer(total_iter, loss_pt, loss_ft, data_time, batch_time, optimizer_pt, optimizer_ft, top1, top5, meters_to_plot, writer):
@@ -45,3 +45,8 @@ def write_to_summary_writer(total_iter, loss_pt, loss_ft, data_time, batch_time,
             writer.add_scalar(f'Additional Advanced Stats/{stat.name}', stat.val, total_iter)
             writer.add_scalar(f'Additional Advanced Stats/{stat.name} average', stat.avg, total_iter)
 
+    if "aug_param_meters" in meters_to_plot:
+        aug_param_meters = meters_to_plot["aug_param_meters"]
+        for stat in aug_param_meters:
+            writer.add_scalar(f'Aug. Param Meters/{stat.name}', stat.val, total_iter)
+            writer.add_scalar(f'Aug. Param Meters/{stat.name} average', stat.avg, total_iter)

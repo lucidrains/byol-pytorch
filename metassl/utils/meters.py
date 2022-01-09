@@ -213,7 +213,7 @@ def calc_layer_wise_stats(backbone_grads_pt, backbone_grads_ft=None, metric_type
     return np.mean(metric_vals), np.std(metric_vals)
 
 
-def initialize_all_meters_global():
+def initialize_all_meters():
     # general meters
     batch_time_meter = AverageMeter('Time', ':6.3f')
     data_time_meter = AverageMeter('Data', ':6.3f')
@@ -222,6 +222,9 @@ def initialize_all_meters_global():
     top1_meter = AverageMeter('Acc@1', ':6.2f')
     top5_meter = AverageMeter('Acc@5', ':6.2f')
     
+    # reward
+    reward_meter = AverageMeter('Reward', ':6.2f')
+    
     # global meters
     cos_sim_ema_meter_global = ExponentialMovingAverageMeter("Cos. Sim. PT-FT global. average", window=100, alpha=2, fmt=':6.4f')
     cos_sim_ema_meter_standardized_global = ExponentialMovingAverageMeter("Cos. Sim. (standardized) PT-FT global. average", window=100, alpha=2, fmt=':6.4f')
@@ -229,6 +232,7 @@ def initialize_all_meters_global():
     eucl_dis_meter_global = AverageMeter('Eucl. Dist. PT-FT', ':6.4f')
     norm_pt_meter_global = AverageMeter('Norm PT', ':6.4f')
     norm_ft_meter_global = AverageMeter('Norm FT', ':6.4f')
+    target_std_meter = AverageMeter('Target z std.', ':6.4f')
     
     # layer-wise meters
     cos_sim_ema_meter_lw = ExponentialMovingAverageMeter("Cos. Sim. PT-FT layer-w. average", window=100, alpha=2, fmt=':6.4f')
@@ -253,6 +257,7 @@ def initialize_all_meters_global():
         "losses_ft_meter":                       losses_ft_meter,
         "top1_meter":                            top1_meter,
         "top5_meter":                            top5_meter,
+        "reward_meter":                          reward_meter,
         "dot_prod_meter_global":                 dot_prod_meter_global,
         "eucl_dis_meter_global":                 eucl_dis_meter_global,
         "norm_pt_meter_global":                  norm_pt_meter_global,
@@ -271,4 +276,5 @@ def initialize_all_meters_global():
         "cos_sim_std_meter_standardized_lw":     cos_sim_std_meter_standardized_lw,
         "cos_sim_ema_meter_global":              cos_sim_ema_meter_global,
         "cos_sim_ema_meter_standardized_global": cos_sim_ema_meter_standardized_global,
+        "target_std_meter":                      target_std_meter,
         }

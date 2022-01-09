@@ -2,35 +2,39 @@
 ###       Logging Configuration     ###
 #######################################
 expt:
-  expt_name:                   'testing-cifar10'
+  expt_name:                    'testing-cifar10'
+  expt_mode:                    'CIFAR10'
   save_model:                   True                          # save the model to disc
-  save_model_p:                 5                             # save model frequency in # of epochs
-  ssl_model_checkpoint_path:    "experiments/<EXPERIMENT-NAME>/checkpoint_0099.pth.tar"    # resumes training if model with same config exists
-#  ssl_model_checkpoint_path:    null    # resumes training if model with same config exists
+  save_model_frequency:         50                            # save model frequency in # of epochs
+  ssl_model_checkpoint_path:    null                          # resumes training if model with same config exists. e.g.: "experiments/<EXPERIMENT-NAME>/checkpoint_0099.pth.tar"
   target_model_checkpoint_path: "experiments"                 #
   print_freq:                   10                            # print frequency
   gpu:                          null                          # GPU ID to train on (if not distributed)
   multiprocessing_distributed:  True                          # Use multi-processing distributed training to launch N processes per node, which has N GPUs.
-                                                              # This is the fastest way to use PyTorch for either single node or multi node data parallel training'
+  # This is the fastest way to use PyTorch for either single node or multi node data parallel training'
   dist_backend:                 'nccl'                        # distributed backend
   dist_url:                     'tcp://localhost:10001'       # url used to set up distributed training
-  workers:                      32                            # number of data loading workers
+  workers:                      1                             # number of data loading workers
   rank:                         0                             # node rank for distributed training
   world_size:                   1                             # number of nodes for distributed training
   eval_freq:                    10                            # every eval_freq iteration will the model be evaluated
   seed:                         123                           # random seed of numpy and torch
-  evaluate:                     False                          # evaluate model on validation set once and terminate
+  evaluate:                     False                         # evaluate model on validation set once and terminate
+  is_non_grad_based:            False                         # Set this flag to run default SimSiam or BOHB runs
+  warmup_epochs:                10                            # denotes the number of epochs that we only pre-train without finetuning afterwards; warmup is turned off when set to 0; we use a linear incremental schedule during warmup
+  warmup_multiplier:            2.                            # denotes the number of epochs that we only pre-train without finetuning afterwards; warmup is turned off when set to 0; we use a linear incremental schedule during warmup
+  warmup_both:                  False                         # Whether backbone and head should be both warmed up.
+  write_summary_frequency:      3                             # Specifies, after how many batches the TensorBoard summary writer should flush new data to the summary object.
 
 #######################################
 ###     Training Configuration      ###
 #######################################
 train:
   batch_size:       512                   # in distributed setting this is the total batch size, i.e. batch size = individual bs / number of GPUs
-  epochs:           800                   # number of pre-training epochs
+  epochs:           500                   # number of pre-training epochs
   start_epoch:      0                     # start training at epoch n
   optimizer:        "sgd"                 # optimizer type, options: adam adamW rmsprop adabelief sgd
   schedule:         "cosine"              # learning rate schedule, options: 'cosine' 'cosineW' 'plateau' 'step' 'const' 'cosineWarm' 'exponential' 'None' (BOHO case)
-  warmup:           1000                  # 0 (turned off) or higher (e.g. 1000 ~ 5 epochs at batch size 256 on CIFAR100)
   weight_decay:     0.0005
   momentum:         0.9                   # momentum of SGD solver
   lr:               0.03                  # the default LR for all schedulers, in case of const LR schedule: set lr_high=lr_low
@@ -41,15 +45,14 @@ train:
 
 
 finetuning:
-  batch_size:       256                  # in distributed setting this is the total batch size, i.e. batch size = individual bs / number of GPUs
-  epochs:           90                    # number of finetuning epochs
+  batch_size:       512                   # in distributed setting this is the total batch size, i.e. batch size = individual bs / number of GPUs
+  epochs:           500                   # number of finetuning epochs
   start_epoch:      0                     # start training at epoch n
-  optimizer:        "sgd"                # optimizer type, options: lars adam adamW rmsprop adabelief sgd
+  optimizer:        "sgd"                 # optimizer type, options: lars adam adamW rmsprop adabelief sgd
   schedule:         "cosine"              # learning rate schedule, options: 'cosine' 'cosineW' 'plateau' 'step' 'const' 'cosineWarm' 'exponential' 'None' (BOHO case)
-  warmup:           1000                  # 0 (turned off) or higher (e.g. 1000 ~ 5 epochs at batch size 256 on CIFAR100)
   weight_decay:     0.
   momentum:         0.9                   # momentum of SGD solver
-  lr:               30                    # the default LR
+  lr:               1                    # the default LR
   clip_grad:        False                 # gradient cliping, options: 0.1 ... 100, False
   scheduler_epochs: 100                   # T_max or T_0 in 'cosine' and 'cosineWarm' scheduler, in case of 'step' scheduler this denotes when scheduler should step
 
@@ -58,8 +61,9 @@ finetuning:
 ###       Model Configuration       ###
 #######################################
 model:
-  model_type: "resnet18"                  # supported models: all torchvision ResNets
-  seed:       123
+  model_type:  "resnet18"                # supported models: all torchvision ResNets
+  seed:        123
+  turn_off_bn: False                     # turns off all batch norm instances in the model
 
 
 #######################################
@@ -75,9 +79,27 @@ data:
 ###       SimSiam Specific          ###
 #######################################
 simsiam:
-  dim: 2048                                  # feature dimension (default: 2048)
-  pred_dim: 512                              # hidden dimension of the predictor (default: 512)
-  fix_pred_lr:   True                        # Fix learning rate for the predictor
+  dim:         2048                                  # feature dimension (default: 2048)
+  pred_dim:    512                              # hidden dimension of the predictor (default: 512)
+  fix_pred_lr: True                        # Fix learning rate for the predictor
 
 
-
+#######################################
+###       BOHB Specific             ###
+#######################################
+#bohb:
+#  run_id:           "default_BOHB"
+#  seed:             123
+#  n_iterations:     10                          # How many BOHB iterations
+#  min_budget:       5
+#  max_budget:       20
+#  budget_mode:      "epochs"                    # Choose your desired fidelity between 'epochs' and 'data'
+#  eta:              2
+#  configspace_mode: "color_jitter_strengths"    # Define which configspace to use
+#                                                # choices=["imagenet_probability_augment",
+#                                                # "cifar10_probability_augment", "color_jitter_strengths"]
+#  nic_name:         "lo"                        # Define the network interface to use > local: "lo", cluster: "eth0"
+#  port:             0
+#  worker:           False                       # Make this execution a worker server, action="store_true"
+#  warmstarting:     False
+#  warmstarting_dir: None
