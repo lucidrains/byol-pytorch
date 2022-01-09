@@ -168,8 +168,6 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
 
     # define loss function (criterion) and optimizer
     criterion = nn.CosineSimilarity(dim=1).cuda(config.expt.gpu)
-    # adding this for when validation happens
-    criterion_ft = nn.CrossEntropyLoss().cuda(config.expt.gpu)
 
     if config.simsiam.fix_pred_lr:
         optim_params = [{
