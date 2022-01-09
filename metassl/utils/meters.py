@@ -232,6 +232,7 @@ def initialize_all_meters():
     eucl_dis_meter_global = AverageMeter('Eucl. Dist. PT-FT', ':6.4f')
     norm_pt_meter_global = AverageMeter('Norm PT', ':6.4f')
     norm_ft_meter_global = AverageMeter('Norm FT', ':6.4f')
+    target_std_meter = AverageMeter('Target z std.', ':6.4f')
     
     # layer-wise meters
     cos_sim_ema_meter_lw = ExponentialMovingAverageMeter("Cos. Sim. PT-FT layer-w. average", window=100, alpha=2, fmt=':6.4f')
@@ -275,4 +276,5 @@ def initialize_all_meters():
         "cos_sim_std_meter_standardized_lw":     cos_sim_std_meter_standardized_lw,
         "cos_sim_ema_meter_global":              cos_sim_ema_meter_global,
         "cos_sim_ema_meter_standardized_global": cos_sim_ema_meter_standardized_global,
+        "target_std_meter":                      target_std_meter,
         }

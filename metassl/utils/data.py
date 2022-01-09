@@ -125,11 +125,13 @@ def get_train_valid_loader(
         if not get_fine_tuning_loaders:
             if parameterize_augmentation:
                 # rest is done outside
-                # train_transform = transforms.Compose([
-                #     transforms.RandomResizedCrop(size=32, scale=(0.2, 1.)),
-                #     transforms.ToTensor(),
-                #     ])
-                train_transform = None
+                train_transform = transforms.Compose(
+                    [
+                        transforms.RandomResizedCrop(size=32, scale=(0.2, 1.)),
+                        transforms.ToTensor(),
+                    ]
+                    )
+                
             else:
                 train_transform = TwoCropsTransform(
                     transforms.Compose(
@@ -178,7 +180,7 @@ def get_train_valid_loader(
             [
                 transforms.ToTensor(),
                 normalize_cifar100,
-                ]
+            ]
             )
     
     elif dataset_name == "ImageNet":

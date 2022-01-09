@@ -399,6 +399,7 @@ def train_one_epoch(
     eucl_dis_meter_global = meters["eucl_dis_meter_global"]
     norm_pt_meter_global = meters["norm_pt_meter_global"]
     norm_ft_meter_global = meters["norm_ft_meter_global"]
+    target_std_meter = meters["target_std_meter"]
     
     # layer-wise meters
     cos_sim_ema_meter_lw = meters["cos_sim_ema_meter_lw"]
@@ -429,7 +430,8 @@ def train_one_epoch(
         cos_sim_ema_meter_lw,
         cos_sim_ema_meter_standardized_lw,
         cos_sim_ema_meter_global,
-        cos_sim_ema_meter_standardized_global
+        cos_sim_ema_meter_standardized_global,
+        target_std_meter,
         ]
     
     progress = ProgressMeter(
@@ -480,7 +482,10 @@ def train_one_epoch(
                 "ft_label":            label_ft,
                 }
         
-        loss_pt, backbone_grads_pt_lw, backbone_grads_pt_global = pretrain(model, images_pt, criterion_pt, optimizer_pt, losses_pt_meter, data_time_meter, end, config=config, alternating_mode=True)
+        loss_pt, backbone_grads_pt_lw, backbone_grads_pt_global, z1, z2 = pretrain(model, images_pt, criterion_pt, optimizer_pt, losses_pt_meter, data_time_meter, end, config=config, alternating_mode=True)
+
+        z_std_normalized = np.std(z1.cpu().numpy() / torch.linalg.norm(z1, 2).cpu().numpy())
+        target_std_meter.update(z_std_normalized)
         
         backbone_grads_ft_lw, backbone_grads_ft_global = None, None
         if not warmup:
@@ -531,7 +536,6 @@ def train_one_epoch(
             optimizer_aug.step()
             
             # assert np.allclose(data_aug_model.aug_w_c.cpu().detach().numpy(), manual)
-            
             # print("actual parameters AFTER step:", aug_w_b)
             
             reward_meter.update(reward)
@@ -663,7 +667,7 @@ def pretrain(model, images_pt, criterion_pt, optimizer_pt, losses_pt, data_time,
             backbone_grads_lw[key] = torch.tensor(grad_tensor)
             backbone_grads_global = torch.cat([backbone_grads_global, grad_tensor], dim=0)
     
-    return loss_pt, backbone_grads_lw, backbone_grads_global
+    return loss_pt, backbone_grads_lw, backbone_grads_global, z1, z2
 
 
 def finetune(model, images_ft, target_ft, criterion_ft, optimizer_ft, losses_ft_meter, top1_meter, top5_meter, config, alternating_mode=False):
