@@ -392,20 +392,21 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
             top1_avg = validate(test_loader_ft, model, criterion_ft, config, finetuning=True)
             if config.expt.rank == 0:
                 writer.add_scalar('Test/Accuracy@1', top1_avg, total_iter)
-        
-        check_and_save_checkpoint(
-            config=config,
-            ngpus_per_node=ngpus_per_node,
-            total_iter=total_iter,
-            epoch=epoch,
-            model=model,
-            optimizer_pt=optimizer_pt,
-            optimizer_ft=optimizer_ft,
-            expt_dir=expt_dir,
-            meters=meters,
-            optimizer_aug=optimizer_aug,
-            aug_param_dict=aug_param_dict,
-            )
+
+        if config.expt.save_model and epoch % config.expt.save_model_frequency == 0:
+            check_and_save_checkpoint(
+                config=config,
+                ngpus_per_node=ngpus_per_node,
+                total_iter=total_iter,
+                epoch=epoch,
+                model=model,
+                optimizer_pt=optimizer_pt,
+                optimizer_ft=optimizer_ft,
+                expt_dir=expt_dir,
+                meters=meters,
+                optimizer_aug=optimizer_aug,
+                aug_param_dict=aug_param_dict,
+                )
     
     if config.expt.rank == 0:
         writer.close()
@@ -445,6 +446,7 @@ def train_one_epoch(
     eucl_dis_meter_global = meters["eucl_dis_meter_global"]
     norm_pt_meter_global = meters["norm_pt_meter_global"]
     norm_ft_meter_global = meters["norm_ft_meter_global"]
+    target_std_meter = meters["target_std_meter"]
     
     # layer-wise meters
     cos_sim_ema_meter_lw = meters["cos_sim_ema_meter_lw"]
@@ -477,7 +479,8 @@ def train_one_epoch(
         cos_sim_ema_meter_lw,
         cos_sim_ema_meter_standardized_lw,
         cos_sim_ema_meter_global,
-        cos_sim_ema_meter_standardized_global
+        cos_sim_ema_meter_standardized_global,
+        target_std_meter,
         ]
     
     progress = ProgressMeter(
@@ -542,11 +545,15 @@ def train_one_epoch(
                 "title":               title,
                 }
         
-        loss_pt, backbone_grads_pt_lw, backbone_grads_pt_global = pretrain(model, images_pt, criterion_pt, optimizer_pt, losses_pt_meter, data_time_meter, end, config=config, alternating_mode=True)
+        alternating_mode = False if config.expt.is_non_grad_based else True  # default is True
+        loss_pt, backbone_grads_pt_lw, backbone_grads_pt_global, z1, z2 = pretrain(model, images_pt, criterion_pt, optimizer_pt, losses_pt_meter, data_time_meter, end, config=config, alternating_mode=alternating_mode)
+
+        z_std_normalized = np.std(z1.cpu().numpy() / torch.linalg.norm(z1, 2).cpu().numpy())
+        target_std_meter.update(z_std_normalized)
         
         backbone_grads_ft_lw, backbone_grads_ft_global = None, None
         if not warmup:
-            loss_ft, backbone_grads_ft_lw, backbone_grads_ft_global = finetune(model, images_ft, target_ft, criterion_ft, optimizer_ft, losses_ft_meter, top1_meter, top5_meter, config=config, alternating_mode=True)
+            loss_ft, backbone_grads_ft_lw, backbone_grads_ft_global = finetune(model, images_ft, target_ft, criterion_ft, optimizer_ft, losses_ft_meter, top1_meter, top5_meter, config=config, alternating_mode=alternating_mode)
         else:
             losses_ft_meter.update(np.inf)
             loss_ft = np.inf
@@ -610,6 +617,7 @@ def train_one_epoch(
             norm_pt_avg_meter_lw,
             norm_ft_meter_global,
             norm_ft_avg_meter_lw,
+            target_std_meter,
             ]
         
         additional_stats_meters = [
@@ -705,7 +713,7 @@ def pretrain(model, images_pt, criterion_pt, optimizer_pt, losses_pt, data_time,
             backbone_grads_lw[key] = torch.tensor(grad_tensor)
             backbone_grads_global = torch.cat([backbone_grads_global, grad_tensor], dim=0)
     
-    return loss_pt, backbone_grads_lw, backbone_grads_global
+    return loss_pt, backbone_grads_lw, backbone_grads_global, z1, z2
 
 
 def finetune(model, images_ft, target_ft, criterion_ft, optimizer_ft, losses_ft_meter, top1_meter, top5_meter, config, alternating_mode=False):
@@ -782,6 +790,7 @@ if __name__ == '__main__':
     parser.add_argument('--expt.seed', default=123, type=int, metavar='N', help='random seed of numpy and torch')
     parser.add_argument('--expt.evaluate', action='store_true', help='evaluate model on validation set once and terminate (default: False)')
     parser.add_argument('--expt.image_wise_gradients', action='store_true', help='compute image wise gradients with backpack (default: False).')
+    parser.add_argument('--expt.is_non_grad_based', action='store_true', help='Set this flag to run default SimSiam or BOHB runs')
     parser.add_argument('--expt.warmup_epochs', default=10, type=int, metavar='N', help='denotes the number of epochs that we only pre-train without finetuning afterwards; warmup is turned off when set to 0; we use a linear incremental schedule during warmup')
     parser.add_argument('--expt.warmup_multiplier', default=2., type=float, metavar='N', help='A factor that is multiplied with the pretraining lr used in the linear incremental learning rate scheduler during warmup. The final lr is multiplier * pre-training lr')
     parser.add_argument('--expt.warmup_both', action='store_true', help='Whether backbone and head should be both warmed up.')
@@ -841,7 +850,6 @@ if __name__ == '__main__':
         print(f"copied config to {f.name}")
     
     config = AttrDict(jsonargparse.namespace_to_dict(args))
-    
     print("\n\nConfig being run:\n", config, "\n\n")
     
     main(config=config, expt_dir=expt_sub_dir)
