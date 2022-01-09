@@ -787,8 +787,11 @@ if __name__ == '__main__':
     parser.add_argument('--simsiam.dim', type=int, default=2048, help='the feature dimension')
     parser.add_argument('--simsiam.pred_dim', type=int, default=512, help='the hidden dimension of the predictor')
     parser.add_argument('--simsiam.fix_pred_lr', action="store_false", help='fix learning rate for the predictor (default: True')
+
+    parser.add_argument("--use_fixed_args", action="store_true", help="Flag to control whether to take arguments from yaml file as default or from arg parse")
     
     args = _parse_args(config_parser, parser)
+    config = AttrDict(jsonargparse.namespace_to_dict(args))
     
     # Saving checkpoint and config pased on experiment mode
     if args.expt.expt_mode == "ImageNet":
@@ -807,7 +810,6 @@ if __name__ == '__main__':
         yaml.dump(args, f)
         print(f"copied config to {f.name}")
     
-    config = AttrDict(jsonargparse.namespace_to_dict(args))
     print("\n\nConfig being run:\n", config, "\n\n")
     
     main(config=config, expt_dir=expt_sub_dir)
