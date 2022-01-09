@@ -134,19 +134,26 @@ class DataAugmentation(nn.Module):
         if kernel_w % 2 == 0:
             kernel_w -= 1
 
-        trans = nn.Sequential(
-            # RandomResizedCrop(224, scale=(0.2, 1.)),
-            RandomApply([ColorJitter(brightness=strength_b, contrast=strength_c, saturation=strength_s, hue=strength_h)], p=0.8),
-            # K.augmentation.ColorJitter(brightness=strength_b, contrast=strength_c, saturation=strength_s, hue=strength_h),
-            RandomGrayscale(p=0.2),
-            # K.augmentation.RandomGrayscale(p=0.2),
-            # RandomApply([GaussianBlur([.1, 2.])], p=0.5),
-            RandomApply([torchvision.transforms.GaussianBlur([kernel_h, kernel_w], [.1, 2.])], p=0.5),
-            # K.augmentation.RandomGaussianBlur((kernel_h, kernel_w), (0.1, 2.0), p=0.5),
-            RandomHorizontalFlip(),
-            # K.augmentation.RandomHorizontalFlip(),
-            self.norm,
-            )
+        modules = []
+    
+        if self.expt_mode == "ImageNet":
+            modules.append(RandomApply([ColorJitter(brightness=strength_b, contrast=strength_c, saturation=strength_s, hue=strength_h)], p=0.8))
+            # modules.append(K.augmentation.ColorJitter(brightness=strength_b, contrast=strength_c, saturation=strength_s, hue=strength_h))
+            modules.append(RandomGrayscale(p=0.2))
+            # modules.append(K.augmentation.RandomGrayscale(p=0.2))
+            modules.append(RandomApply([torchvision.transforms.GaussianBlur([kernel_h, kernel_w], [.1, 2.])], p=0.5))
+            # modules.append(K.augmentation.RandomGaussianBlur((kernel_h, kernel_w), (0.1, 2.0), p=0.5))
+            modules.append(RandomHorizontalFlip())
+            # modules.append(K.augmentation.RandomHorizontalFlip())
+        elif self.expt_mode == "CIFAR10":
+            modules.append(RandomApply([ColorJitter(brightness=strength_b, contrast=strength_c, saturation=strength_s, hue=strength_h)], p=0.8))
+            modules.append(RandomGrayscale(p=0.2))
+            modules.append(RandomHorizontalFlip())
+        else:
+            raise ValueError("For now, only ImageNet and CIFAR10 are supported when parameterizing augmentations with nn module")
+        
+        modules.append(self.norm)
+        trans = nn.Sequential(*modules)
         
         trans = TwoCropsTransform(trans)
         x_out = trans(x)  # BxCxHxW
