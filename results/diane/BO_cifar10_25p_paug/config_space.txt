@@ -1,0 +1,11 @@
+Used config space:
+==================
+Configuration space object:
+  Hyperparameters:
+    p_color_transformations, Type: UniformFloat, Range: [0.0, 1.0], Default: 0.5
+    p_exotic_transformations, Type: UniformFloat, Range: [0.0, 1.0], Default: 0.5
+    p_geometric_transformations, Type: UniformFloat, Range: [0.0, 1.0], Default: 0.5
+    p_non_rigid_transformations, Type: UniformFloat, Range: [0.0, 1.0], Default: 0.5
+    p_quality_transformations, Type: UniformFloat, Range: [0.0, 1.0], Default: 0.5
+
+
