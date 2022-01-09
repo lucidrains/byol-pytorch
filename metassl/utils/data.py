@@ -2,6 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torchvision
+import torchvision.datasets as datasets  # do not remove this
 import torchvision.transforms as transforms
 from PIL import Image
 from torch.utils.data import Subset
@@ -11,12 +12,24 @@ from torch.utils.data.sampler import SubsetRandomSampler
 from metassl.utils.imagenet import ImageNet
 from .simsiam import GaussianBlur, TwoCropsTransform
 from .torch_utils import DistributedSampler
-import torchvision.datasets as datasets  # do not remove this
+
+datasets
 
 normalize_imagenet = transforms.Normalize(
     mean=[0.485, 0.456, 0.406],
     std=[0.229, 0.224, 0.225]
     )
+
+normalize_cifar10 = transforms.Normalize(
+    mean=[0.4914, 0.4822, 0.4465],
+    std=[0.2023, 0.1994, 0.2010]
+    )
+
+normalize_cifar100 = transforms.Normalize(
+    mean=(0.5071, 0.4865, 0.4409),
+    std=(0.2673, 0.2564, 0.2762)
+    )
+
 
 def get_train_valid_loader(
     data_dir,
@@ -73,7 +86,7 @@ def get_train_valid_loader(
         exit()
     
     dataset = eval("datasets." + dataset_name)
-
+    
     if get_fine_tuning_loaders:
         print(f"using finetuning dataset: {dataset}")
     else:
@@ -93,7 +106,7 @@ def get_train_valid_loader(
         # hardcoded for now
         root = "/data/datasets/ImageNet/imagenet-pytorch"
         # root = "/data/datasets/ILSVRC2012"
-
+        
         # load the dataset
         train_dataset = ImageNet(
             root=root, split='train',
@@ -173,7 +186,7 @@ def get_train_valid_loader(
         images, labels = data_iter.next()
         X = images.numpy().transpose([0, 2, 3, 1])
         plot_images(X, labels)
-        
+    
     if np.isclose(valid_size, 0.0):
         return train_loader, None, train_sampler, None
     else:
@@ -255,8 +268,10 @@ def get_test_loader(
             transform=transform, ignore_archive=True,
             )
     elif dataset_name == "CIFAR10":
-        dataset = torchvision.datasets.CIFAR10(root='datasets/CIFAR10', train=False,
-                                               download=True, transform=transform)
+        dataset = torchvision.datasets.CIFAR10(
+            root='datasets/CIFAR10', train=False,
+            download=True, transform=transform
+            )
     else:
         # load the dataset
         dataset = dataset(
@@ -340,7 +355,7 @@ def get_train_valid_transforms(dataset_name, use_fix_aug_params, bohb_infos, get
     if bohb_infos is not None and bohb_infos['bohb_configspace'].endswith('probability_simsiam_augment'):
         p_colorjitter = bohb_infos['bohb_config']['p_colorjitter']
         p_grayscale = bohb_infos['bohb_config']['p_grayscale']
-        p_gaussianblur =  bohb_infos['bohb_config']['p_gaussianblur'] if dataset_name == 'ImageNet' else 0
+        p_gaussianblur = bohb_infos['bohb_config']['p_gaussianblur'] if dataset_name == 'ImageNet' else 0
 
     # BOHB - color jitter strengths configspace
     if bohb_infos is not None and bohb_infos['bohb_configspace'] == 'color_jitter_strengths':
@@ -364,11 +379,10 @@ def get_train_valid_transforms(dataset_name, use_fix_aug_params, bohb_infos, get
         if not get_fine_tuning_loaders:
             if parameterize_augmentation:
                 # rest is done outside
-                # train_transform = transforms.Compose([
-                #     transforms.RandomResizedCrop(size=32, scale=(0.2, 1.)),
-                #     transforms.ToTensor(),
-                #     ])
-                train_transform = None
+                train_transform = transforms.Compose([
+                    transforms.RandomResizedCrop(size=32, scale=(0.2, 1.)),
+                    transforms.ToTensor(),
+                    ])
             else:
                 train_transform = TwoCropsTransform(
                     transforms.Compose(
@@ -378,7 +392,7 @@ def get_train_valid_transforms(dataset_name, use_fix_aug_params, bohb_infos, get
                             transforms.RandomGrayscale(p=p_grayscale),
                             transforms.RandomHorizontalFlip(),
                             transforms.ToTensor(),
-                            transforms.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.2023, 0.1994, 0.2010])
+                            normalize_cifar10,
                             ]
                         )
                     )
@@ -386,20 +400,20 @@ def get_train_valid_transforms(dataset_name, use_fix_aug_params, bohb_infos, get
             valid_transform = TwoCropsTransform(
                 transforms.Compose([
                     transforms.ToTensor(),
-                    transforms.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.2023, 0.1994, 0.2010])
+                    normalize_cifar10,
                     ]
                 )
             )
         else:  # TODO: Check out which data augmentations are being used here!
             train_transform = transforms.Compose([
                     transforms.ToTensor(),
-                    transforms.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.2023, 0.1994, 0.2010])
+                    normalize_cifar10,
                 ]
             )
 
             valid_transform = transforms.Compose([
                     transforms.ToTensor(),
-                    transforms.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.2023, 0.1994, 0.2010])
+                    normalize_cifar10,
                 ]
             )
 
@@ -409,14 +423,14 @@ def get_train_valid_transforms(dataset_name, use_fix_aug_params, bohb_infos, get
                 transforms.RandomCrop(32, padding=4),
                 transforms.RandomHorizontalFlip(),
                 transforms.ToTensor(),
-                transforms.Normalize(mean=(0.5071, 0.4865, 0.4409), std=(0.2673, 0.2564, 0.2762))
+                normalize_cifar100,
                 ]
             )
 
         valid_transform = transforms.Compose(
             [
                 transforms.ToTensor(),
-                transforms.Normalize(mean=(0.5071, 0.4865, 0.4409), std=(0.2673, 0.2564, 0.2762))
+                normalize_cifar100,
                 ]
             )
 

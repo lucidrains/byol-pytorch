@@ -82,7 +82,6 @@ model_names = sorted(
     )
 
 
-
 def main(config, expt_dir):
     if config.expt.seed is not None:
         random.seed(config.expt.seed)
@@ -217,10 +216,11 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
     criterion_pt = nn.CosineSimilarity(dim=1).cuda(config.expt.gpu)
     criterion_ft = nn.CrossEntropyLoss().cuda(config.expt.gpu)
     
-    optim_params_pt = [{
-        'params': model.module.backbone.parameters(),
-        'fix_lr': False
-        },
+    optim_params_pt = [
+        {
+            'params': model.module.backbone.parameters(),
+            'fix_lr': False
+            },
         {
             'params': model.module.encoder_head.parameters(),
             'fix_lr': False
@@ -253,7 +253,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
         weight_decay=config.finetuning.weight_decay
         )
     
-    data_aug_model = DataAugmentation()
+    data_aug_model = DataAugmentation(config)
     
     # color_jitter_dist = torch.distributions.Categorical(probs=torch.softmax(aug_w, dim=0))
     optimizer_aug = torch.optim.Adam(data_aug_model.parameters(), 0.001)
@@ -290,7 +290,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
     
     # Data loading code
     traindir = os.path.join(config.data.dataset, 'train')
-
+    
     train_loader_pt, train_sampler_pt, train_loader_ft, train_sampler_ft, test_loader_ft = get_loaders(traindir, config, parameterize_augmentation=True)
     
     cudnn.benchmark = True
@@ -310,13 +310,13 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
         
         warmup = config.expt.warmup_epochs > epoch
         print(f"Warmup status: {warmup}")
-
+        
         if warmup:
             cur_lr_pt = adjust_learning_rate(optimizer_pt, init_lr_pt, epoch, total_epochs=config.expt.warmup_epochs, warmup=True, multiplier=config.expt.warmup_multiplier)
             print(f"warming up phase (PT)")
         else:
             cur_lr_pt = adjust_learning_rate(optimizer_pt, init_lr_pt, epoch, total_epochs=config.train.epochs)
-
+        
         if config.expt.warmup_both and warmup:
             # we intend to reach the pt learning rate when warming up the head
             cur_lr_ft = adjust_learning_rate(optimizer_ft, init_lr_pt, epoch, total_epochs=config.expt.warmup_epochs, warmup=True, multiplier=config.expt.warmup_multiplier)
@@ -324,6 +324,10 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
         else:
             cur_lr_ft = adjust_learning_rate(optimizer_ft, init_lr_ft, epoch, total_epochs=config.finetuning.epochs)
 
+        # reset ft meter when transitioning from warmup to normal training
+        if not warmup and config.expt.warmup_epochs > epoch - 1:
+            meters["losses_ft_meter"].reset()
+        
         print(f"current pretrain lr: {cur_lr_pt}, finetune lr: {cur_lr_ft}")
         
         total_iter = train_one_epoch(
@@ -350,19 +354,20 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
             if config.expt.rank == 0:
                 writer.add_scalar('Test/Accuracy@1', top1_avg, total_iter)
         
-        check_and_save_checkpoint(
-            config=config,
-            ngpus_per_node=ngpus_per_node,
-            total_iter=total_iter,
-            epoch=epoch,
-            model=model,
-            optimizer_pt=optimizer_pt,
-            optimizer_ft=optimizer_ft,
-            expt_dir=expt_dir,
-            meters=meters,
-            optimizer_aug=optimizer_aug,
-            data_aug_model=data_aug_model,
-            )
+        if config.expt.save_model and epoch % config.expt.save_model_frequency == 0:
+            check_and_save_checkpoint(
+                config=config,
+                ngpus_per_node=ngpus_per_node,
+                total_iter=total_iter,
+                epoch=epoch,
+                model=model,
+                optimizer_pt=optimizer_pt,
+                optimizer_ft=optimizer_ft,
+                expt_dir=expt_dir,
+                meters=meters,
+                optimizer_aug=optimizer_aug,
+                data_aug_model=data_aug_model,
+                )
     
     if config.expt.rank == 0:
         writer.close()
@@ -402,6 +407,7 @@ def train_one_epoch(
     eucl_dis_meter_global = meters["eucl_dis_meter_global"]
     norm_pt_meter_global = meters["norm_pt_meter_global"]
     norm_ft_meter_global = meters["norm_ft_meter_global"]
+    target_std_meter = meters["target_std_meter"]
     
     # layer-wise meters
     cos_sim_ema_meter_lw = meters["cos_sim_ema_meter_lw"]
@@ -432,7 +438,8 @@ def train_one_epoch(
         cos_sim_ema_meter_lw,
         cos_sim_ema_meter_standardized_lw,
         cos_sim_ema_meter_global,
-        cos_sim_ema_meter_standardized_global
+        cos_sim_ema_meter_standardized_global,
+        target_std_meter,
         ]
     
     progress = ProgressMeter(
@@ -449,18 +456,17 @@ def train_one_epoch(
         
         if config.expt.rank == 0 and i % (config.expt.print_freq * 100) == 0:
             rand_int = torch.randint(high=images_pt.shape[0], size=(1,))
-            # rand_int = torch.randint(high=images_pt[0].shape[0], size=(1,))
             # permute from CHW to HWC for pyplot
-            # untransformed_image = torch.permute(images_pt[0][rand_int].squeeze(), (1, 2, 0)).cpu()
             untransformed_image = torch.permute(images_pt[rand_int].squeeze(), (1, 2, 0)).cpu()
         
         if config.expt.gpu is not None and not isinstance(images_pt, list):
             images_pt = images_pt.cuda(config.expt.gpu, non_blocking=True)
-
+        
         indices, logprobs, strengths = data_aug_model.sample_logprobs()
         images_pt = data_aug_model(images_pt, idx_b=indices["idx_b"], idx_c=indices["idx_c"], idx_s=indices["idx_s"], idx_h=indices["idx_h"])
         
         if config.expt.gpu is not None:
+            # todo: check if contiguous is still needed with nn module
             images_pt[0] = images_pt[0].contiguous()
             images_pt[1] = images_pt[1].contiguous()
             images_pt[0] = images_pt[0].cuda(config.expt.gpu, non_blocking=True)
@@ -472,19 +478,27 @@ def train_one_epoch(
             # permute from CHW to HWC for pyplot
             img0 = torch.permute(images_pt[0][rand_int].squeeze(), (1, 2, 0)).cpu()
             img1 = torch.permute(images_pt[1][rand_int].squeeze(), (1, 2, 0)).cpu()
+            img_ft = torch.permute(images_ft[rand_int].squeeze(), (1, 2, 0)).cpu()
+            label_ft = target_ft[rand_int].item()
             title = f"b:{strengths['strength_b']}, c: {strengths['strength_c']}, s: {strengths['strength_s']}, h: {strengths['strength_h']}"
             image_data_to_plot = {
                 "untransformed_image": untransformed_image,
                 "img0":                img0,
                 "img1":                img1,
                 "title":               title,
+                "ft_img":              img_ft,
+                "ft_label":            label_ft,
                 }
-        
-        loss_pt, backbone_grads_pt_lw, backbone_grads_pt_global = pretrain(model, images_pt, criterion_pt, optimizer_pt, losses_pt_meter, data_time_meter, end, config=config, alternating_mode=True)
+
+        alternating_mode = False if config.expt.is_non_grad_based else True  # default is True
+        loss_pt, backbone_grads_pt_lw, backbone_grads_pt_global, z1, z2 = pretrain(model, images_pt, criterion_pt, optimizer_pt, losses_pt_meter, data_time_meter, end, config=config, alternating_mode=alternating_mode)
+
+        z_std_normalized = np.std(z1.cpu().numpy() / torch.linalg.norm(z1, 2).cpu().numpy())
+        target_std_meter.update(z_std_normalized)
         
         backbone_grads_ft_lw, backbone_grads_ft_global = None, None
         if not warmup:
-            loss_ft, backbone_grads_ft_lw, backbone_grads_ft_global = finetune(model, images_ft, target_ft, criterion_ft, optimizer_ft, losses_ft_meter, top1_meter, top5_meter, config=config, alternating_mode=True)
+            loss_ft, backbone_grads_ft_lw, backbone_grads_ft_global = finetune(model, images_ft, target_ft, criterion_ft, optimizer_ft, losses_ft_meter, top1_meter, top5_meter, config=config, alternating_mode=alternating_mode)
         else:
             losses_ft_meter.update(np.inf)
             loss_ft = np.inf
@@ -500,31 +514,29 @@ def train_one_epoch(
             update_grad_stats_meters(grads=grads, meters=meters, warmup=warmup)
             
             optimizer_aug.zero_grad()
-            # print("after zero_grad():", aug_w_b.grad)
-            # print("after zero_grad():", aug_w_c.grad)
-            # print("after zero_grad():", aug_w_h.grad)
-            # print("after zero_grad():", aug_w_s.grad)
             
             reward = cos_sim_ema_meter_lw.val - cos_sim_ema_meter_lw.ema
             
             color_jitter_logprob_b = -(logprobs["logprob_b"] * reward)
-            color_jitter_logprob_b.backward()
+            # color_jitter_logprob_b.backward(retain_graph=True)
             
             color_jitter_logprob_c = -(logprobs["logprob_c"] * reward)
-            color_jitter_logprob_c.backward()
+            # color_jitter_logprob_c.backward(retain_graph=True)
+            
+            # manual = data_aug_model.aug_w_c.detach().numpy() + (logprobs["logprob_c"].detach().cpu().numpy() * reward)
             
             color_jitter_logprob_s = -(logprobs["logprob_s"] * reward)
-            color_jitter_logprob_s.backward()
+            # color_jitter_logprob_s.backward(retain_graph=True)
             
             color_jitter_logprob_h = -(logprobs["logprob_h"] * reward)
-            color_jitter_logprob_h.backward()
+            # color_jitter_logprob_h.backward(retain_graph=True)
             
-            # print("grad before step():", aug_w_b.grad)
-            # print("grad data before step():", aug_w_b.grad.data)
-            # print("actual parameters BEFORE step:", aug_w_b)
+            aug_loss = color_jitter_logprob_b + color_jitter_logprob_c + color_jitter_logprob_s + color_jitter_logprob_h
+            aug_loss.backward()
             
             optimizer_aug.step()
             
+            # assert np.allclose(data_aug_model.aug_w_c.cpu().detach().numpy(), manual)
             # print("actual parameters AFTER step:", aug_w_b)
             
             reward_meter.update(reward)
@@ -558,6 +570,7 @@ def train_one_epoch(
             norm_pt_avg_meter_lw,
             norm_ft_meter_global,
             norm_ft_avg_meter_lw,
+            target_std_meter,
             ]
         
         additional_stats_meters = [
@@ -587,7 +600,7 @@ def train_one_epoch(
         
         if i % config.expt.print_freq == 0:
             progress.display(i)
-        if config.expt.rank == 0:
+        if config.expt.rank == 0 and i % config.expt.write_summary_frequency:
             write_to_summary_writer(total_iter, loss_pt, loss_ft, data_time_meter, batch_time_meter, optimizer_pt, optimizer_ft, top1_meter, top5_meter, meters_to_plot, writer)
         # expensive stats
         if config.expt.rank == 0 and i % (config.expt.print_freq * 100) == 0:
@@ -604,7 +617,7 @@ def train_one_epoch(
             writer.add_image(tag="Advanced Stats/color jitter strength hue", img_tensor=img, global_step=total_iter)
             
             img = tensor_to_image(image_data_to_plot["untransformed_image"], f"Randomly sampled untransformed image")
-            writer.add_image(tag="Advanced Stats/sampled untransformed image 1", img_tensor=img, global_step=total_iter)
+            writer.add_image(tag="Advanced Stats/sampled untransformed image", img_tensor=img, global_step=total_iter)
             
             title = image_data_to_plot["title"]
             
@@ -613,6 +626,9 @@ def train_one_epoch(
             
             img = tensor_to_image(image_data_to_plot["img1"], f"Randomly sampled transformed image 2\n {title}")
             writer.add_image(tag="Advanced Stats/sampled transformed image 2", img_tensor=img, global_step=total_iter)
+            
+            ft_img = tensor_to_image(image_data_to_plot["ft_img"], f"Randomly sampled finetuning image\n with label {image_data_to_plot['ft_label']}")
+            writer.add_image(tag="Advanced Stats/sampled finetuning image", img_tensor=ft_img, global_step=total_iter)
     
     return total_iter
 
@@ -653,7 +669,7 @@ def pretrain(model, images_pt, criterion_pt, optimizer_pt, losses_pt, data_time,
             backbone_grads_lw[key] = torch.tensor(grad_tensor)
             backbone_grads_global = torch.cat([backbone_grads_global, grad_tensor], dim=0)
     
-    return loss_pt, backbone_grads_lw, backbone_grads_global
+    return loss_pt, backbone_grads_lw, backbone_grads_global, z1, z2
 
 
 def finetune(model, images_ft, target_ft, criterion_ft, optimizer_ft, losses_ft_meter, top1_meter, top5_meter, config, alternating_mode=False):
@@ -729,9 +745,11 @@ if __name__ == '__main__':
     parser.add_argument('--expt.eval_freq', default=10, type=int, metavar='N', help='every eval_freq epoch will the model be evaluated')
     parser.add_argument('--expt.seed', default=123, type=int, metavar='N', help='random seed of numpy and torch')
     parser.add_argument('--expt.evaluate', action='store_true', help='evaluate model on validation set once and terminate (default: False)')
+    parser.add_argument('--expt.is_non_grad_based', action='store_true', help='Set this flag to run default SimSiam or BOHB runs')
     parser.add_argument('--expt.warmup_epochs', default=10, type=int, metavar='N', help='denotes the number of epochs that we only pre-train without finetuning afterwards; warmup is turned off when set to 0; we use a linear incremental schedule during warmup')
     parser.add_argument('--expt.warmup_multiplier', default=2., type=float, metavar='N', help='A factor that is multiplied with the pretraining lr used in the linear incremental learning rate scheduler during warmup. The final lr is multiplier * pre-training lr')
     parser.add_argument('--expt.warmup_both', action='store_true', help='Whether backbone and head should be both warmed up.')
+    parser.add_argument('--expt.write_summary_frequency', default=3, type=int, metavar='N', help='Specifies, after how many batches the TensorBoard summary writer should flush new data to the summary object.')
     # parser.add_argument('--expt.image_wise_gradients', action='store_true', help='compute image wise gradients with backpack (default: False).')
     parser.add_argument('--expt.use_fix_aug_params', action='store_true', help='Use this flag if you want to try out specific aug params (e.g., from a best BOHB config). Default values will be overwritten then without crashing other experiments.')
     parser.add_argument('--expt.data_augmentation_mode', default='default', choices=['default', 'probability_augment', 'rand_augment'], help="Select which data augmentation to use. Default is for the standard SimSiam setting and for parameterize aug setting.")
@@ -773,14 +791,20 @@ if __name__ == '__main__':
     parser.add_argument('--simsiam.dim', type=int, default=2048, help='the feature dimension')
     parser.add_argument('--simsiam.pred_dim', type=int, default=512, help='the hidden dimension of the predictor')
     parser.add_argument('--simsiam.fix_pred_lr', action="store_false", help='fix learning rate for the predictor (default: True')
+
+    parser.add_argument("--use_fixed_args", action="store_true", help="Flag to control whether to take arguments from yaml file as default or from arg parse")
     
     args = _parse_args(config_parser, parser)
+    config = AttrDict(jsonargparse.namespace_to_dict(args))
     
     # Saving checkpoint and config pased on experiment mode
     if args.expt.expt_mode == "ImageNet":
         expt_dir = f"/home/{user}/workspace/experiments/metassl"
     elif args.expt.expt_mode == "CIFAR10":
-        expt_dir = "experiments"
+        if user == "ferreira":
+            expt_dir = f"/home/{user}/workspace/experiments/metassl"
+        else:
+            expt_dir = "experiments"
     else:
         raise ValueError(f"Experiment mode {args.expt.expt_mode} is undefined!")
     
@@ -793,9 +817,8 @@ if __name__ == '__main__':
         yaml.dump(args, f)
         print(f"copied config to {f.name}")
     
-    config = AttrDict(jsonargparse.namespace_to_dict(args))
     print("\n\nConfig being run:\n", config, "\n\n")
-
+    
     # Error check
     if config.finetuning.data_augmentation != "none" and config.expt.data_augmentation_mode != 'probability_augment':
         raise ValueError("If you use data augmentation for finetuning, 'probability_augment' is required as the data_augmentation_mode!")

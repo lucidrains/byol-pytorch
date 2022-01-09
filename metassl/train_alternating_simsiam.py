@@ -27,8 +27,6 @@ import yaml
 from jsonargparse import ArgumentParser
 from torch.utils.tensorboard import SummaryWriter
 
-
-
 warnings.filterwarnings("ignore", category=UserWarning)
 
 try:
@@ -68,14 +66,14 @@ def main(config, expt_dir, bohb_infos=None):
             config.finetuning.epochs = int(bohb_infos['bohb_budget'])
         else:
             raise ValueError(f"Budget mode '{config.bohb.budget_mode}' not implemented yet!")
-
+        
         # Add --bohb.configspace_mode to bohb_infos
         bohb_infos['bohb_configspace'] = config.bohb.configspace_mode
-
+        
         # Create subfoler for each config_id (directory where tensorboard and checkpoints are being saved)
         expt_dir_id = get_expt_dir_with_bohb_config_id(expt_dir, bohb_infos['bohb_config_id'])
         expt_dir = expt_dir_id
-
+        
         # Define master port (for preventing 'Address already in use error' when more than 1 submitted worker on 1 node)
         # TODO: @Diane - Think for another strategy to handle the problem
         # str_config_id = "".join(str(sub_id) for sub_id in bohb_infos['bohb_config_id'])
@@ -86,7 +84,7 @@ def main(config, expt_dir, bohb_infos=None):
         # print(f"{master_port=}")
         # config.expt.dist_url = "tcp://localhost:" + master_port
         # print(f"{config.expt.dist_url=}")
-
+        
         print(f"\n\n\n\n\n\n{bohb_infos=}\n\n\n\n\n\n")
     # ------------------------------------------------------------------------------------------------------------------
 
@@ -115,7 +113,7 @@ def main(config, expt_dir, bohb_infos=None):
             'You have chosen a specific GPU. This will completely '
             'disable data parallelism.'
             )
-
+    
     if config.expt.warmup_both:
         assert config.expt.warmup_epochs > 0, "warmup_epochs should be higher than 0 if warmup_both is set to True."
     
@@ -135,7 +133,7 @@ def main(config, expt_dir, bohb_infos=None):
     else:
         # Simply call main_worker function
         main_worker(config.expt.gpu, ngpus_per_node, config, expt_dir, bohb_infos)
-
+    
     # BOHB only --------------------------------------------------------------------------------------------------------
     # Read validation metric from the .txt (as for mp.spawn returning values is not trivial)
     if bohb_infos is not None:
@@ -145,9 +143,10 @@ def main(config, expt_dir, bohb_infos=None):
         return float(val_metric)
     # ------------------------------------------------------------------------------------------------------------------
 
+
 def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
     config.expt.gpu = gpu
-
+    
     # suppress printing if not master
     if config.expt.multiprocessing_distributed and config.expt.gpu != 0:
         def print_pass(*args):
@@ -228,10 +227,11 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
     criterion_pt = nn.CosineSimilarity(dim=1).cuda(config.expt.gpu)
     criterion_ft = nn.CrossEntropyLoss().cuda(config.expt.gpu)
     
-    optim_params_pt = [{
-        'params': model.module.backbone.parameters(),
-        'fix_lr': False
-        },
+    optim_params_pt = [
+        {
+            'params': model.module.backbone.parameters(),
+            'fix_lr': False
+            },
         {
             'params': model.module.encoder_head.parameters(),
             'fix_lr': False
@@ -329,7 +329,11 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
             print(f"warming up phase (FT)")
         else:
             cur_lr_ft = adjust_learning_rate(optimizer_ft, init_lr_ft, epoch, total_epochs=config.finetuning.epochs)
-            
+
+        # reset ft meter when transitioning from warmup to normal training
+        if not warmup and config.expt.warmup_epochs > epoch - 1:
+            meters["losses_ft_meter"].reset()
+        
         print(f"current pretrain lr: {cur_lr_pt}, finetune lr: {cur_lr_ft}")
         
         total_iter = train_one_epoch(
@@ -385,10 +389,8 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
                 )
             elif config.bohb.budget_mode != "epochs":
                 raise ValueError("Not implemented yet!")
-            else:
-                # We can't save all checkpoints in BOHB-runs because of memory problems
-                pass
-        else:
+
+        elif config.expt.save_model and epoch % config.expt.save_model_frequency == 0:
             check_and_save_checkpoint(
                 config=config,
                 ngpus_per_node=ngpus_per_node,
@@ -403,13 +405,14 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
     
     if config.expt.rank == 0:
         writer.close()
-
+    
     # BOHB only --------------------------------------------------------------------------------------------------------
     # Save validation metric in a .txt (as for mp.spawn returning values is not trivial)
     if bohb_infos is not None:
         with open(expt_dir + "/current_val_metric.txt", 'w+') as f:
             f.write(f"{top1_avg.item()}\n")
     # ------------------------------------------------------------------------------------------------------------------
+
 
 def train_one_epoch(
     train_loader_pt,
@@ -442,6 +445,7 @@ def train_one_epoch(
     eucl_dis_meter_global = meters["eucl_dis_meter_global"]
     norm_pt_meter_global = meters["norm_pt_meter_global"]
     norm_ft_meter_global = meters["norm_ft_meter_global"]
+    target_std_meter = meters["target_std_meter"]
     
     # layer-wise meters
     cos_sim_ema_meter_lw = meters["cos_sim_ema_meter_lw"]
@@ -467,6 +471,7 @@ def train_one_epoch(
         cos_sim_ema_meter_standardized_lw,
         cos_sim_ema_meter_global,
         cos_sim_ema_meter_standardized_global,
+        target_std_meter,
         ]
     
     progress = ProgressMeter(
@@ -492,9 +497,12 @@ def train_one_epoch(
             images_pt[1] = images_pt[1].cuda(config.expt.gpu, non_blocking=True)
             images_ft = images_ft.cuda(config.expt.gpu, non_blocking=True)
             target_ft = target_ft.cuda(config.expt.gpu, non_blocking=True)
-
+        
         alternating_mode = False if config.expt.is_non_grad_based else True  # default is True
-        loss_pt, backbone_grads_pt_lw, backbone_grads_pt_global = pretrain(model, images_pt, criterion_pt, optimizer_pt, losses_pt_meter, data_time_meter, end, config=config, alternating_mode=alternating_mode)
+        loss_pt, backbone_grads_pt_lw, backbone_grads_pt_global, z1, z2 = pretrain(model, images_pt, criterion_pt, optimizer_pt, losses_pt_meter, data_time_meter, end, config=config, alternating_mode=alternating_mode)
+
+        z_std_normalized = np.std(z1.cpu().numpy() / torch.linalg.norm(z1, 2).cpu().numpy())
+        target_std_meter.update(z_std_normalized)
         
         backbone_grads_ft_lw, backbone_grads_ft_global = None, None
         if not warmup:
@@ -525,7 +533,8 @@ def train_one_epoch(
             norm_pt_meter_global,
             norm_pt_avg_meter_lw,
             norm_ft_meter_global,
-            norm_ft_avg_meter_lw
+            norm_ft_avg_meter_lw,
+            target_std_meter,
             ]
         
         additional_stats_meters = [
@@ -547,7 +556,7 @@ def train_one_epoch(
         
         if i % config.expt.print_freq == 0:
             progress.display(i)
-        if config.expt.rank == 0:
+        if config.expt.rank == 0 and i % config.expt.write_summary_frequency:
             write_to_summary_writer(total_iter, loss_pt, loss_ft, data_time_meter, batch_time_meter, optimizer_pt, optimizer_ft, top1_meter, top5_meter, meters_to_plot, writer)
     
     return total_iter
@@ -585,7 +594,7 @@ def pretrain(model, images_pt, criterion_pt, optimizer_pt, losses_pt, data_time,
             backbone_grads_lw[key] = torch.tensor(grad_tensor)
             backbone_grads_global = torch.cat([backbone_grads_global, grad_tensor], dim=0)
     
-    return loss_pt, backbone_grads_lw, backbone_grads_global
+    return loss_pt, backbone_grads_lw, backbone_grads_global, z1, z2
 
 
 def finetune(model, images_ft, target_ft, criterion_ft, optimizer_ft, losses_ft_meter, top1_meter, top5_meter, config, alternating_mode=False):
@@ -654,15 +663,15 @@ def organize_experiment_saving(user, config, is_bohb_run):
 
     # TODO: @Fabio - Do we need this line below?
     expt_root_dir = pathlib.Path(expt_root_dir)
-
+    
     # Create directory (if not yet existing) and save config.yaml
     if not os.path.exists(expt_dir):
         os.makedirs(expt_dir)
-
+    
     with open(os.path.join(expt_dir, "config.yaml"), "w") as f:
         yaml.dump(config, f)
         print(f"copied config to {f.name}")
-
+    
     return expt_dir
 
 
@@ -706,12 +715,13 @@ if __name__ == '__main__':
     parser.add_argument('--expt.eval_freq', default=10, type=int, metavar='N', help='every eval_freq epoch will the model be evaluated')
     parser.add_argument('--expt.seed', default=123, type=int, metavar='N', help='random seed of numpy and torch')
     parser.add_argument('--expt.evaluate', action='store_true', help='evaluate model on validation set once and terminate (default: False)')
-    parser.add_argument('--expt.is_non_grad_based', action='store_true',help='Set this flag to run default SimSiam or BOHB runs')
+    parser.add_argument('--expt.is_non_grad_based', action='store_true', help='Set this flag to run default SimSiam or BOHB runs')
     parser.add_argument('--expt.warmup_epochs', default=10, type=int, metavar='N', help='denotes the number of epochs that we only pre-train without finetuning afterwards; warmup is turned off when set to 0; we use a linear incremental schedule during warmup')
     parser.add_argument('--expt.warmup_multiplier', default=2., type=float, metavar='N', help='A factor that is multiplied with the pretraining lr used in the linear incremental learning rate scheduler during warmup. The final lr is multiplier * pre-training lr')
     parser.add_argument('--expt.warmup_both', action='store_true', help='Whether backbone and head should be both warmed up.')
     parser.add_argument('--expt.use_fix_aug_params', action='store_true', help='Use this flag if you want to try out specific aug params (e.g., from a best BOHB config). Default values will be overwritten then without crashing other experiments.')
     parser.add_argument('--expt.data_augmentation_mode', default='default', choices=['default', 'probability_augment', 'rand_augment'], help="Select which data augmentation to use. Default is for the standard SimSiam setting and for parameterize aug setting.")
+    parser.add_argument('--expt.write_summary_frequency', default=3, type=int, metavar='N', help='Specifies, after how many batches the TensorBoard summary writer should flush new data to the summary object.')
     
     parser.add_argument('--train', default="train", type=str, metavar='N')
     parser.add_argument('--train.batch_size', default=256, type=int, metavar='N', help='in distributed setting this is the total batch size, i.e. batch size = individual bs * number of GPUs')
@@ -750,7 +760,7 @@ if __name__ == '__main__':
     parser.add_argument('--simsiam.dim', type=int, default=2048, help='the feature dimension')
     parser.add_argument('--simsiam.pred_dim', type=int, default=512, help='the hidden dimension of the predictor')
     parser.add_argument('--simsiam.fix_pred_lr', action="store_false", help='fix learning rate for the predictor (default: True')
-
+    
     # parser.add_argument('--bohb', default="bohb", type=str, metavar='N')
     # parser.add_argument("--bohb.run_id", default="default_BOHB")
     # parser.add_argument("--bohb.seed", type=int, default=123, help="random seed")
@@ -767,12 +777,13 @@ if __name__ == '__main__':
     # parser.add_argument("--bohb.warmstarting_dir", type=str, default=None)
     # parser.add_argument("--bohb.test_env", action='store_true', help='If using this flag, the master runs a worker in the background and workers are not being shutdown after registering results.')
 
+    
     parser.add_argument("--use_fixed_args", action="store_true", help="Flag to control whether to take arguments from yaml file as default or from arg parse")
-
+    
     config = _parse_args(config_parser, parser)
     config = AttrDict(jsonargparse.namespace_to_dict(config))
     print("\n\n\n\nConfig:\n", config, "\n\n\n\n")
-
+    
     # Check whether it is a BOHB run or not + organize expt_dir accordingly
     is_bohb_run = True if config.expt.expt_mode.endswith("BOHB") else False
     expt_dir = organize_experiment_saving(user=user, config=config, is_bohb_run=is_bohb_run)
@@ -787,10 +798,12 @@ if __name__ == '__main__':
         if config.bohb.configspace_mode == 'double_probability_augment' and config.finetuning.data_augmentation != "p_probability_augment_ft":
             raise ValueError("If you run a BOHB experiment with 'double_probability_augment' configspace mode, you also need to select 'p_probability_augment_ft' as finetuning data augmentation mode!")
 
+    
     # Run BOHB / main
     if is_bohb_run:
         from metassl.hyperparameter_optimization.master import start_bohb_master
+        
         start_bohb_master(yaml_config=config, expt_dir=expt_dir)
-
+    
     else:
         main(config=config, expt_dir=expt_dir)
