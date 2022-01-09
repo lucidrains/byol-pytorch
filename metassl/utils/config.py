@@ -32,9 +32,9 @@ def _parse_args(config_parser, parser):
     # defaults will have been overridden if config file specified.
     args = parser.parse_args(remaining)
 
-    if args.use_fixed_args:
-        # The fix only works for up to two hierarchy levels (a.b, not a.b.c) but could be adapted
-        args = use_fixed_args(args, cfg, remaining, checkout_missing_params=False)
+    # if args.use_fixed_args:
+    #     # The fix only works for up to two hierarchy levels (a.b, not a.b.c) but could be adapted
+    #     args = use_fixed_args(args, cfg, remaining, checkout_missing_params=False)
 
     return args
 
