@@ -66,5 +66,5 @@ def make_analysis(path):
 
 
 if __name__ == "__main__":
-    result_path = "/home/wagn3rd/Projects/metassl/results/diane/first_bohb"
+    result_path = "/home/wagn3rd/Projects/metassl/results/diane/BO_cifar10_25p_paug"
     make_analysis(path=result_path)

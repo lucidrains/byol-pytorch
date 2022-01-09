@@ -1,0 +1,3 @@
+Best found configuration:
+{'p_color_transformations': 0.7200307970606965, 'p_exotic_transformations': 0.828094905776555, 'p_geometric_transformations': 0.35342216774699065, 'p_non_rigid_transformations': 0.15418930263776726, 'p_quality_transformations': 0.04533131077126168}
+
