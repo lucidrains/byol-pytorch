@@ -22,15 +22,15 @@ class DataAugmentation(nn.Module):
         super().__init__()
         
         # augmentation strengths
-        # self.color_jitter_strengths_brightness = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2]
-        # self.color_jitter_strengths_contrast = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2]
-        # self.color_jitter_strengths_saturation = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2]
-        # self.color_jitter_strengths_hue = [0.0, 0.1, 0.2, 0.3, 0.4]
+        self.color_jitter_strengths_brightness = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2]
+        self.color_jitter_strengths_contrast = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2]
+        self.color_jitter_strengths_saturation = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2]
+        self.color_jitter_strengths_hue = [0.0, 0.1, 0.2, 0.3, 0.4]
 
-        self.color_jitter_strengths_brightness = [0.4]
-        self.color_jitter_strengths_contrast = [0.4]
-        self.color_jitter_strengths_saturation = [0.4]
-        self.color_jitter_strengths_hue = [0.1]
+        # self.color_jitter_strengths_brightness = [0.4]
+        # self.color_jitter_strengths_contrast = [0.4]
+        # self.color_jitter_strengths_saturation = [0.4]
+        # self.color_jitter_strengths_hue = [0.1]
         
         self.aug_w_b = nn.Parameter(torch.zeros(len(self.color_jitter_strengths_brightness)), requires_grad=True)
         self.aug_w_c = nn.Parameter(torch.zeros(len(self.color_jitter_strengths_contrast)), requires_grad=True)

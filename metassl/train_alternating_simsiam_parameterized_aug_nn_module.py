@@ -508,10 +508,6 @@ def train_one_epoch(
             update_grad_stats_meters(grads=grads, meters=meters, warmup=warmup)
             
             optimizer_aug.zero_grad()
-            # print("after zero_grad():", aug_w_b.grad)
-            # print("after zero_grad():", aug_w_c.grad)
-            # print("after zero_grad():", aug_w_h.grad)
-            # print("after zero_grad():", aug_w_s.grad)
             
             reward = cos_sim_ema_meter_lw.val - cos_sim_ema_meter_lw.ema
             
@@ -529,12 +525,8 @@ def train_one_epoch(
             color_jitter_logprob_h = -(logprobs["logprob_h"] * reward)
             # color_jitter_logprob_h.backward(retain_graph=True)
             
-            loss = color_jitter_logprob_b + color_jitter_logprob_c + color_jitter_logprob_s + color_jitter_logprob_h
-            loss.backward()
-            
-            # print("grad before step():", aug_w_b.grad)
-            # print("grad data before step():", aug_w_b.grad.data)
-            # print("actual parameters BEFORE step:", aug_w_b)
+            aug_loss = color_jitter_logprob_b + color_jitter_logprob_c + color_jitter_logprob_s + color_jitter_logprob_h
+            aug_loss.backward()
             
             optimizer_aug.step()
             

@@ -5,8 +5,7 @@ expt:
   expt_name:                    'testing-cifar10'
   expt_mode:                    'CIFAR10'
   save_model:                   True                          # save the model to disc
-  save_model_frequency:         1                             # save model frequency in # of epochs
-  save_model_p:                 5                             # save model frequency in # of epochs
+  save_model_frequency:         50                            # save model frequency in # of epochs
   ssl_model_checkpoint_path:    null                          # resumes training if model with same config exists. e.g.: "experiments/<EXPERIMENT-NAME>/checkpoint_0099.pth.tar"
   target_model_checkpoint_path: "experiments"                 #
   print_freq:                   10                            # print frequency
@@ -25,6 +24,8 @@ expt:
   warmup_epochs:                10                            # denotes the number of epochs that we only pre-train without finetuning afterwards; warmup is turned off when set to 0; we use a linear incremental schedule during warmup
   warmup_multiplier:            2.                            # denotes the number of epochs that we only pre-train without finetuning afterwards; warmup is turned off when set to 0; we use a linear incremental schedule during warmup
   warmup_both:                  False                         # Whether backbone and head should be both warmed up.
+
+
 #######################################
 ###     Training Configuration      ###
 #######################################
