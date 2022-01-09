@@ -406,7 +406,7 @@ def adjust_learning_rate(optimizer, init_lr, epoch, total_epochs, config):
 
 
 # OG code from facebook repo as validate func in torch.utils has extra args finetune, used by alternating simsiam model.
-def validate(val_loader, model, criterion, args):
+def validate(val_loader, model, criterion, config):
     batch_time = AverageMeter('Time', ':6.3f')
     losses = AverageMeter('Loss', ':.4e')
     top1 = AverageMeter('Acc@1', ':6.2f')
@@ -422,9 +422,9 @@ def validate(val_loader, model, criterion, args):
     with torch.no_grad():
         end = time.time()
         for i, (images, target) in enumerate(val_loader):
-            if args.gpu is not None:
-                images = images.cuda(args.gpu, non_blocking=True)
-            target = target.cuda(args.gpu, non_blocking=True)
+            if config.expt.gpu is not None:
+                images = images.cuda(config.expt.gpu, non_blocking=True)
+            target = target.cuda(config.expt.gpu, non_blocking=True)
 
             # compute output
             output = model(images)
@@ -440,7 +440,7 @@ def validate(val_loader, model, criterion, args):
             batch_time.update(time.time() - end)
             end = time.time()
 
-            if i % args.print_freq == 0:
+            if i % config.expt.print_freq == 0:
                 progress.display(i)
 
         # TODO: this should also be done with the ProgressMeter
