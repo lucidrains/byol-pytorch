@@ -24,7 +24,7 @@ expt:
   warmup_epochs:                10                            # denotes the number of epochs that we only pre-train without finetuning afterwards; warmup is turned off when set to 0; we use a linear incremental schedule during warmup
   warmup_multiplier:            2.                            # denotes the number of epochs that we only pre-train without finetuning afterwards; warmup is turned off when set to 0; we use a linear incremental schedule during warmup
   warmup_both:                  False                         # Whether backbone and head should be both warmed up.
-
+  write_summary_frequency:      3                             # Specifies, after how many batches the TensorBoard summary writer should flush new data to the summary object.
 
 #######################################
 ###     Training Configuration      ###
