@@ -82,10 +82,10 @@ class DataAugmentation(nn.Module):
             
         
     def sample_logprobs(self):
-        color_jitter_action_idx_b, color_jitter_logprob_b, _ = get_sample_logprob(logits=self.aug_w_b * torch.ones_like(self.aug_w_b))
-        color_jitter_action_idx_c, color_jitter_logprob_c, _ = get_sample_logprob(logits=self.aug_w_c * torch.ones_like(self.aug_w_b))
-        color_jitter_action_idx_s, color_jitter_logprob_s, _ = get_sample_logprob(logits=self.aug_w_s * torch.ones_like(self.aug_w_b))
-        color_jitter_action_idx_h, color_jitter_logprob_h, _ = get_sample_logprob(logits=self.aug_w_h * torch.ones_like(self.aug_w_b))
+        color_jitter_action_idx_b, color_jitter_logprob_b, _ = get_sample_logprob(logits=self.aug_w_b)
+        color_jitter_action_idx_c, color_jitter_logprob_c, _ = get_sample_logprob(logits=self.aug_w_c)
+        color_jitter_action_idx_s, color_jitter_logprob_s, _ = get_sample_logprob(logits=self.aug_w_s)
+        color_jitter_action_idx_h, color_jitter_logprob_h, _ = get_sample_logprob(logits=self.aug_w_h)
         
         strength_b = self.color_jitter_strengths_brightness[color_jitter_action_idx_b]
         strength_c = self.color_jitter_strengths_contrast[color_jitter_action_idx_c]
