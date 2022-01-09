@@ -33,6 +33,7 @@ try:
     from metassl.utils.config import AttrDict
     from metassl.utils.meters import AverageMeter, ProgressMeter
     from metassl.utils.torch_utils import accuracy, validate
+    import metassl.models.resnet_cifar as our_cifar_resnets
 
 except ImportError:
     # For execution in command line
@@ -40,6 +41,7 @@ except ImportError:
     from .utils.config import AttrDict
     from .utils.meters import AverageMeter, ProgressMeter
     from .utils.torch_utils import accuracy, validate
+    from .models import resnet_cifar as our_cifar_resnets
 
 
 
@@ -97,7 +99,6 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
     if config.expt.multiprocessing_distributed and config.expt.gpu != 0:
         def print_pass(*args):
             pass
-        
         builtins.print = print_pass
     
     if config.expt.gpu is not None:
@@ -121,7 +122,11 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
     print(f"=> creating model '{config.model.model_type}'")
     
     # TODO: this part below is different
-    model = models.__dict__[config.model.model_type]()
+    # create for CIFAR10
+    if config.data.dataset == 'CIFAR10':
+        model = our_cifar_resnets.resnet18(10)
+    else:
+        model = models.__dict__[config.model.model_type]()
     
     # freeze all layers but the last fc
     for name, param in model.named_parameters():
@@ -406,16 +411,22 @@ if __name__ == '__main__':
     
     parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
     parser.add_argument('--expt_name', default='pre-training-full-train-data-fix-lr-100-256', type=str, help='experiment name')
+    parser.add_argument('--expt_mode', default="ImageNet", choices=["ImageNet", "CIFAR10"],
+                        help='Define which dataset to use to select the correct yaml file.')
     parser.add_argument('--epochs', default=100, type=int, metavar='N', help='number of total epochs to run')
-    parser.add_argument('--lr', '--learning-rate', default=0.1, type=float, metavar='LR', help='initial (base) learning rate', dest='lr')
+    parser.add_argument('--lr', '--learning-rate', default=0.1, type=float, metavar='LR', help='initial (base) '
+                                                                                               'learning rate',
+                        dest='lr')
     parser.add_argument(
         '--ssl_model_checkpoint_path',
-        default='/home/ferreira/workspace/experiments/metassl/pre-training-full-train-data-fix-lr-100-256/checkpoint_0099.pth.tar',
+        default='/home/ferreira/workspace/experiments/metassl/pre-training-full-train-data-fix-lr-100-256'
+                '/checkpoint_0099.pth.tar',
         type=str, help='pretrained model checkpoint path'
         )
     parser.add_argument(
         '--target_model_checkpoint_path',
-        default='/home/ferreira/workspace/experiments/metassl/finetuning-fix-smaller-lr-0.01-100-256/lin_class_checkpoint_0063.pth.tar',
+        default='/home/ferreira/workspace/experiments/metassl/finetuning-fix-smaller-lr-0.01-100-256'
+                '/lin_class_checkpoint_0063.pth.tar',
         type=str, help='target model checkpoint path'
         )
     args = parser.parse_args()
@@ -433,8 +444,15 @@ if __name__ == '__main__':
     
     if not os.path.exists(expt_sub_dir):
         os.makedirs(expt_sub_dir)
-    
-    with open("metassl/default_metassl_config.yaml", "r") as f:
+
+    # Select which yaml file to use depending on the selected experiment mode
+    if args.expt_mode == "ImageNet":
+        config_path = "metassl/default_metassl_config.yaml"
+    elif args.expt_mode == "CIFAR10":
+        config_path = "metassl/default_metassl_config_cifar10.yaml"
+    else:
+        raise ValueError(f"Experiment mode {args.expt_mode} is undefined!")
+    with open(config_path, "r") as f:
         config = yaml.safe_load(f)
     
     print(f"epochs: {epochs}")
