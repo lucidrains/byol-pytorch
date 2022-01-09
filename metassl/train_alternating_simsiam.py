@@ -318,6 +318,10 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
             print(f"warming up phase (FT)")
         else:
             cur_lr_ft = adjust_learning_rate(optimizer_ft, init_lr_ft, epoch, total_epochs=config.finetuning.epochs)
+
+        # reset ft meter when transitioning from warmup to normal training
+        if not warmup and config.expt.warmup_epochs > epoch - 1:
+            meters["losses_ft_meter"].reset()
         
         print(f"current pretrain lr: {cur_lr_pt}, finetune lr: {cur_lr_ft}")
         

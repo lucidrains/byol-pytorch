@@ -44,13 +44,13 @@ train:
 
 finetuning:
   batch_size:       512                   # in distributed setting this is the total batch size, i.e. batch size = individual bs / number of GPUs
-  epochs:           90                    # number of finetuning epochs
+  epochs:           500                   # number of finetuning epochs
   start_epoch:      0                     # start training at epoch n
   optimizer:        "sgd"                 # optimizer type, options: lars adam adamW rmsprop adabelief sgd
   schedule:         "cosine"              # learning rate schedule, options: 'cosine' 'cosineW' 'plateau' 'step' 'const' 'cosineWarm' 'exponential' 'None' (BOHO case)
   weight_decay:     0.
   momentum:         0.9                   # momentum of SGD solver
-  lr:               30                    # the default LR
+  lr:               1                    # the default LR
   clip_grad:        False                 # gradient cliping, options: 0.1 ... 100, False
   scheduler_epochs: 100                   # T_max or T_0 in 'cosine' and 'cosineWarm' scheduler, in case of 'step' scheduler this denotes when scheduler should step
 
