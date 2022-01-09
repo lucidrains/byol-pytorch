@@ -32,7 +32,7 @@ try:
     from metassl.utils.data import get_train_valid_loader, get_test_loader
     from metassl.utils.config import AttrDict
     from metassl.utils.meters import AverageMeter, ProgressMeter
-    from metassl.utils.torch_utils import accuracy, validate
+    from metassl.utils.torch_utils import accuracy
     import metassl.models.resnet_cifar as our_cifar_resnets
 
 except ImportError:
@@ -258,7 +258,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
         shuffle=True,
         num_workers=config.expt.workers,
         pin_memory=True,
-        download=False,
+        download=config.download_data,
         distributed=config.expt.distributed,
         drop_last=False,
         get_fine_tuning_loaders=True,
@@ -271,7 +271,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
         shuffle=False,
         num_workers=config.expt.workers,
         pin_memory=True,
-        download=False,
+        download=config.download_data,
         drop_last=False,
     )
 
@@ -283,7 +283,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
         if config.expt.distributed:
             train_sampler.set_epoch(epoch)
         cur_lr = adjust_learning_rate(optimizer, init_lr, epoch, config.finetuning.epochs, config)
-        print(cur_lr)
+        print(f"Current Learing Rate: {cur_lr}")
 
         # train for one epoch
         train(train_loader, model, criterion, optimizer, epoch, config)
@@ -405,6 +405,51 @@ def adjust_learning_rate(optimizer, init_lr, epoch, total_epochs, config):
     return cur_lr
 
 
+# OG code from facebook repo as validate func in torch.utils has extra args finetune, used by alternating simsiam model.
+def validate(val_loader, model, criterion, args):
+    batch_time = AverageMeter('Time', ':6.3f')
+    losses = AverageMeter('Loss', ':.4e')
+    top1 = AverageMeter('Acc@1', ':6.2f')
+    top5 = AverageMeter('Acc@5', ':6.2f')
+    progress = ProgressMeter(
+        len(val_loader),
+        [batch_time, losses, top1, top5],
+        prefix='Test: ')
+
+    # switch to evaluate mode
+    model.eval()
+
+    with torch.no_grad():
+        end = time.time()
+        for i, (images, target) in enumerate(val_loader):
+            if args.gpu is not None:
+                images = images.cuda(args.gpu, non_blocking=True)
+            target = target.cuda(args.gpu, non_blocking=True)
+
+            # compute output
+            output = model(images)
+            loss = criterion(output, target)
+
+            # measure accuracy and record loss
+            acc1, acc5 = accuracy(output, target, topk=(1, 5))
+            losses.update(loss.item(), images.size(0))
+            top1.update(acc1[0], images.size(0))
+            top5.update(acc5[0], images.size(0))
+
+            # measure elapsed time
+            batch_time.update(time.time() - end)
+            end = time.time()
+
+            if i % args.print_freq == 0:
+                progress.display(i)
+
+        # TODO: this should also be done with the ProgressMeter
+        print(' * Acc@1 {top1.avg:.3f} Acc@5 {top5.avg:.3f}'
+              .format(top1=top1, top5=top5))
+
+    return top1.avg
+
+
 if __name__ == '__main__':
     user = os.environ.get('USER')
 
@@ -431,6 +476,7 @@ if __name__ == '__main__':
                         help='Define which dataset to use to select the correct yaml file.')
     # use this when training with fewer GPUs
     parser.add_argument('--workers', default=32, type=int, metavar='N', help='number of data loading workers')
+    parser.add_argument('--download_data', action='store_true')  # if needed
     args = parser.parse_args()
 
     expt_name = args.expt_name
@@ -470,6 +516,7 @@ if __name__ == '__main__':
     config['finetuning']['epochs'] = epochs
     config['expt']['workers'] = args.workers
     config['finetuning']['lr'] = lr
+    config['download_data'] = args.download_data
 
     with open(os.path.join(expt_sub_dir, "config.yaml"), "w") as f:
         yaml.dump(config, f)
