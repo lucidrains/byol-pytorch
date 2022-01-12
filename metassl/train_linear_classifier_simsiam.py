@@ -294,7 +294,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
         print(f"Current Learing Rate: {cur_lr}")
 
         # train for one epoch
-        train(train_loader, model, criterion, optimizer, epoch, config)
+        train(train_loader, model, criterion, optimizer, epoch, config, writer)
 
         # evaluate on validation set
         acc1 = validate(test_loader, model, criterion, config)
