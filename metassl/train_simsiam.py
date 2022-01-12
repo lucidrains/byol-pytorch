@@ -240,8 +240,9 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
         # train for one epoch
         train(train_loader, model, criterion, optimizer, epoch, config, writer)
 
-        # evaluate on validation set
-        if epoch % config.train.val_freq == 0:
+        # evaluate on validation set if run_knn_val flag set
+
+        if (epoch % config.train.val_freq == 0) and config.run_knn_val :
             if config.expt.rank == 0:
                 top1_avg = knn_classifier(net=model.module.encoder, batch_size=config.train.batch_size,
                                           workers=config.expt.workers, epoch=epoch)
@@ -347,6 +348,7 @@ if __name__ == '__main__':
     parser.add_argument('--seed', default=123, type=int, metavar='N', help='random seed of numpy and torch')
     parser.add_argument('--scheduler_epochs', default=100, type=int, metavar='N', help='denotes when scheduler should '
                                                                                        'step')
+    parser.add_argument('--run_knn_val', action='store_true')  # if needed run knn validation
 
     args = parser.parse_args()
 
@@ -386,6 +388,7 @@ if __name__ == '__main__':
         config['train']['epochs'] = epochs
         config['train']['lr'] = lr
 
+
     print(expt_name, ssl_model_checkpoint_path, epochs, lr)
     print(f"batch size {config['train']['batch_size']}")
 
@@ -400,6 +403,7 @@ if __name__ == '__main__':
     config['train']['val_freq'] = args.val_freq
     config['expt']['seed'] = args.seed
     config['train']['scheduler_epochs'] = args.scheduler_epochs
+    config['run_knn_val'] = args.run_knn_val
 
     config = AttrDict(config)
 
