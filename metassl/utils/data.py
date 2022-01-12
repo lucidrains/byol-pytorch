@@ -18,17 +18,17 @@ datasets
 normalize_imagenet = transforms.Normalize(
     mean=[0.485, 0.456, 0.406],
     std=[0.229, 0.224, 0.225]
-    )
+)
 
 normalize_cifar10 = transforms.Normalize(
     mean=[0.4914, 0.4822, 0.4465],
     std=[0.2023, 0.1994, 0.2010]
-    )
+)
 
 normalize_cifar100 = transforms.Normalize(
     mean=(0.5071, 0.4865, 0.4409),
     std=(0.2673, 0.2564, 0.2762)
-    )
+)
 
 
 def get_train_valid_loader(
@@ -84,9 +84,9 @@ def get_train_valid_loader(
     if dataset_name not in allowed_datasets:
         print(f"dataset name should be in {allowed_datasets}")
         exit()
-    
+
     dataset = eval("datasets." + dataset_name)
-    
+
     if get_fine_tuning_loaders:
         print(f"using finetuning dataset: {dataset}")
     else:
@@ -106,17 +106,17 @@ def get_train_valid_loader(
         # hardcoded for now
         root = "/data/datasets/ImageNet/imagenet-pytorch"
         # root = "/data/datasets/ILSVRC2012"
-        
+
         # load the dataset
         train_dataset = ImageNet(
             root=root, split='train',
             transform=train_transform, ignore_archive=True,
-            )
-        
+        )
+
         valid_dataset = ImageNet(
             root=root, split='train',
             transform=valid_transform, ignore_archive=True,
-            )
+        )
     elif dataset_name == "CIFAR10":
         # train_dataset
         # --------------------------------------------------------------------------------------------------------------
@@ -149,44 +149,44 @@ def get_train_valid_loader(
     num_train = int(len(train_dataset) / 100 * dataset_percentage_usage)
     indices = list(range(num_train))
     split = int(np.floor(valid_size * num_train))
-    
+
     if shuffle:
         np.random.seed(random_seed)
         np.random.shuffle(indices)
-    
+
     if np.isclose(valid_size, 0.0):
         train_idx, valid_idx = indices, indices
     else:
         train_idx, valid_idx = indices[split:], indices[:split]
-    
+
     valid_sampler = SubsetRandomSampler(valid_idx)
-    
+
     if distributed:
         train_sampler = DistributedSampler(torch.tensor(train_idx))
         # TODO: use distributed valid_sampler and average accuracies to make validation more efficient
     else:
         train_sampler = SubsetRandomSampler(train_idx)
-    
+
     train_loader = torch.utils.data.DataLoader(
         train_dataset, batch_size=batch_size, sampler=train_sampler,
         num_workers=num_workers, pin_memory=pin_memory, drop_last=drop_last,
-        )
+    )
     valid_loader = torch.utils.data.DataLoader(
         valid_dataset, batch_size=batch_size, sampler=valid_sampler,
         num_workers=num_workers, pin_memory=pin_memory, drop_last=drop_last,
-        )
-    
+    )
+
     # visualize some images
     if show_sample:
         sample_loader = torch.utils.data.DataLoader(
             train_dataset, batch_size=9, shuffle=shuffle,
             num_workers=num_workers, pin_memory=pin_memory,
-            )
+        )
         data_iter = iter(sample_loader)
         images, labels = data_iter.next()
         X = images.numpy().transpose([0, 2, 3, 1])
         plot_images(X, labels)
-    
+
     if np.isclose(valid_size, 0.0):
         return train_loader, None, train_sampler, None
     else:
@@ -194,15 +194,15 @@ def get_train_valid_loader(
 
 
 def get_test_loader(
-    data_dir,
-    batch_size,
-    shuffle=True,
-    num_workers=1,
-    pin_memory=True,
-    download=True,
-    dataset_name="ImageNet",
-    drop_last=False,
-    ):
+        data_dir,
+        batch_size,
+        shuffle=True,
+        num_workers=1,
+        pin_memory=True,
+        download=True,
+        dataset_name="ImageNet",
+        drop_last=False,
+):
     """
     Utility function for loading and returning a multi-process
     test iterator over the CIFAR-100 dataset.
@@ -224,40 +224,40 @@ def get_test_loader(
     if dataset_name not in allowed_datasets:
         print(f"dataset name should be in {allowed_datasets}")
         exit()
-    
+
     dataset = eval("datasets." + dataset_name)
-    
+
     if dataset_name == "CIFAR10":
         transform = transforms.Compose(
             [
                 transforms.ToTensor(),
                 transforms.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.2023, 0.1994, 0.2010])
-                ]
-            )
-    
+            ]
+        )
+
     elif dataset_name == "CIFAR100":
         transform = transforms.Compose(
             [
                 transforms.ToTensor(),
                 transforms.Normalize(mean=[0.5071, 0.4865, 0.4409], std=[0.2673, 0.2564, 0.2762])
-                ]
-            )
-    
+            ]
+        )
+
     elif dataset_name == "ImageNet":
-        
+
         transform = transforms.Compose(
             [
                 transforms.Resize(256),
                 transforms.CenterCrop(224),
                 transforms.ToTensor(),
                 normalize_imagenet,
-                ]
-            )
-    
+            ]
+        )
+
     else:
         # not supported
         raise ValueError('invalid dataset name=%s' % dataset)
-    
+
     if dataset_name == "ImageNet":
         # hardcoded for now
         # TODO: move to imagenet.py
@@ -266,25 +266,25 @@ def get_test_loader(
         dataset = ImageNet(
             root=root, split="val",
             transform=transform, ignore_archive=True,
-            )
+        )
     elif dataset_name == "CIFAR10":
         dataset = torchvision.datasets.CIFAR10(
             root='datasets/CIFAR10', train=False,
             download=True, transform=transform
-            )
+        )
     else:
         # load the dataset
         dataset = dataset(
             root=data_dir, train=False,
             download=download, transform=transform,
-            )
-    
+        )
+
     data_loader = torch.utils.data.DataLoader(
         dataset, batch_size=batch_size, shuffle=shuffle,
         num_workers=num_workers, pin_memory=pin_memory,
         drop_last=drop_last,
-        )
-    
+    )
+
     return data_loader
 
 
@@ -303,14 +303,14 @@ def plot_images(images, cls_true, cls_pred=None):
         'horse',
         'ship',
         'truck'
-        ]
-    
+    ]
+
     fig, axes = plt.subplots(3, 3)
-    
+
     for i, ax in enumerate(axes.flat):
         # plot img
         ax.imshow(images[i, :, :, :], interpolation='spline16')
-        
+
         # show true & predicted classes
         cls_true_name = label_names[cls_true[i]]
         if cls_pred is None:
@@ -319,11 +319,11 @@ def plot_images(images, cls_true, cls_pred=None):
             cls_pred_name = label_names[cls_pred[i]]
             xlabel = "True: {0}\nPred: {1}".format(
                 cls_true_name, cls_pred_name
-                )
+            )
         ax.set_xlabel(xlabel)
         ax.set_xticks([])
         ax.set_yticks([])
-    
+
     plt.show()
 
 
