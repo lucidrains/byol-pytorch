@@ -17,6 +17,6 @@ python3 -c "import torch; print(torch.__version__)"
 python3 -c "import torch; print(torch.cuda.is_available())"
 cd MetaSSL/metassl/
 echo "Pretrain Simsiam with CIFAR10 and Knn Run 2"
-python3 -m metassl.train_simsiam --expt_name run2_simsiam_cifar10 --epochs 500 --expt_mode CIFAR10 --workers 8 --seed 125
-
+python3 -m metassl.train_simsiam --expt_name run2_simsiam_cifar10 --epochs 500 --expt_mode CIFAR10 --workers 8 --seed 125 --run_knn_val
+# python -m metassl.train_linear_classifier_simsiam --expt_name "test" --ssl_model_checkpoint_path "/work/dlclarge1/dsengupt-lth_ws/MetaSSL/metassl/experiments/sanity/checkpoint_0000.pth.tar" --target_model_checkpoint_path "" --epochs 2 --expt_mode CIFAR10 --download_data --workers 8
 deactivate

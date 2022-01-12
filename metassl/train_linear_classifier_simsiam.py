@@ -26,6 +26,7 @@ import torch.utils.data
 import torch.utils.data.distributed
 import torchvision.models as models
 import yaml
+from torch.utils.tensorboard import SummaryWriter
 
 try:
     # For execution in PyCharm
@@ -34,6 +35,7 @@ try:
     from metassl.utils.meters import AverageMeter, ProgressMeter
     from metassl.utils.torch_utils import accuracy
     import metassl.models.resnet_cifar as our_cifar_resnets
+    from metassl.utils.summary import write_to_summary_writer
 
 except ImportError:
     # For execution in command line
@@ -42,6 +44,7 @@ except ImportError:
     from .utils.meters import AverageMeter, ProgressMeter
     from .utils.torch_utils import accuracy, validate
     from .models import resnet_cifar as our_cifar_resnets
+    from .utils.summary import write_to_summary_writer
 
 model_names = sorted(
     name for name in models.__dict__
@@ -245,6 +248,10 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
             print(f"=> no checkpoint found at '{config.expt.target_model_checkpoint_path}'")
 
     cudnn.benchmark = True
+    writer = None
+
+    if config.expt.rank == 0:
+        writer = SummaryWriter(log_dir=os.path.join(expt_dir, f"tensorboard_linearCls_{config.train.epochs}_{init_lr}"))
 
     # Data loading code
     traindir = os.path.join(config.data.dataset, 'train')
@@ -278,6 +285,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
     if config.expt.evaluate:
         validate(test_loader, model, criterion, config)
         return
+    print(f"=> BEGIN FINETUNING with config {config}")
 
     for epoch in range(config.finetuning.start_epoch, config.finetuning.epochs):
         if config.expt.distributed:
@@ -290,6 +298,8 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
 
         # evaluate on validation set
         acc1 = validate(test_loader, model, criterion, config)
+        writer.add_scalar('FineTuning/Accuracy@1', acc1, epoch)
+        print(f"=> Validation Top1'{acc1}'")
 
         # remember best acc@1 and save checkpoint
         is_best = acc1 > best_acc1
@@ -309,8 +319,12 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
             if epoch == config.train.start_epoch:
                 sanity_check(model.state_dict(), config.expt.ssl_model_checkpoint_path)
 
+    # shut down writer at end of finetuning
+    if config.expt.rank == 0:
+        writer.close()
 
-def train(train_loader, model, criterion, optimizer, epoch, config):
+
+def train(train_loader, model, criterion, optimizer, epoch, config,writer=None):
     batch_time = AverageMeter('Time', ':6.3f')
     data_time = AverageMeter('Data', ':6.3f')
     losses = AverageMeter('Loss', ':.4e')
@@ -364,6 +378,9 @@ def train(train_loader, model, criterion, optimizer, epoch, config):
 
         if i % config.expt.print_freq == 0:
             progress.display(i)
+        # write log epoch wise
+        if config.expt.rank == 0:
+            writer.add_scalar('FineTuning/Loss', loss.item(), epoch + 1)
 
 
 def save_checkpoint(state, is_best, filename='lin_class_checkpoint.pth.tar'):

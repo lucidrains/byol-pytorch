@@ -226,7 +226,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
     writer = None
 
     if config.expt.rank == 0:
-        writer = SummaryWriter(log_dir=os.path.join(expt_dir, f"tensorboard_{config.train.epochs}_{init_lr}"))
+        writer = SummaryWriter(log_dir=os.path.join(expt_dir, f"tensorboard_pretraining_{config.train.epochs}_{init_lr}"))
 
     print(f"=> BEGIN PRE-TRAINING with config {config}")
     best_acc = 0.0
@@ -259,6 +259,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
                                 'epoch': epoch + 1,
                                 'arch': config.model.model_type,
                                 'state_dict': model.state_dict(),
+                                'top1_best':top1_avg,
                                 'optimizer': optimizer.state_dict(),
                             }, is_best=True, filename=os.path.join(expt_dir, 'checkpoint_{:04d}.pth.tar'.format(epoch))
                         )
