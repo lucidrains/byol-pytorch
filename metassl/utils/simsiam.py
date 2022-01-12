@@ -20,7 +20,7 @@ class TwoCropsTransform:
         q = self.base_transform(x)
         k = self.base_transform(x)
         return [q, k]
-    
+
     def __str__(self):
         return f"{self.base_transform}"
 
@@ -41,6 +41,7 @@ class SimSiam(nn.Module):
     """
     Build a SimSiam model.
     """
+
     def __init__(self, base_encoder, dim=2048, pred_dim=512):
         """
         dim: feature dimension (default: 2048)
@@ -56,19 +57,19 @@ class SimSiam(nn.Module):
         prev_dim = self.encoder.fc.weight.shape[1]
         self.encoder.fc = nn.Sequential(nn.Linear(prev_dim, prev_dim, bias=False),
                                         nn.BatchNorm1d(prev_dim),
-                                        nn.ReLU(inplace=True), # first layer
+                                        nn.ReLU(inplace=True),  # first layer
                                         nn.Linear(prev_dim, prev_dim, bias=False),
                                         nn.BatchNorm1d(prev_dim),
-                                        nn.ReLU(inplace=True), # second layer
+                                        nn.ReLU(inplace=True),  # second layer
                                         self.encoder.fc,
-                                        nn.BatchNorm1d(dim, affine=False)) # output layer
-        self.encoder.fc[6].bias.requires_grad = False # hack: not use bias as it is followed by BN
+                                        nn.BatchNorm1d(dim, affine=False))  # output layer
+        self.encoder.fc[6].bias.requires_grad = False  # hack: not use bias as it is followed by BN
 
         # build a 2-layer predictor
         self.predictor = nn.Sequential(nn.Linear(dim, pred_dim, bias=False),
-                                        nn.BatchNorm1d(pred_dim),
-                                        nn.ReLU(inplace=True), # hidden layer
-                                        nn.Linear(pred_dim, dim)) # output layer
+                                       nn.BatchNorm1d(pred_dim),
+                                       nn.ReLU(inplace=True),  # hidden layer
+                                       nn.Linear(pred_dim, dim))  # output layer
 
     def forward(self, x1, x2):
         """
@@ -81,10 +82,10 @@ class SimSiam(nn.Module):
         """
 
         # compute features for one view
-        z1 = self.encoder(x1) # NxC
-        z2 = self.encoder(x2) # NxC
+        z1 = self.encoder(x1)  # NxC
+        z2 = self.encoder(x2)  # NxC
 
-        p1 = self.predictor(z1) # NxC
-        p2 = self.predictor(z2) # NxC
+        p1 = self.predictor(z1)  # NxC
+        p2 = self.predictor(z2)  # NxC
 
         return p1, p2, z1.detach(), z2.detach()

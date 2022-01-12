@@ -42,6 +42,8 @@ train:
   lr:               0.03                  # the default LR for all schedulers, in case of const LR schedule: set lr_high=lr_low
   clip_grad:        False                 # gradient cliping, options: 0.1 ... 100, False
   scheduler_epochs: 100                   # T_max or T_0 in 'cosine' and 'cosineWarm' scheduler, in case of 'step' scheduler this denotes when scheduler should step
+  val_freq:         10                   # validate with knn
+
 
 
 finetuning:
