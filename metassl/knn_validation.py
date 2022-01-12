@@ -7,19 +7,73 @@ from torch.utils.data.distributed import DistributedSampler
 from torch.utils.data.sampler import SubsetRandomSampler
 
 
-def get_knn_data_loaders(batch_size, num_workers):
+try:
+    from metassl.utils.data import normalize_cifar10, normalize_imagenet, normalize_cifar100
+    from metassl.utils.imagenet import ImageNet
+except ImportError:
+    from .utils.data import normalize_cifar10, normalize_imagenet
+    from .utils.imagenet import ImageNet
+
+
+def get_knn_data_loaders(batch_size, num_workers, dataset):
     """
     Data loader for kNN classifier.
-    Needs to be the training data, with test augmentation and no shuffling
+    Needs to be the training data, test data, with test augmentation and no shuffling
+    @param batch_size
+    @param num_workers
+    @param dataset Cifar10/ImageNet/Cifar100
     """
-    test_transform = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize([0.4914, 0.4822, 0.4465], [0.2023, 0.1994, 0.2010])])
+    if dataset == "CIFAR10":
+        test_transform = transforms.Compose([
+            transforms.ToTensor(),
+            normalize_cifar10])
 
-    memory_data = torchvision.datasets.CIFAR10(root='datasets/CIFAR10', train=True,
-                                               transform=test_transform, download=True)
-    test_data = torchvision.datasets.CIFAR10(root='datasets/CIFAR10', train=False,
-                                             transform=test_transform, download=True)
+        memory_data = torchvision.datasets.CIFAR10(root='datasets/CIFAR10', train=True,
+                                                   transform=test_transform, download=True)
+        test_data = torchvision.datasets.CIFAR10(root='datasets/CIFAR10', train=False,
+                                                 transform=test_transform, download=True)
+    elif dataset== "ImageNet":
+
+        # taken from get_test_loader in data.py
+        test_transform = transforms.Compose(
+            [
+                transforms.Resize(256),
+                transforms.CenterCrop(224),
+                transforms.ToTensor(),
+                normalize_imagenet,
+            ]
+        )
+        # taken from get_train_valid_loader in data.py
+        # hardcoded for now
+        root = "/data/datasets/ImageNet/imagenet-pytorch"
+        # root = "/data/datasets/ILSVRC2012"
+        # load the dataset
+        memory_data = ImageNet(root=root, split='train',
+                                 transform=test_transform,
+                                 ignore_archive=True,
+        )
+        # load the dataset
+        test_data = ImageNet(
+            root=root, split="val",
+            transform=test_transform,
+            ignore_archive=True,
+        )
+    elif dataset == "CIFAR100":
+        # adding for the sake of completeness
+        test_transform = transforms.Compose(
+            [
+                transforms.ToTensor(),
+                normalize_cifar100
+            ]
+        )
+        memory_data = torchvision.datasets.CIFAR100(root='datasets/CIFAR100', train=True,
+                                                   transform=test_transform, download=True)
+        test_data = torchvision.datasets.CIFAR100(root='datasets/CIFAR100', train=False,
+                                                 transform=test_transform, download=True)
+    else:
+        # not supported
+        raise ValueError('invalid dataset name=%s' % dataset)
+
     memory_loader = torch.utils.data.DataLoader(memory_data, batch_size=batch_size, shuffle=False,
                                                 num_workers=num_workers, pin_memory=True)
     test_loader = torch.utils.data.DataLoader(test_data, batch_size=batch_size, shuffle=False,
@@ -30,16 +84,17 @@ def get_knn_data_loaders(batch_size, num_workers):
 
 # Code from https://colab.research.google.com/github/facebookresearch/moco/blob/colab-notebook/colab/moco_cifar10_demo.ipynb
 # test using a knn monitor
-def knn_classifier(net, batch_size, workers, epoch, k=200, t=0.1, hide_progress=False):
+def knn_classifier(net, batch_size, workers, epoch, datatset, k=200, t=0.1, hide_progress=False):
     # Moco used 200
     """
      @param net: Model backbone. Encoder in our case
-     @param memory_data_loader: the set to extract features for feature bank
-     @param test_data_loader: to validate against
      @param epoch
+     @workers
+     @param datatset: ImageNet CIFAR10 CIFAR100
      @param k: top neighbors to find. 200 is for ImageNet
     """
-    memory_data_loader, test_data_loader = get_knn_data_loaders(batch_size=batch_size, num_workers=workers)
+    # separate loaders used since the training and validation loaders used during pretraining are shuffled.
+    memory_data_loader, test_data_loader = get_knn_data_loaders(batch_size=batch_size, num_workers=workers, dataset=datatset)
     net.eval()
     classes = len(memory_data_loader.dataset.classes)
     total_top1, total_top5, total_num, feature_bank = 0.0, 0.0, 0, []
