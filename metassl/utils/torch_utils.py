@@ -204,7 +204,7 @@ def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
         shutil.copyfile(filename, 'model_best.pth.tar')
 
 
-def check_and_save_checkpoint(config, ngpus_per_node, total_iter, epoch, model, optimizer_pt, optimizer_ft, expt_dir, meters, optimizer_aug=None, data_aug_model=None):
+def check_and_save_checkpoint(config, ngpus_per_node, total_iter, epoch, model, optimizer_pt, optimizer_ft, expt_dir, meters, optimizer_aug=None, data_aug_model=None, checkpoint_name="checkpoint"):
     if not config.expt.multiprocessing_distributed or (config.expt.multiprocessing_distributed and config.expt.rank % ngpus_per_node == 0):
         if epoch % config.expt.save_model_frequency == 0:
             save_dct = {
@@ -212,17 +212,23 @@ def check_and_save_checkpoint(config, ngpus_per_node, total_iter, epoch, model, 
                 'epoch':        epoch + 1,
                 'arch':         config.model.model_type,
                 'state_dict':   model.state_dict(),
-                'optimizer_pt': optimizer_pt.state_dict(),
-                'optimizer_ft': optimizer_ft.state_dict(),
+                'optimizer_pt': optimizer_pt.state_dict() if optimizer_pt else None,
+                'optimizer_ft': optimizer_ft.state_dict() if optimizer_ft else None,
                 'meters':       meters,
                 }
+            
+            if "linear_cls" in checkpoint_name:
+                save_dct["epoch_ft"] = epoch + 1
+            else:
+                save_dct["epoch"] = epoch + 1
+            
             if optimizer_aug is not None:
                 save_dct['optimizer_aug'] = optimizer_aug.state_dict()
                 
             if data_aug_model is not None:
                 save_dct['data_aug_model'] = data_aug_model.state_dict()
             
-            save_checkpoint(save_dct, is_best=False, filename=os.path.join(expt_dir, 'checkpoint_{:04d}.pth.tar'.format(epoch)))
+            save_checkpoint(save_dct, is_best=False, filename=os.path.join(expt_dir, f'{checkpoint_name}_{epoch:04d}.pth.tar'))
 
 
 def hist_to_image(hist_dict, title=None):

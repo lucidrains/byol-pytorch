@@ -33,7 +33,7 @@ expt:
 #######################################
 train:
   batch_size:       512                   # in distributed setting this is the total batch size, i.e. batch size = individual bs / number of GPUs
-  epochs:           500                   # number of pre-training epochs
+  epochs:           800                   # number of pre-training epochs
   start_epoch:      0                     # start training at epoch n
   optimizer:        "sgd"                 # optimizer type, options: adam adamW rmsprop adabelief sgd
   schedule:         "cosine"              # learning rate schedule, options: 'cosine' 'cosineW' 'plateau' 'step' 'const' 'cosineWarm' 'exponential' 'None' (BOHO case)
@@ -42,9 +42,10 @@ train:
   lr:               0.03                  # the default LR for all schedulers, in case of const LR schedule: set lr_high=lr_low
   clip_grad:        False                 # gradient cliping, options: 0.1 ... 100, False
   scheduler_epochs: 100                   # T_max or T_0 in 'cosine' and 'cosineWarm' scheduler, in case of 'step' scheduler this denotes when scheduler should step
-  val_freq:         10                   # validate with knn
-
-
+  val_freq:         10                    # validate with knn
+  wd_decay:         False                  # use weight decay decay (annealing)? (default: True)
+  wd_start:         1.e-3                 # Upper value of WD Decay. Only used when wd_decay is True.
+  wd_end:           1.e-6                 # Lower value of WD Decay. Only used when wd_decay is True.
 
 finetuning:
   batch_size:       512                   # in distributed setting this is the total batch size, i.e. batch size = individual bs / number of GPUs
@@ -54,7 +55,7 @@ finetuning:
   schedule:         "cosine"              # learning rate schedule, options: 'cosine' 'cosineW' 'plateau' 'step' 'const' 'cosineWarm' 'exponential' 'None' (BOHO case)
   weight_decay:     0.
   momentum:         0.9                   # momentum of SGD solver
-  lr:               1                    # the default LR
+  lr:               0.1                   # the default LR
   clip_grad:        False                 # gradient cliping, options: 0.1 ... 100, False
   scheduler_epochs: 100                   # T_max or T_0 in 'cosine' and 'cosineWarm' scheduler, in case of 'step' scheduler this denotes when scheduler should step
   valid_size:       0.0                   # If valid_size > 0, pick some images from the trainset to do evaluation on. If valid_size=0 evaluation is done on the testset.

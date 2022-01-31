@@ -7,11 +7,13 @@ except ImportError:
     
 
 def write_to_summary_writer(total_iter, loss_pt, loss_ft, data_time, batch_time, optimizer_pt, optimizer_ft, top1, top5, meters_to_plot, writer):
-    writer.add_scalar('Loss/pre-training', loss_pt.item(), total_iter)
-    if isinstance(loss_ft, float):
-        writer.add_scalar('Loss/fine-tuning', loss_ft, total_iter)
-    else:
-        writer.add_scalar('Loss/fine-tuning', loss_ft.item(), total_iter)
+    if loss_pt:
+        writer.add_scalar('Loss/pre-training', loss_pt.item(), total_iter)
+    if loss_ft:
+        if isinstance(loss_ft, float):
+            writer.add_scalar('Loss/fine-tuning', loss_ft, total_iter)
+        else:
+            writer.add_scalar('Loss/fine-tuning', loss_ft.item(), total_iter)
     writer.add_scalar('Accuracy/@1', top1.val, total_iter)
     writer.add_scalar('Accuracy/@5', top5.val, total_iter)
     writer.add_scalar('Accuracy/@1 average', top1.avg, total_iter)
@@ -19,8 +21,10 @@ def write_to_summary_writer(total_iter, loss_pt, loss_ft, data_time, batch_time,
     writer.add_scalar('Time/Data', data_time.val, total_iter)
     writer.add_scalar('Time/Batch', batch_time.val, total_iter)
     # assuming only one param group
-    writer.add_scalar('Learning rate/pre-training', optimizer_pt.param_groups[0]['lr'], total_iter)
-    writer.add_scalar('Learning rate/fine-tuning', optimizer_ft.param_groups[0]['lr'], total_iter)
+    if optimizer_pt:
+        writer.add_scalar('Learning rate/pre-training', optimizer_pt.param_groups[0]['lr'], total_iter)
+    if optimizer_ft:
+        writer.add_scalar('Learning rate/fine-tuning', optimizer_ft.param_groups[0]['lr'], total_iter)
     
     main_stats_meters = meters_to_plot["main_meters"]
     additional_stats_meters = meters_to_plot["additional_stats_meters"]

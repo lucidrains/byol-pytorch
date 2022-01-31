@@ -96,34 +96,36 @@ def update_grad_stats_meters(grads, meters, warmup):
     norm_ft_std_meter_lw = meters["norm_ft_std_meter_lw"]
     
     if not warmup:
-        mean, std = calc_layer_wise_stats(backbone_grads_pt=backbone_grads_pt_lw, backbone_grads_ft=backbone_grads_ft_lw, metric_type="cosine")
-        cos_sim_ema_meter_lw.update(mean), cos_sim_std_meter_lw.update(std)
+        if backbone_grads_ft_lw:
+            mean, std = calc_layer_wise_stats(backbone_grads_pt=backbone_grads_pt_lw, backbone_grads_ft=backbone_grads_ft_lw, metric_type="cosine")
+            cos_sim_ema_meter_lw.update(mean), cos_sim_std_meter_lw.update(std)
 
-        mean, std = calc_layer_wise_stats(backbone_grads_pt=backbone_grads_pt_lw, backbone_grads_ft=backbone_grads_ft_lw, metric_type="cosine", standardize_cosine=True)
-        cos_sim_ema_meter_standardized_lw.update(mean), cos_sim_std_meter_standardized_lw.update(std)
+            mean, std = calc_layer_wise_stats(backbone_grads_pt=backbone_grads_pt_lw, backbone_grads_ft=backbone_grads_ft_lw, metric_type="cosine", standardize_cosine=True)
+            cos_sim_ema_meter_standardized_lw.update(mean), cos_sim_std_meter_standardized_lw.update(std)
+            
+            mean, std = calc_layer_wise_stats(backbone_grads_pt=backbone_grads_pt_lw, backbone_grads_ft=backbone_grads_ft_lw, metric_type="dot")
+            dot_prod_avg_meter_lw.update(mean), dot_prod_std_meter_lw.update(std)
+            
+            mean, std = calc_layer_wise_stats(backbone_grads_pt=backbone_grads_pt_lw, backbone_grads_ft=backbone_grads_ft_lw, metric_type="euclidean")
+            eucl_dis_avg_meter_lw.update(mean), eucl_dis_std_meter_lw.update(std)
         
-        mean, std = calc_layer_wise_stats(backbone_grads_pt=backbone_grads_pt_lw, backbone_grads_ft=backbone_grads_ft_lw, metric_type="dot")
-        dot_prod_avg_meter_lw.update(mean), dot_prod_std_meter_lw.update(std)
-        
-        mean, std = calc_layer_wise_stats(backbone_grads_pt=backbone_grads_pt_lw, backbone_grads_ft=backbone_grads_ft_lw, metric_type="euclidean")
-        eucl_dis_avg_meter_lw.update(mean), eucl_dis_std_meter_lw.update(std)
-        
+            mean, std = calc_layer_wise_stats(backbone_grads_pt=backbone_grads_ft_lw, backbone_grads_ft=None, metric_type="norm")
+            norm_ft_avg_meter_lw.update(mean), norm_ft_std_meter_lw.update(std)
+    
         mean, std = calc_layer_wise_stats(backbone_grads_pt=backbone_grads_pt_lw, backbone_grads_ft=None, metric_type="norm")
         norm_pt_avg_meter_lw.update(mean), norm_pt_std_meter_lw.update(std)
         
-        mean, std = calc_layer_wise_stats(backbone_grads_pt=backbone_grads_pt_lw, backbone_grads_ft=None, metric_type="norm")
-        norm_ft_avg_meter_lw.update(mean), norm_ft_std_meter_lw.update(std)
+        if backbone_grads_ft_global:
+            cos_sim_ema_meter_global.update(F.cosine_similarity(backbone_grads_pt_global, backbone_grads_ft_global, dim=0))
+            backbone_grads_pt_global_standardized = (backbone_grads_pt_global - backbone_grads_pt_global.mean()) / backbone_grads_pt_global.std()
+            backbone_grads_ft_global_standardized = (backbone_grads_ft_global - backbone_grads_ft_global.mean()) / backbone_grads_ft_global.std()
+            cos_sim_ema_meter_standardized_global.update(F.cosine_similarity(backbone_grads_pt_global_standardized, backbone_grads_ft_global_standardized, dim=0))
         
-        cos_sim_ema_meter_global.update(F.cosine_similarity(backbone_grads_pt_global, backbone_grads_ft_global, dim=0))
-
-        backbone_grads_pt_global_standardized = (backbone_grads_pt_global - backbone_grads_pt_global.mean()) / backbone_grads_pt_global.std()
-        backbone_grads_ft_global_standardized = (backbone_grads_ft_global - backbone_grads_ft_global.mean()) / backbone_grads_ft_global.std()
-        cos_sim_ema_meter_standardized_global.update(F.cosine_similarity(backbone_grads_pt_global_standardized, backbone_grads_ft_global_standardized, dim=0))
+            dot_prod_meter_global.update(torch.dot(backbone_grads_pt_global, backbone_grads_ft_global))
+            eucl_dis_meter_global.update(torch.linalg.norm(backbone_grads_pt_global - backbone_grads_ft_global, 2))
+            norm_ft_meter_global.update(torch.linalg.norm(backbone_grads_ft_global, 2))
         
-        dot_prod_meter_global.update(torch.dot(backbone_grads_pt_global, backbone_grads_ft_global))
-        eucl_dis_meter_global.update(torch.linalg.norm(backbone_grads_pt_global - backbone_grads_ft_global, 2))
         norm_pt_meter_global.update(torch.linalg.norm(backbone_grads_pt_global, 2))
-        norm_ft_meter_global.update(torch.linalg.norm(backbone_grads_ft_global, 2))
     
     else:
         # global
