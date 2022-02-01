@@ -306,7 +306,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
                     current_weight_decay = group['weight_decay']
             else:
                 for group in optimizer_ft.param_groups:
-                    group['weight_decay'] = config.finetune.wd_end + 1 / 2 * (config.finetune.wd_start - config.finetune.wd_end) * (1 + math.cos(epoch / config.train.epochs * math.pi))
+                    group['weight_decay'] = config.finetune.wd_end + 1 / 2 * (config.finetune.wd_start - config.finetune.wd_end) * (1 + math.cos(epoch / config.finetune.epochs * math.pi))
                     current_weight_decay = group['weight_decay']
             print(f"current weight decay (ft): {current_weight_decay}")
 
@@ -342,7 +342,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
         # --------------------------------------------------------------------------------------------------------------
         else:
             # evaluate on validation/test set
-            if epoch % config.expt.eval_freq == 0 or epoch % (config.train.epochs - 1) == 0:
+            if epoch % config.expt.eval_freq == 0 or epoch % (config.finetuning.epochs - 1) == 0:
                 top1_avg = validate(loader_ft, model, criterion_ft, config, finetuning=True)
                 if config.expt.rank == 0:
                     writer.add_scalar(writer_scalar_mode + '/Accuracy@1', top1_avg, total_iter)

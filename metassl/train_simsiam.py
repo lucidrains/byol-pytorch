@@ -572,9 +572,6 @@ def organize_experiment_saving(user, config, is_bohb_run):
         else:
             expt_dir = os.path.join(expt_root_dir, config.expt.expt_name)
     
-    # TODO: @Fabio - Do we need this line below?
-    expt_root_dir = pathlib.Path(expt_root_dir)
-    
     # Create directory (if not yet existing) and save config.yaml
     if not os.path.exists(expt_dir):
         os.makedirs(expt_dir)
