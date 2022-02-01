@@ -251,7 +251,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
         )
     
     # in case a dumped model exist and ssl_model_checkpoint is not set, load that dumped model
-    newest_model = get_newest_model(expt_dir)
+    newest_model = get_newest_model(expt_dir, suffix="checkpoint*.pth.tar")
     if newest_model and config.expt.ssl_model_checkpoint_path is None:
         config.expt.ssl_model_checkpoint_path = newest_model
     
@@ -313,7 +313,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
         if not warmup and config.expt.warmup_epochs > epoch - 1:
             meters["losses_ft_meter"].reset()
 
-        if config.train.wd_decay:
+        if config.expt.wd_decay_pt:
             # Do annealing
             if epoch == 1:
                 for group in optimizer_pt.param_groups:
@@ -388,6 +388,19 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
                 expt_dir=expt_dir,
                 meters=meters,
                 )
+            
+    # make sure to always save at the end of training
+    check_and_save_checkpoint(
+        config=config,
+        ngpus_per_node=ngpus_per_node,
+        total_iter=total_iter,
+        epoch=epoch,
+        model=model,
+        optimizer_pt=optimizer_pt,
+        optimizer_ft=None,
+        expt_dir=expt_dir,
+        meters=None,
+        )
     
     # shut down writer at end of training
     if config.expt.rank == 0:
@@ -614,13 +627,14 @@ if __name__ == '__main__':
     parser.add_argument('--expt.eval_freq', default=10, type=int, metavar='N', help='every eval_freq epoch will the model be evaluated')
     parser.add_argument('--expt.seed', default=123, type=int, metavar='N', help='random seed of numpy and torch')
     parser.add_argument('--expt.evaluate', action='store_true', help='evaluate model on validation set once and terminate (default: False)')
-    # parser.add_argument('--expt.image_wise_gradients', action='store_true', help='compute image wise gradients with backpack (default: False).')
     parser.add_argument('--expt.is_non_grad_based', action='store_true', help='Set this flag to run default SimSiam or BOHB runs')
     parser.add_argument('--expt.warmup_epochs', default=10, type=int, metavar='N', help='denotes the number of epochs that we only pre-train without finetuning afterwards; warmup is turned off when set to 0; we use a linear incremental schedule during warmup')
     parser.add_argument('--expt.warmup_multiplier', default=2., type=float, metavar='N', help='A factor that is multiplied with the pretraining lr used in the linear incremental learning rate scheduler during warmup. The final lr is multiplier * pre-training lr')
     parser.add_argument('--expt.use_fix_aug_params', action='store_true', help='Use this flag if you want to try out specific aug params (e.g., from a best BOHB config). Default values will be overwritten then without crashing other experiments.')
     parser.add_argument('--expt.data_augmentation_mode', default='default', choices=['default', 'probability_augment', 'rand_augment'], help="Select which data augmentation to use. Default is for the standard SimSiam setting and for parameterize aug setting.")
     parser.add_argument('--expt.write_summary_frequency', default=3, type=int, metavar='N', help='Specifies, after how many batches the TensorBoard summary writer should flush new data to the summary object.')
+    parser.add_argument('--expt.wd_decay_pt', action="store_true", help='use weight decay decay (annealing) during pre-training? (default: True)')
+    parser.add_argument('--expt.wd_decay_ft', action="store_true", help='use weight decay decay (annealing) during fine-tuning? (default: True)')
     
     parser.add_argument('--train', default="train", type=str, metavar='N')
     parser.add_argument('--train.batch_size', default=256, type=int, metavar='N', help='in distributed setting this is the total batch size, i.e. batch size = individual bs * number of GPUs')
@@ -631,9 +645,8 @@ if __name__ == '__main__':
     parser.add_argument('--train.weight_decay', default=0.0001, type=float, metavar='N')
     parser.add_argument('--train.momentum', default=0.9, type=float, metavar='N', help='SGD momentum')
     parser.add_argument('--train.lr', default=0.05, type=float, metavar='N', help='pre-training learning rate')
-    parser.add_argument('--train.wd_decay', action="store_true", help='use weight decay decay (annealing)? (default: True)')
-    parser.add_argument('--train.wd_start', default=10e-3, type=float, help='Upper value of WD Decay. Only used when wd_decay is True.')
-    parser.add_argument('--train.wd_end', default=10e-7, type=float, help='Lower value of WD Decay. Only used when wd_decay is True.')
+    parser.add_argument('--train.wd_start', default=1e-3, type=float, help='Upper value of WD Decay. Only used when wd_decay is True.')
+    parser.add_argument('--train.wd_end', default=1e-6, type=float, help='Lower value of WD Decay. Only used when wd_decay is True.')
     
     parser.add_argument('--finetuning', default="finetuning", type=str, metavar='N')
     parser.add_argument('--finetuning.batch_size', default=256, type=int, metavar='N', help='in distributed setting this is the total batch size, i.e. batch size = individual bs * number of GPUs')
@@ -646,6 +659,8 @@ if __name__ == '__main__':
     parser.add_argument('--finetuning.lr', default=100, type=float, metavar='N', help='finetuning learning rate')
     parser.add_argument('--finetuning.valid_size', default=0.0, type=float, help='If valid_size > 0, pick some images from the trainset to do evaluation on. If valid_size=0 evaluation is done on the testset.')
     parser.add_argument('--finetuning.data_augmentation', default='none', choices=['none', 'p_probability_augment_pt', 'p_probability_augment_ft', 'p_probability_augment_1-pt'], help='Select if and how finetuning gets augmented.')
+    parser.add_argument('--finetuning.wd_start', default=1e-3, type=float, help='Upper value of WD Decay. Only used when wd_decay is True.')
+    parser.add_argument('--finetuning.wd_end', default=1e-6, type=float, help='Lower value of WD Decay. Only used when wd_decay is True.')
     
     parser.add_argument('--model', default="model", type=str, metavar='N')
     parser.add_argument('--model.model_type', type=str, default='resnet50', help='all torchvision ResNets')

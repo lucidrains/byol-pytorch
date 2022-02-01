@@ -214,13 +214,14 @@ def check_and_save_checkpoint(config, ngpus_per_node, total_iter, epoch, model, 
                 'state_dict':   model.state_dict(),
                 'optimizer_pt': optimizer_pt.state_dict() if optimizer_pt else None,
                 'optimizer_ft': optimizer_ft.state_dict() if optimizer_ft else None,
-                'meters':       meters,
                 }
             
             if "linear_cls" in checkpoint_name:
                 save_dct["epoch_ft"] = epoch + 1
+                save_dct["meters_ft"] = meters
             else:
                 save_dct["epoch"] = epoch + 1
+                save_dct["meters"] = meters
             
             if optimizer_aug is not None:
                 save_dct['optimizer_aug'] = optimizer_aug.state_dict()
