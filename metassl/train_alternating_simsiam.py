@@ -501,7 +501,7 @@ def train_one_epoch(
         alternating_mode = False if config.expt.is_non_grad_based else True  # default is True
         loss_pt, backbone_grads_pt_lw, backbone_grads_pt_global, z1, z2 = pretrain(model, images_pt, criterion_pt, optimizer_pt, losses_pt_meter, data_time_meter, end, config=config, alternating_mode=alternating_mode)
 
-        z_std_normalized = np.std(z1.cpu().numpy() / torch.linalg.norm(z1, 2).cpu().numpy())
+        z_std_normalized = np.std(z1.cpu().numpy() / (torch.linalg.norm(z1, 2).cpu().numpy() + 1e-9))
         target_std_meter.update(z_std_normalized)
         
         backbone_grads_ft_lw, backbone_grads_ft_global = None, None
