@@ -302,11 +302,11 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
             # Do annealing
             if epoch == 1:
                 for group in optimizer_ft.param_groups:
-                    group['weight_decay'] = config.finetune.wd_start
+                    group['weight_decay'] = config.finetuning.wd_start
                     current_weight_decay = group['weight_decay']
             else:
                 for group in optimizer_ft.param_groups:
-                    group['weight_decay'] = config.finetune.wd_end + 1 / 2 * (config.finetune.wd_start - config.finetune.wd_end) * (1 + math.cos(epoch / config.finetune.epochs * math.pi))
+                    group['weight_decay'] = config.finetuning.wd_end + 1 / 2 * (config.finetuning.wd_start - config.finetuning.wd_end) * (1 + math.cos(epoch / config.finetuning.epochs * math.pi))
                     current_weight_decay = group['weight_decay']
             print(f"current weight decay (ft): {current_weight_decay}")
 
@@ -591,9 +591,7 @@ def organize_experiment_saving(user, config, is_bohb_run):
         else:
             expt_dir = os.path.join(expt_root_dir, config.expt.expt_name)
 
-    # TODO: @Fabio - Do we need this line below?
-    expt_root_dir = pathlib.Path(expt_root_dir)
-    
+    # TODO FABIO: if folder exists, create a new one with incremental suffix (-1, -2) and implement a flag ""
     # Create directory (if not yet existing) and save config.yaml
     if not os.path.exists(expt_dir):
         os.makedirs(expt_dir)
