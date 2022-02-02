@@ -293,6 +293,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
     if not meters:
         meters = initialize_all_meters()
     
+    epoch = None
     for epoch in range(config.train.start_epoch, config.train.epochs):
         
         if config.expt.distributed:
@@ -323,7 +324,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
                 for group in optimizer_pt.param_groups:
                     group['weight_decay'] = config.train.wd_end + 1 / 2 * (config.train.wd_start - config.train.wd_end) * (1 + math.cos(epoch / config.train.epochs * math.pi))
                     current_weight_decay = group['weight_decay']
-            print(f"current weight decay: {current_weight_decay}")
+            print(f"current weight decay (pt): {current_weight_decay}")
 
         total_iter = train_one_epoch(
             train_loader_pt=train_loader_pt,
@@ -359,7 +360,9 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
         #                         'optimizer': optimizer.state_dict(),
         #                     }, is_best=True, filename=os.path.join(expt_dir, 'checkpoint_{:04d}.pth.tar'.format(epoch))
         #                 )
-        
+
+        # make sure to always save at the end of training
+        is_last_epoch = epoch + 1 >= config.train.epochs
         if bohb_infos is not None:
             if config.bohb.budget_mode == "epochs" and epoch % int(bohb_infos['bohb_budget'] - 1) == 0:
                 check_and_save_checkpoint(
@@ -376,7 +379,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
             elif config.bohb.budget_mode != "epochs":
                 raise ValueError("Not implemented yet!")
         
-        elif config.expt.save_model and epoch % config.expt.save_model_frequency == 0:
+        elif (config.expt.save_model and epoch % config.expt.save_model_frequency == 0) or (config.expt.save_model and is_last_epoch):
             check_and_save_checkpoint(
                 config=config,
                 ngpus_per_node=ngpus_per_node,
@@ -388,19 +391,6 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
                 expt_dir=expt_dir,
                 meters=meters,
                 )
-            
-    # make sure to always save at the end of training
-    check_and_save_checkpoint(
-        config=config,
-        ngpus_per_node=ngpus_per_node,
-        total_iter=total_iter,
-        epoch=epoch,
-        model=model,
-        optimizer_pt=optimizer_pt,
-        optimizer_ft=None,
-        expt_dir=expt_dir,
-        meters=None,
-        )
     
     # shut down writer at end of training
     if config.expt.rank == 0:

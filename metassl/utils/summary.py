@@ -23,8 +23,12 @@ def write_to_summary_writer(total_iter, loss_pt, loss_ft, data_time, batch_time,
     # assuming only one param group
     if optimizer_pt:
         writer.add_scalar('Learning rate/pre-training', optimizer_pt.param_groups[0]['lr'], total_iter)
+        if 'weight_decay' in optimizer_pt.param_groups[0]:
+            writer.add_scalar('Weight Decay/pre-training', optimizer_pt.param_groups[0]['weight_decay'], total_iter)
     if optimizer_ft:
         writer.add_scalar('Learning rate/fine-tuning', optimizer_ft.param_groups[0]['lr'], total_iter)
+        if 'weight_decay' in optimizer_ft.param_groups[0]:
+            writer.add_scalar('Weight Decay/fine-tuning', optimizer_ft.param_groups[0]['weight_decay'], total_iter)
     
     main_stats_meters = meters_to_plot["main_meters"]
     additional_stats_meters = meters_to_plot["additional_stats_meters"]
