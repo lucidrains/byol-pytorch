@@ -615,8 +615,8 @@ if __name__ == '__main__':
     parser.add_argument('--expt.use_fix_aug_params', action='store_true', help='Use this flag if you want to try out specific aug params (e.g., from a best BOHB config). Default values will be overwritten then without crashing other experiments.')
     parser.add_argument('--expt.data_augmentation_mode', default='default', choices=['default', 'probability_augment', 'rand_augment'], help="Select which data augmentation to use. Default is for the standard SimSiam setting and for parameterize aug setting.")
     parser.add_argument('--expt.write_summary_frequency', default=3, type=int, metavar='N', help='Specifies, after how many batches the TensorBoard summary writer should flush new data to the summary object.')
-    parser.add_argument('--expt.wd_decay_pt', action="store_true", help='use weight decay decay (annealing) during pre-training? (default: True)')
-    parser.add_argument('--expt.wd_decay_ft', action="store_true", help='use weight decay decay (annealing) during fine-tuning? (default: True)')
+    parser.add_argument('--expt.wd_decay_pt', action="store_true", help='use weight decay decay (annealing) during pre-training? (default: False)')
+    parser.add_argument('--expt.wd_decay_ft', action="store_true", help='use weight decay decay (annealing) during fine-tuning? (default: False)')
     parser.add_argument('--expt.run_knn_val', action='store_true', help='activate knn evaluation during training (default: False)')
     
     parser.add_argument('--train', default="train", type=str, metavar='N')
