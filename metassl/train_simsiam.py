@@ -43,6 +43,7 @@ try:
     from metassl.utils.summary import write_to_summary_writer
     import metassl.models.resnet_cifar as our_cifar_resnets
     from metassl.utils.torch_utils import get_newest_model, check_and_save_checkpoint, deactivate_bn, validate, accuracy, adjust_learning_rate
+    from knn_validation import knn_classifier
 
 except ImportError:
     # For execution in command line
@@ -219,11 +220,11 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
         torch.cuda.set_device(config.expt.gpu)
         model = model.cuda(config.expt.gpu)
         # comment out the following line for debugging
-        raise NotImplementedError("Only DistributedDataParallel is supported.")
-    else:
-        # AllGather implementation (batch shuffle, queue update, etc.) in
-        # this code only supports DistributedDataParallel.
-        raise NotImplementedError("Only DistributedDataParallel is supported.")
+        # raise NotImplementedError("Only DistributedDataParallel or gpu mode is supported.")
+    # else:
+    #     # AllGather implementation (batch shuffle, queue update, etc.) in
+    #     # this code only supports DistributedDataParallel.
+    #     raise NotImplementedError("Only DistributedDataParallel is supported.")
     
     # define loss function (criterion) and optimizer
     criterion_pt = nn.CosineSimilarity(dim=1).cuda(config.expt.gpu)
@@ -231,15 +232,15 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
     
     optim_params_pt = [
         {
-            'params': model.module.backbone.parameters(),
+            'params': model.module.backbone.parameters() if config.expt.distributed else model.backbone.parameters(),
             'fix_lr': False
             },
         {
-            'params': model.module.encoder_head.parameters(),
+            'params': model.module.encoder_head.parameters() if config.expt.distributed else model.encoder_head.parameters(),
             'fix_lr': False
             },
         {
-            'params': model.module.predictor.parameters(),
+            'params': model.module.predictor.parameters() if config.expt.distributed else model.predictor.parameters(),
             'fix_lr': config.simsiam.fix_pred_lr
             }]
     
@@ -339,27 +340,16 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
             warmup=warmup,
             )
         
-        # if (epoch % config.expt.eval_freq == 0) and config.run_knn_val :
-        #     if config.expt.rank == 0:
-        #         top1_avg = knn_classifier(net=model.module.encoder, batch_size=config.train.batch_size,
-        #                                   workers=config.expt.workers, epoch=epoch, datatset=config.data.dataset)
-        #         writer.add_scalar('Pre-training/Accuracy@1', top1_avg, epoch)
-        #         print(f"=> Validation '{top1_avg}'")
-        #
-        #         # save the best model
-        #         if top1_avg > best_acc:
-        #             best_acc = top1_avg
-        #             if not config.expt.multiprocessing_distributed or (config.expt.multiprocessing_distributed
-        #                                                                and config.expt.rank % ngpus_per_node == 0):
-        #                 save_checkpoint(
-        #                     {
-        #                         'epoch': epoch + 1,
-        #                         'arch': config.model.model_type,
-        #                         'state_dict': model.state_dict(),
-        #                         'top1_best':top1_avg,
-        #                         'optimizer': optimizer.state_dict(),
-        #                     }, is_best=True, filename=os.path.join(expt_dir, 'checkpoint_{:04d}.pth.tar'.format(epoch))
-        #                 )
+        if (epoch % config.expt.eval_freq == 0) and config.expt.run_knn_val:
+            if config.expt.rank == 0:
+                top1_avg = knn_classifier(net=model.module.backbone,
+                                          batch_size=config.train.batch_size,
+                                          workers=config.expt.workers,
+                                          dataset=config.data.dataset,
+                                          hide_progress=True
+                                          )
+                writer.add_scalar('Pre-training/kNN test acc@1', top1_avg, epoch)
+                print(f"=> kNN test acc@1 '{top1_avg}'")
 
         # make sure to always save at the end of training
         is_last_epoch = epoch + 1 >= config.train.epochs
@@ -533,8 +523,13 @@ def pretrain(model, images_pt, criterion_pt, optimizer_pt, losses_pt, data_time,
     # step does not change .grad field of the parameters.
     optimizer_pt.step()
     
+    if config.expt.distributed:
+        backbone = model.module.backbone
+    else:
+        backbone = model.backbone
+    
     if get_gradients:
-        for key, param in model.module.backbone.named_parameters():
+        for key, param in backbone.named_parameters():
             grad_tensor = param.grad.detach_().clone().flatten()
             backbone_grads_lw[key] = torch.tensor(grad_tensor)
             backbone_grads_global = torch.cat([backbone_grads_global, grad_tensor], dim=0)
@@ -622,6 +617,7 @@ if __name__ == '__main__':
     parser.add_argument('--expt.write_summary_frequency', default=3, type=int, metavar='N', help='Specifies, after how many batches the TensorBoard summary writer should flush new data to the summary object.')
     parser.add_argument('--expt.wd_decay_pt', action="store_true", help='use weight decay decay (annealing) during pre-training? (default: True)')
     parser.add_argument('--expt.wd_decay_ft', action="store_true", help='use weight decay decay (annealing) during fine-tuning? (default: True)')
+    parser.add_argument('--expt.run_knn_val', action='store_true', help='activate knn evaluation during training (default: False)')
     
     parser.add_argument('--train', default="train", type=str, metavar='N')
     parser.add_argument('--train.batch_size', default=256, type=int, metavar='N', help='in distributed setting this is the total batch size, i.e. batch size = individual bs * number of GPUs')

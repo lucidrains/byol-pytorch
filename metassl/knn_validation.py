@@ -84,17 +84,16 @@ def get_knn_data_loaders(batch_size, num_workers, dataset):
 
 # Code from https://colab.research.google.com/github/facebookresearch/moco/blob/colab-notebook/colab/moco_cifar10_demo.ipynb
 # test using a knn monitor
-def knn_classifier(net, batch_size, workers, epoch, datatset, k=200, t=0.1, hide_progress=False):
+def knn_classifier(net, batch_size, workers, dataset, k=200, t=0.1, hide_progress=False):
     # Moco used 200
     """
      @param net: Model backbone. Encoder in our case
-     @param epoch
      @workers
-     @param datatset: ImageNet CIFAR10 CIFAR100
+     @param dataset: ImageNet CIFAR10 CIFAR100
      @param k: top neighbors to find. 200 is for ImageNet
     """
     # separate loaders used since the training and validation loaders used during pretraining are shuffled.
-    memory_data_loader, test_data_loader = get_knn_data_loaders(batch_size=batch_size, num_workers=workers, dataset=datatset)
+    memory_data_loader, test_data_loader = get_knn_data_loaders(batch_size=batch_size, num_workers=workers, dataset=dataset)
     net.eval()
     classes = len(memory_data_loader.dataset.classes)
     total_top1, total_top5, total_num, feature_bank = 0.0, 0.0, 0, []
