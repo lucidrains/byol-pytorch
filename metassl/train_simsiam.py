@@ -346,7 +346,8 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
                                           batch_size=config.train.batch_size,
                                           workers=config.expt.workers,
                                           dataset=config.data.dataset,
-                                          hide_progress=True
+                                          hide_progress=True,
+                                          download=False
                                           )
                 writer.add_scalar('Pre-training/kNN test acc@1', top1_avg, epoch)
                 print(f"=> kNN test acc@1 '{top1_avg}'")
