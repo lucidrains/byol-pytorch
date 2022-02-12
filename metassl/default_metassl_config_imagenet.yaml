@@ -30,6 +30,7 @@ expt:
   write_summary_frequency:      3                             # Specifies, after how many batches the TensorBoard summary writer should flush new data to the summary object.
   wd_decay_pt:                  False                         # use weight decay decay (annealing) during pre-training? (default: True)
   wd_decay_ft:                  False                         # use weight decay decay (annealing) during fine-tuning? (default: True)
+  run_knn_val:                  False                         # activate knn evaluation during training (default: False)
 
 #######################################
 ###     Training Configuration      ###
