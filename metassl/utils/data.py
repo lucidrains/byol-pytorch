@@ -139,7 +139,6 @@ def get_train_valid_loader(
                                                 download=True, transform=train_transform)
         # valid_dataset
         # --------------------------------------------------------------------------------------------------------------
-        print(f"{valid_size=}")
         valid_dataset = torchvision.datasets.CIFAR10(root='datasets/CIFAR10', train=True,
                                            download=True, transform=valid_transform)
     else:
@@ -231,7 +230,7 @@ def get_test_loader(
         transform = transforms.Compose(
             [
                 transforms.ToTensor(),
-                transforms.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.2023, 0.1994, 0.2010])
+                normalize_cifar10,
             ]
         )
 
@@ -239,7 +238,7 @@ def get_test_loader(
         transform = transforms.Compose(
             [
                 transforms.ToTensor(),
-                transforms.Normalize(mean=[0.5071, 0.4865, 0.4409], std=[0.2673, 0.2564, 0.2762])
+                normalize_cifar100,
             ]
         )
 
@@ -380,7 +379,6 @@ def get_train_valid_transforms(dataset_name, use_fix_aug_params, bohb_infos, get
             if parameterize_augmentation:
                 # rest is done outside
                 train_transform = transforms.Compose([
-                    transforms.RandomResizedCrop(size=32, scale=(0.2, 1.)),
                     transforms.ToTensor(),
                     ])
             else:

@@ -146,6 +146,7 @@ class DataAugmentation(nn.Module):
             modules.append(RandomHorizontalFlip())
             # modules.append(K.augmentation.RandomHorizontalFlip())
         elif self.expt_mode == "CIFAR10":
+            modules.append(RandomResizedCrop(size=32, scale=(0.2, 1.)))
             modules.append(RandomApply([ColorJitter(brightness=strength_b, contrast=strength_c, saturation=strength_s, hue=strength_h)], p=0.8))
             modules.append(RandomGrayscale(p=0.2))
             modules.append(RandomHorizontalFlip())
