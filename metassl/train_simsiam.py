@@ -94,19 +94,12 @@ def main(config, expt_dir, bohb_infos=None):
         
         print(f"\n\n\n\n\n\n{bohb_infos=}\n\n\n\n\n\n")
     # ------------------------------------------------------------------------------------------------------------------
-    
-    if config.data.dataset == "CIFAR10":
-        # Define master port (for preventing 'Address already in use error' when submitting more than 1 jobs on 1 node)
-        # Code from: https://stackoverflow.com/questions/1365265/on-localhost-how-do-i-pick-a-free-port-number
-        master_port = find_free_port()
-        config.expt.dist_url = "tcp://localhost:" + str(master_port)
-        # if this should still fail: do it via filesystem initialization
-        # https://pytorch.org/docs/stable/distributed.html#shared-file-system-initialization
-    
+
     if config.expt.seed is not None:
         random.seed(config.expt.seed)
         torch.manual_seed(config.expt.seed)
-        cudnn.deterministic = True
+        np.random.seed(config.expt.seed)
+        cudnn.deterministic = True  # TODO: @Diane - checkout
         warnings.warn(
             'You have chosen to seed training. '
             'This will turn on the CUDNN deterministic setting, '
@@ -125,6 +118,14 @@ def main(config, expt_dir, bohb_infos=None):
         config.expt.world_size = int(os.environ["WORLD_SIZE"])
     
     config.expt.distributed = config.expt.world_size > 1 or config.expt.multiprocessing_distributed
+
+    if config.data.dataset == "CIFAR10" and config.expt.distributed:
+        # Define master port (for preventing 'Address already in use error' when submitting more than 1 jobs on 1 node)
+        # Code from: https://stackoverflow.com/questions/1365265/on-localhost-how-do-i-pick-a-free-port-number
+        master_port = find_free_port()
+        config.expt.dist_url = "tcp://localhost:" + str(master_port)
+        # if this should still fail: do it via filesystem initialization
+        # https://pytorch.org/docs/stable/distributed.html#shared-file-system-initialization
     
     ngpus_per_node = torch.cuda.device_count()
     if config.expt.multiprocessing_distributed:
@@ -173,7 +174,9 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
             world_size=config.expt.world_size, rank=config.expt.rank
             )
         torch.distributed.barrier()
+
     # create model
+    # TODO: @Diane - Check out and compare against baseline code
     if config.data.dataset == 'CIFAR10':
         # Use model from our model folder instead from torchvision!
         print(f"=> creating model resnet18")
@@ -187,13 +190,13 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
         deactivate_bn(model)
         model.encoder_head[6].bias.requires_grad = True
     
-    # infer learning rate before changing batch size
+    # infer learning rate !before changing batch size! > see lines below
+    # TODO: @Fabio - keep for CIFAR10? (metassl code); lr_b = 0.06, lr_m = 0.03 * 512 / 256 = 0.06 also
     init_lr_pt = config.train.lr * config.train.batch_size / 256
-    
-    config.train.init_lr_pt = init_lr_pt
+    config.train.init_lr_pt = init_lr_pt  # TODO: config.train.init_lr_pt is currently unused!
     
     if config.expt.distributed:
-        # Apply SyncBN
+        # Apply SyncBN TODO: @Fabio - keep for CIFAR10? (metassl code)
         model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
         # For multiprocessing distributed, DistributedDataParallel constructor
         # should always set the single device scope, otherwise,
@@ -209,7 +212,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
             model = torch.nn.parallel.DistributedDataParallel(
                 model,
                 device_ids=[config.expt.gpu],
-                find_unused_parameters=True
+                find_unused_parameters=True  # TODO: @Fabio - keep for CIFAR10? (metassl code)
                 )
         else:
             model.cuda()
@@ -219,33 +222,45 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
     elif config.expt.gpu is not None:
         torch.cuda.set_device(config.expt.gpu)
         model = model.cuda(config.expt.gpu)
-        # comment out the following line for debugging
-        # raise NotImplementedError("Only DistributedDataParallel or gpu mode is supported.")
+        # comment out the following line for debugging  # TODO: delete? (metassl code)
+        # raise NotImplementedError("Only DistributedDataParallel or gpu mode is supported.")  # TODO: delete (metassl code)
+    else:
+        # DataParallel will divide and allocate batch_size to all available GPUs
+        model = torch.nn.DataParallel(model).cuda()
+        # TODO: Integrate lines below? (baselines code)
+        # if args.arch.startswith('alexnet') or args.arch.startswith('vgg'):
+        #     model.features = torch.nn.DataParallel(model.features)
+        #     model.cuda()
+        # else:
+        #     model = torch.nn.DataParallel(model).cuda()
+
+    # TODO: delete? (metassl code)
     # else:
     #     # AllGather implementation (batch shuffle, queue update, etc.) in
     #     # this code only supports DistributedDataParallel.
     #     raise NotImplementedError("Only DistributedDataParallel is supported.")
     
     # define loss function (criterion) and optimizer
-    criterion_pt = nn.CosineSimilarity(dim=1).cuda(config.expt.gpu)
-    criterion_ft = nn.CrossEntropyLoss().cuda(config.expt.gpu)
+    criterion_pt = nn.CosineSimilarity(dim=1).cuda(config.expt.gpu)  # TODO: @Diane - Check out and compare against baseline code
+    criterion_ft = nn.CrossEntropyLoss().cuda(config.expt.gpu)  # TODO: delete as it is unused?
     
-    optim_params_pt = [
-        {
-            'params': model.module.backbone.parameters() if config.expt.distributed else model.backbone.parameters(),
-            'fix_lr': False
-            },
-        {
-            'params': model.module.encoder_head.parameters() if config.expt.distributed else model.encoder_head.parameters(),
-            'fix_lr': False
-            },
-        {
-            'params': model.module.predictor.parameters() if config.expt.distributed else model.predictor.parameters(),
-            'fix_lr': config.simsiam.fix_pred_lr
-            }]
+    if config.expt.distributed:  # TODO: @Fabio - This is not working for not config.expt.distributed (metassl code)
+        optim_params_pt = [
+            {
+                'params': model.module.backbone.parameters() if config.expt.distributed else model.backbone.parameters(),
+                'fix_lr': False
+                },
+            {
+                'params': model.module.encoder_head.parameters() if config.expt.distributed else model.encoder_head.parameters(),
+                'fix_lr': False
+                },
+            {
+                'params': model.module.predictor.parameters() if config.expt.distributed else model.predictor.parameters(),
+                'fix_lr': config.simsiam.fix_pred_lr
+                }]
     
     optimizer_pt = torch.optim.SGD(
-        params=optim_params_pt,
+        params=optim_params_pt if config.expt.distributed else model.parameters(),  # TODO: @Fabio - check together with optim_params_pt
         lr=init_lr_pt,
         momentum=config.train.momentum,
         weight_decay=config.train.weight_decay
@@ -279,11 +294,11 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
             print(f"=> no checkpoint found at '{config.expt.ssl_model_checkpoint_path}'")
     
     # Data loading code
-    traindir = os.path.join(config.data.dataset, 'train')
+    traindir = os.path.join(config.data.dataset, 'train')  # TODO: @Fabio - What about validir / testdir?
     
     if config.finetuning.valid_size > 0:
         train_loader_pt, train_sampler_pt, train_loader_ft, train_sampler_ft, valid_loader_ft, test_loader_ft = get_loaders(traindir, config, parameterize_augmentation=False, bohb_infos=bohb_infos)
-    else:  # TODO: @Diane - Checkout and test on *parameterized_aug*
+    else:
         train_loader_pt, train_sampler_pt, train_loader_ft, train_sampler_ft, test_loader_ft = get_loaders(traindir, config, parameterize_augmentation=False, bohb_infos=bohb_infos)
     
     cudnn.benchmark = True
@@ -294,7 +309,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
     if not meters:
         meters = initialize_all_meters()
     
-    epoch = None
+    epoch = None  # TODO: delete this as it is unused
     for epoch in range(config.train.start_epoch, config.train.epochs):
         
         if config.expt.distributed:
@@ -523,18 +538,19 @@ def pretrain(model, images_pt, criterion_pt, optimizer_pt, losses_pt, data_time,
     loss_pt.backward()
     # step does not change .grad field of the parameters.
     optimizer_pt.step()
-    
-    if config.expt.distributed:
-        backbone = model.module.backbone
-    else:
-        backbone = model.backbone
-    
+
     if get_gradients:
+        if config.expt.distributed:
+            backbone = model.module.backbone
+        else:
+            # TODO: @Fabio - This does not seem to work for CIFAR10
+            backbone = model.backbone
+
         for key, param in backbone.named_parameters():
             grad_tensor = param.grad.detach_().clone().flatten()
             backbone_grads_lw[key] = torch.tensor(grad_tensor)
             backbone_grads_global = torch.cat([backbone_grads_global, grad_tensor], dim=0)
-    
+
     return loss_pt, backbone_grads_lw, backbone_grads_global, z1, z2
 
 
