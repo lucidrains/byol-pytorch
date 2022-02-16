@@ -175,9 +175,13 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
     # create model
     # TODO: @Diane - Check out and compare against baseline code
     if config.data.dataset == 'CIFAR10':
-        # Use model from our model folder instead from torchvision!
-        print(f"=> creating model resnet18")
-        model = SimSiam(our_cifar_resnets.resnet18, config.simsiam.dim, config.simsiam.pred_dim)
+        if config.model.use_tv_arch:
+            print(f"=> creating model {config.model.model_type}")
+            model = SimSiam(models.__dict__[config.model.model_type], config.simsiam.dim, config.simsiam.pred_dim)
+        else:
+            # Use model from our model folder instead from torchvision!
+            print(f"=> creating model resnet18")
+            model = SimSiam(our_cifar_resnets.resnet18, config.simsiam.dim, config.simsiam.pred_dim)
     else:
         print(f"=> creating model '{config.model.model_type}'")
         model = SimSiam(models.__dict__[config.model.model_type], config.simsiam.dim, config.simsiam.pred_dim)
@@ -687,6 +691,7 @@ if __name__ == '__main__':
     parser.add_argument('--model.model_type', type=str, default='resnet50', help='all torchvision ResNets')
     parser.add_argument('--model.seed', type=int, default=123, help='the seed')
     parser.add_argument('--model.turn_off_bn', action='store_true', help='turns off all batch norm instances in the model')
+    parser.add_argument('--model.use_tv_arch', action='store_true', help='Use torch vision architecture for CIFAR10')
     
     parser.add_argument('--data', default="data", type=str, metavar='N')
     parser.add_argument('--data.seed', type=int, default=123, help='the seed')
