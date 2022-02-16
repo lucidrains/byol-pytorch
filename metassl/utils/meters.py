@@ -96,7 +96,7 @@ def update_grad_stats_meters(grads, meters, warmup):
     norm_ft_std_meter_lw = meters["norm_ft_std_meter_lw"]
     
     if not warmup:
-        if backbone_grads_ft_lw:
+        if backbone_grads_ft_lw is not None:
             mean, std = calc_layer_wise_stats(backbone_grads_pt=backbone_grads_pt_lw, backbone_grads_ft=backbone_grads_ft_lw, metric_type="cosine")
             cos_sim_ema_meter_lw.update(mean), cos_sim_std_meter_lw.update(std)
 
@@ -115,7 +115,7 @@ def update_grad_stats_meters(grads, meters, warmup):
         mean, std = calc_layer_wise_stats(backbone_grads_pt=backbone_grads_pt_lw, backbone_grads_ft=None, metric_type="norm")
         norm_pt_avg_meter_lw.update(mean), norm_pt_std_meter_lw.update(std)
         
-        if backbone_grads_ft_global:
+        if backbone_grads_ft_global is not None:
             cos_sim_ema_meter_global.update(F.cosine_similarity(backbone_grads_pt_global, backbone_grads_ft_global, dim=0))
             backbone_grads_pt_global_standardized = (backbone_grads_pt_global - backbone_grads_pt_global.mean()) / backbone_grads_pt_global.std()
             backbone_grads_ft_global_standardized = (backbone_grads_ft_global - backbone_grads_ft_global.mean()) / backbone_grads_ft_global.std()

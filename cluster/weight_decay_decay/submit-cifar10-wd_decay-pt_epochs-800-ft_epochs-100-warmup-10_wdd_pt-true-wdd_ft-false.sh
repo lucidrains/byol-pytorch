@@ -31,17 +31,13 @@ export LD_LIBRARY_PATH=/usr/local/cuda-9.0/lib64:$LD_LIBRARY_PATH
 export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
 export LD_LIBRARY_PATH=/usr/local/cuda-10.0/lib64:$LD_LIBRARY_PATH
 
-#export NCCL_DEBUG=INFO
+source ../variables.sh
 
-
-WORKFOLDER="/home/$USER/workspace/metassl"
 echo $WORKFOLDER
 export PYTHONPATH=$PYTHONPATH:$WORKFOLDER
 
 source /home/ferreira/.miniconda/bin/activate metassl
 
 echo "submitted job $EXPT_NAME"
-echo "logfile at $LOG_FILE"
-echo "error file at $ERR_FILE"
 
 srun $WORKFOLDER/cluster/weight_decay_decay/cifar_train_finetune_wdd_pt_true_wdd_ft_false.sh $EXPT_NAME $TRAIN_EPOCHS $FINETUNING_EPOCHS $WARMUP_EPOCHS $CONFIG
