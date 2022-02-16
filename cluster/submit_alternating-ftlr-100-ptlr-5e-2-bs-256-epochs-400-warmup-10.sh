@@ -2,7 +2,7 @@
 #SBATCH -p alldlc_gpu-rtx2080
 #SBATCH --gres=gpu:8
 #SBATCH --job-name=alternating-ftlr-100-ptlr-5e-2-bs-256-epochs-400-warmup-10
-#SBATCH -o /home/ferreira/workspace/experiments/metassl/logs/%x.%N.%A.%a.out
+#SBATCH -o /work/dlclarge2/ferreira-metassl/metassl/experiments/logs/%x.%N.%A.%a.out
 #SBATCH --array=0-15%1
 
 TRAIN_EPOCHS=400

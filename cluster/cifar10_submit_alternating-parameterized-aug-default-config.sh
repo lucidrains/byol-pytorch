@@ -2,7 +2,7 @@
 #SBATCH -p bosch_gpu-rtx2080
 #SBATCH --gres=gpu:8
 #SBATCH --job-name=cifar10-alternating-parameterized-aug-nn-default-config
-#SBATCH -o /home/ferreira/workspace/experiments/metassl/logs/%x.%N.%A.%a.out
+#SBATCH -o /work/dlclarge2/ferreira-metassl/metassl/experiments/logs/%x.%N.%A.%a.out
 #SBATCH --array=0-10%1
 
 EXPT_NAME="cifar10-alternating-parameterized-aug-nn-default-config"
@@ -25,11 +25,11 @@ export LD_LIBRARY_PATH=/usr/local/cuda-10.0/lib64:$LD_LIBRARY_PATH
 
 source variables.sh
 
-echo $WORKFOLDER
+echo "WORKFOLDER $WORKFOLDER"
 export PYTHONPATH=$PYTHONPATH:$WORKFOLDER
 
 source /home/ferreira/.miniconda/bin/activate metassl
 
 echo "submitted job $EXPT_NAME"
-
+echo "running srun with command: $WORKFOLDER/cluster/train_cifar10_alternating_simsiam_warmup_parameterized_aug_default_config.sh $EXPT_NAME"
 srun $WORKFOLDER/cluster/train_cifar10_alternating_simsiam_warmup_parameterized_aug_default_config.sh $EXPT_NAME

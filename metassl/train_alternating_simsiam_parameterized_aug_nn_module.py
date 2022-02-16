@@ -799,7 +799,7 @@ if __name__ == '__main__':
     
     # Saving checkpoint and config pased on experiment mode
 
-    expt_dir = "../../experiments"
+    expt_dir = "experiments"
     
     expt_sub_dir = os.path.join(expt_dir, args.expt.expt_name)
     

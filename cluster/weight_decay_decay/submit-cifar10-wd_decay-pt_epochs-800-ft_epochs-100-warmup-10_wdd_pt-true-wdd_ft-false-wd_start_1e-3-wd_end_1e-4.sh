@@ -2,7 +2,7 @@
 #SBATCH -p alldlc_gpu-rtx2080
 #SBATCH --gres=gpu:1
 #SBATCH --job-name=wd_decay-cifar10-pt_epochs-800-ft_epochs-100-warmup-10-wdd_pt-true-wdd_ft-false-wd_start_1e-3-wd_end_1e-4
-#SBATCH -o /home/ferreira/workspace/experiments/metassl/logs/%x.%N.%A.%a.out
+#SBATCH -o /work/dlclarge2/ferreira-metassl/metassl/experiments/logs/%x.%N.%A.%a.out
 #SBATCH --array=0-3%1
 
 TRAIN_EPOCHS=800
@@ -32,7 +32,7 @@ export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
 export LD_LIBRARY_PATH=/usr/local/cuda-10.0/lib64:$LD_LIBRARY_PATH
 
 
-source ../variables.sh
+source variables.sh
 
 echo $WORKFOLDER
 export PYTHONPATH=$PYTHONPATH:$WORKFOLDER
