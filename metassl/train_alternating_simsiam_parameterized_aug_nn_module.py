@@ -802,7 +802,8 @@ if __name__ == '__main__':
     expt_dir = "experiments"
     
     expt_sub_dir = os.path.join(expt_dir, args.expt.expt_name)
-    
+   
+    print(expt_sub_dir)
     if not os.path.exists(expt_sub_dir):
         os.makedirs(expt_sub_dir)
     
