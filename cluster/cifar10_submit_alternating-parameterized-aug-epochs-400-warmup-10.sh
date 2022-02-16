@@ -1,11 +1,11 @@
 #!/bin/bash
 #SBATCH -p bosch_gpu-rtx2080
 #SBATCH --gres=gpu:8
-#SBATCH --job-name=cifar10-alternating-parameterized-aug-nn-epochs-warmup-10
+#SBATCH --job-name=cifar10-alternating-parameterized-aug-nn-epochs-400-warmup-10
 #SBATCH -o /work/dlclarge2/ferreira-metassl/experiments/logs/%x.%N.%A.%a.out
 #SBATCH --array=0-10%1
 
-TRAIN_EPOCHS=1500
+TRAIN_EPOCHS=400
 WARMUP_EPOCHS=10
 EXPT_NAME="cifar10-alternating-parameterized-aug-nn-epochs-$TRAIN_EPOCHS-warmup-$WARMUP_EPOCHS"
 
