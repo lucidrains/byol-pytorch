@@ -541,12 +541,10 @@ def pretrain(model, images_pt, criterion_pt, optimizer_pt, losses_pt, data_time,
 def organize_experiment_saving(user, config, is_bohb_run):
     # TODO: @Diane - Move to a separate file in 'utils' together with 'get_expt_dir_with_bohb_config_id'
     # Set expt_root_dir based on user and experiment mode
-    if user == "wagn3rd":  # Diane's local machine
-        expt_root_dir = "experiments"
-    elif user == "wagnerd":  # Diane cluster
+    if user == "wagnerd":  # Diane cluster
         expt_root_dir = "/work/dlclarge2/wagnerd-metassl_experiments"
     else:
-        expt_root_dir = f"/home/{user}/workspace/experiments/metassl"
+        expt_root_dir = "experiments"
     
     # Set expt_dir based on whether it is a BOHB run or not + differenciate between users
     if is_bohb_run:
