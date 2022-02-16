@@ -798,15 +798,8 @@ if __name__ == '__main__':
     config = AttrDict(jsonargparse.namespace_to_dict(args))
     
     # Saving checkpoint and config pased on experiment mode
-    if args.expt.expt_mode == "ImageNet":
-        expt_dir = f"/home/{user}/workspace/experiments/metassl"
-    elif args.expt.expt_mode == "CIFAR10":
-        if user == "ferreira":
-            expt_dir = f"/home/{user}/workspace/experiments/metassl"
-        else:
-            expt_dir = "experiments"
-    else:
-        raise ValueError(f"Experiment mode {args.expt.expt_mode} is undefined!")
+
+    expt_dir = "../../experiments"
     
     expt_sub_dir = os.path.join(expt_dir, args.expt.expt_name)
     
