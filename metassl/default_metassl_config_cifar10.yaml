@@ -64,6 +64,7 @@ finetuning:
   data_augmentation: "none"               # Select if and how finetuning gets augmented. choices=['none', 'p_probability_augment_pt', 'p_probability_augment_ft', 'p_probability_augment_1-pt']
   wd_start:          1.e-3                 # Upper value of WD Decay. Only used when wd_decay is True.
   wd_end:            1.e-6                 # Lower value of WD Decay. Only used when wd_decay is True.
+  use_alternative_scheduler: False         # Use the learning rate scheduler from the baseline codebase
 
 #######################################
 ###       Model Configuration       ###

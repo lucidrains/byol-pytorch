@@ -307,7 +307,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
             cur_lr_ft = adjust_learning_rate(optimizer_ft, init_lr_ft, epoch, total_epochs=config.expt.warmup_epochs, warmup=True, multiplier=config.expt.warmup_multiplier)
             print(f"warming up phase (FT)")
         else:
-            cur_lr_ft = adjust_learning_rate(optimizer_ft, init_lr_ft, epoch, total_epochs=config.finetuning.epochs)
+            cur_lr_ft = adjust_learning_rate(optimizer_ft, init_lr_ft, epoch, total_epochs=config.finetuning.epochs, use_alternative_scheduler=config.finetuning.use_alternative_scheduler)
 
         # reset ft meter when transitioning from warmup to normal training
         if not warmup and config.expt.warmup_epochs > epoch - 1:
@@ -681,6 +681,7 @@ if __name__ == '__main__':
     parser.add_argument('--finetuning.data_augmentation', default='none', choices=['none', 'p_probability_augment_pt', 'p_probability_augment_ft', 'p_probability_augment_1-pt'], help='Select if and how finetuning gets augmented.')
     parser.add_argument('--finetuning.wd_start', default=1e-3, type=float, help='Upper value of WD Decay. Only used when wd_decay is True.')
     parser.add_argument('--finetuning.wd_end', default=1e-6, type=float, help='Lower value of WD Decay. Only used when wd_decay is True.')
+    parser.add_argument('--finetuning.use_alternative_scheduler', action="store_true", help='Use the learning rate scheduler from the baseline codebase')
     
     parser.add_argument('--model', default="model", type=str, metavar='N')
     parser.add_argument('--model.model_type', type=str, default='resnet50', help='all torchvision ResNets')
