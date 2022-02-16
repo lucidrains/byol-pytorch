@@ -92,18 +92,11 @@ def main(config, expt_dir, bohb_infos=None):
         print(f"\n\n\n\n\n\n{bohb_infos=}\n\n\n\n\n\n")
     # ------------------------------------------------------------------------------------------------------------------
 
-    if config.data.dataset == "CIFAR10":
-        # Define master port (for preventing 'Address already in use error' when submitting more than 1 jobs on 1 node)
-        # Code from: https://stackoverflow.com/questions/1365265/on-localhost-how-do-i-pick-a-free-port-number
-        master_port = find_free_port()
-        config.expt.dist_url = "tcp://localhost:" + str(master_port)
-        # if this should still fail: do it via filesystem initialization
-        # https://pytorch.org/docs/stable/distributed.html#shared-file-system-initialization
-
     if config.expt.seed is not None:
         random.seed(config.expt.seed)
         torch.manual_seed(config.expt.seed)
-        cudnn.deterministic = True
+        np.random.seed(config.expt.seed)
+        cudnn.deterministic = True  # TODO: @Diane - checkout
         warnings.warn(
             'You have chosen to seed training. '
             'This will turn on the CUDNN deterministic setting, '
@@ -122,6 +115,14 @@ def main(config, expt_dir, bohb_infos=None):
         config.expt.world_size = int(os.environ["WORLD_SIZE"])
     
     config.expt.distributed = config.expt.world_size > 1 or config.expt.multiprocessing_distributed
+
+    if config.data.dataset == "CIFAR10" and config.expt.distributed:
+        # Define master port (for preventing 'Address already in use error' when submitting more than 1 jobs on 1 node)
+        # Code from: https://stackoverflow.com/questions/1365265/on-localhost-how-do-i-pick-a-free-port-number
+        master_port = find_free_port()
+        config.expt.dist_url = "tcp://localhost:" + str(master_port)
+        # if this should still fail: do it via filesystem initialization
+        # https://pytorch.org/docs/stable/distributed.html#shared-file-system-initialization
     
     ngpus_per_node = torch.cuda.device_count()
     if config.expt.multiprocessing_distributed:
@@ -170,7 +171,9 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
             world_size=config.expt.world_size, rank=config.expt.rank
             )
         torch.distributed.barrier()
+
     # create model
+    # TODO: @Diane - Check out and compare against baseline code
     if config.data.dataset == 'CIFAR10':
         # Use model from our model folder instead from torchvision!
         print(f"=> creating model resnet18")
@@ -183,12 +186,13 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
         print("Turning off BatchNorm in entire model.")
         deactivate_bn(model)
         model.encoder_head[6].bias.requires_grad = True
-    
-    # infer learning rate before changing batch size
+
+    # infer learning rate !before changing batch size! > see lines below
+    # TODO: @Fabio - keep for CIFAR10? (metassl code); lr_b = 0.06, lr_m = 0.03 * 512 / 256 = 0.06 also
     init_lr_ft = config.finetuning.lr * config.finetuning.batch_size / 256
 
     if config.expt.distributed:
-        # Apply SyncBN
+        # Apply SyncBN TODO: @Fabio - keep for CIFAR10? (metassl code)
         model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
         # For multiprocessing distributed, DistributedDataParallel constructor
         # should always set the single device scope, otherwise,
@@ -204,7 +208,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
             model = torch.nn.parallel.DistributedDataParallel(
                 model,
                 device_ids=[config.expt.gpu],
-                find_unused_parameters=True
+                find_unused_parameters=True  # TODO: @Fabio - keep for CIFAR10? (metassl code)
                 )
         else:
             model.cuda()
@@ -214,18 +218,28 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
     elif config.expt.gpu is not None:
         torch.cuda.set_device(config.expt.gpu)
         model = model.cuda(config.expt.gpu)
-        # comment out the following line for debugging
-        raise NotImplementedError("Only DistributedDataParallel is supported.")
+        # comment out the following line for debugging  # TODO: delete? (metassl code)
+        # raise NotImplementedError("Only DistributedDataParallel or gpu mode is supported.")  # TODO: delete (metassl code)
     else:
+        # DataParallel will divide and allocate batch_size to all available GPUs
+        model = torch.nn.DataParallel(model).cuda()
+        # TODO: Integrate lines below? (baselines code)
+        # if args.arch.startswith('alexnet') or args.arch.startswith('vgg'):
+        #     model.features = torch.nn.DataParallel(model.features)
+        #     model.cuda()
+        # else:
+        #     model = torch.nn.DataParallel(model).cuda()
+
+        # TODO: delete? (metassl code)
         # AllGather implementation (batch shuffle, queue update, etc.) in
         # this code only supports DistributedDataParallel.
-        raise NotImplementedError("Only DistributedDataParallel is supported.")
+        # raise NotImplementedError("Only DistributedDataParallel is supported.")
     
     # define loss function (criterion) and optimizer
     criterion_ft = nn.CrossEntropyLoss().cuda(config.expt.gpu)
 
     optimizer_ft = torch.optim.SGD(
-        params=model.module.classifier_head.parameters(),
+        params=model.module.classifier_head.parameters() if config.expt.distributed else model.parameters(), # TODO: @Fabio - check together with optim_params_pt,
         lr=init_lr_ft,
         momentum=config.finetuning.momentum,
         weight_decay=config.finetuning.weight_decay
@@ -234,7 +248,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
     # in case a dumped model exist and ssl_model_checkpoint is not set, load that dumped model
     newest_model = get_newest_model(expt_dir, suffix="linear_cls*.pth.tar")
     if not newest_model:
-        # if lin class model doesn't exist, get newest pre-training model
+        # if lin class model doesn't exist, get newest pre-training modelqq
         newest_model = get_newest_model(expt_dir)
     if newest_model and config.expt.ssl_model_checkpoint_path is None:
         config.expt.ssl_model_checkpoint_path = newest_model
@@ -266,11 +280,11 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
             print(f"=> no checkpoint found at '{config.expt.ssl_model_checkpoint_path}'")
     
     # Data loading code
-    traindir = os.path.join(config.data.dataset, 'train')
+    traindir = os.path.join(config.data.dataset, 'train')  # TODO: @Fabio - What about validir / testdir?
 
     if config.finetuning.valid_size > 0:
         train_loader_pt, train_sampler_pt, train_loader_ft, train_sampler_ft, valid_loader_ft, test_loader_ft = get_loaders(traindir, config, parameterize_augmentation=False, bohb_infos=bohb_infos)
-    else:  # TODO: @Diane - Checkout and test on *parameterized_aug*
+    else:
         train_loader_pt, train_sampler_pt, train_loader_ft, train_sampler_ft, test_loader_ft = get_loaders(traindir, config, parameterize_augmentation=False, bohb_infos=bohb_infos)
 
     cudnn.benchmark = True
@@ -281,7 +295,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
     if not meters:
         meters = initialize_all_meters()
     
-    epoch = None
+    epoch = None  # TODO: delete this as it is unused
     for epoch in range(config.finetuning.start_epoch, config.finetuning.epochs):
         
         if config.expt.distributed:

@@ -279,7 +279,7 @@ def validate(val_loader, model, criterion, config, finetuning=False):
         for i, (images, target) in enumerate(val_loader):
             if config.expt.gpu is not None:
                 images = images.cuda(config.expt.gpu, non_blocking=True)
-                target = target.cuda(config.expt.gpu, non_blocking=True)
+            target = target.cuda(config.expt.gpu, non_blocking=True)
             
             # compute output
             output = model(images, finetuning=finetuning)
