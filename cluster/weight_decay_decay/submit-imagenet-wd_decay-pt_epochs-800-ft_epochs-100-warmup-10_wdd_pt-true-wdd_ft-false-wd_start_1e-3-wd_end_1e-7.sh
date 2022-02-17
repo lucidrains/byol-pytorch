@@ -39,5 +39,6 @@ export PYTHONPATH=$PYTHONPATH:$WORKFOLDER
 source /home/ferreira/.miniconda/bin/activate metassl
 
 echo "submitted job $EXPT_NAME"
+echo "command used: srun $WORKFOLDER/cluster/weight_decay_decay/imagenet_train_finetune_wdd_pt_true_wdd_ft_false-wd_start_1e-3-wd_end_1e-7.sh $EXPT_NAME $TRAIN_EPOCHS $FINETUNING_EPOCHS $WARMUP_EPOCHS $CONFIG"
 
 srun $WORKFOLDER/cluster/weight_decay_decay/imagenet_train_finetune_wdd_pt_true_wdd_ft_false-wd_start_1e-3-wd_end_1e-7.sh $EXPT_NAME $TRAIN_EPOCHS $FINETUNING_EPOCHS $WARMUP_EPOCHS $CONFIG
