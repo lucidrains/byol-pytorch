@@ -11,8 +11,8 @@ try:
     from metassl.utils.data import normalize_cifar10, normalize_imagenet, normalize_cifar100
     from metassl.utils.imagenet import ImageNet
 except ImportError:
-    from .utils.data import normalize_cifar10, normalize_imagenet
-    from .utils.imagenet import ImageNet
+    from metassl.utils.data import normalize_cifar10, normalize_imagenet
+    from metassl.utils.imagenet import ImageNet
 
 
 def get_knn_data_loaders(batch_size, num_workers, dataset, download=True):

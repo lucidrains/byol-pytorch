@@ -23,7 +23,6 @@ import torch.optim
 import torch.utils.data
 import torch.utils.data.distributed
 import torchvision.models as models
-import yaml
 from jsonargparse import ArgumentParser
 from torch.utils.tensorboard import SummaryWriter
 
@@ -38,6 +37,7 @@ try:
     from metassl.utils.summary import write_to_summary_writer
     import metassl.models.resnet_cifar as our_cifar_resnets
     from metassl.utils.torch_utils import get_newest_model, check_and_save_checkpoint, deactivate_bn, validate, accuracy, adjust_learning_rate
+    from metassl.utils.io import get_expt_dir_with_bohb_config_id, organize_experiment_saving, find_free_port
 
 except ImportError:
     # For execution in command line
@@ -48,6 +48,7 @@ except ImportError:
     from .utils.summary import write_to_summary_writer
     from .models import resnet_cifar as our_cifar_resnets
     from .utils.torch_utils import get_newest_model, check_and_save_checkpoint, deactivate_bn, validate, accuracy, adjust_learning_rate
+    from .utils.io import get_expt_dir_with_bohb_config_id, organize_experiment_saving, find_free_port
 
 model_names = sorted(
     name for name in models.__dict__
@@ -177,6 +178,12 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
     else:
         model = SimSiam(models.__dict__[config.model.model_type], config.simsiam.dim, config.simsiam.pred_dim)
     
+    # todo: check backpack + ddp + resnet with sam; backpack raises errors when using inplace operations
+    # if config.expt.image_wise_gradients:
+    #     for module in model.modules():
+    #         if hasattr(module, "inplace"):
+    #             module.inplace = False
+    
     if config.model.turn_off_bn:
         print("Turning off BatchNorm in entire model.")
         deactivate_bn(model)
@@ -203,7 +210,11 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
             # ourselves based on the total number of GPUs we have
             config.finetuning.batch_size = int(config.finetuning.batch_size / ngpus_per_node)
             config.train.batch_size = int(config.train.batch_size / ngpus_per_node)
-            config.workers = int((config.expt.workers + ngpus_per_node - 1) / ngpus_per_node)
+            
+            # if config.expt.image_wise_gradients:
+            #     model = extend(model)
+            #     print("using backpack")
+            
             model = torch.nn.parallel.DistributedDataParallel(
                 model, device_ids=[config.expt.gpu],
                 find_unused_parameters=True
@@ -305,6 +316,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
     
     if config.expt.rank == 0:
         writer = SummaryWriter(log_dir=os.path.join(expt_dir, "tensorboard"))
+    
     if not meters:
         meters = initialize_all_meters()
     
@@ -584,6 +596,12 @@ def pretrain(model, images_pt, criterion_pt, optimizer_pt, losses_pt, data_time,
     
     # compute gradient and do SGD step
     optimizer_pt.zero_grad()
+    
+    # if config.expt.image_wise_gradients:
+    #     with backpack(BatchGrad()):
+    #         loss_pt.backward()
+    # else:
+    
     loss_pt.backward()
     # step does not change .grad field of the parameters.
     optimizer_pt.step()
@@ -617,6 +635,12 @@ def finetune(model, images_ft, target_ft, criterion_ft, optimizer_ft, losses_ft_
     # compute outputs
     output_ft = model(images_ft, finetuning=True)
     loss_ft = criterion_ft(output_ft, target_ft)
+    
+    # if config.expt.image_wise_gradients:
+    #     with backpack(BatchGrad()):
+    #         loss_ft.backward()
+    # else:
+    
     loss_ft.backward()
     
     if alternating_mode:
@@ -641,41 +665,10 @@ def finetune(model, images_ft, target_ft, criterion_ft, optimizer_ft, losses_ft_
     return loss_ft, backbone_grads_lw, backbone_grads_global
 
 
-def organize_experiment_saving(user, config, is_bohb_run):
-    # TODO: @Diane - Move to a separate file in 'utils' together with 'get_expt_dir_with_bohb_config_id'
-    # Set expt_root_dir based on user and experiment mode
-    if user == "wagnerd":  # Diane cluster
-        expt_root_dir = "/work/dlclarge2/wagnerd-metassl_experiments"
-    else:
-        expt_root_dir = "experiments"
-
-    # Set expt_dir based on whether it is a BOHB run or not + differenciate between users
-    if is_bohb_run:
-        # for start_bohb_master (directory where config.json and results.json are being saved)
-        expt_dir = os.path.join(expt_root_dir, "BOHB", config.data.dataset, config.expt.expt_name)
-    else:
-        if user == "wagn3rd" or user == "wagnerd":
-            expt_dir = os.path.join(expt_root_dir, config.data.dataset, config.expt.expt_name)
-        else:
-            expt_dir = os.path.join(expt_root_dir, config.expt.expt_name)
-
-    # TODO FABIO: if folder exists, create a new one with incremental suffix (-1, -2) and implement a flag ""
-    # Create directory (if not yet existing) and save config.yaml
-    if not os.path.exists(expt_dir):
-        os.makedirs(expt_dir)
-    
-    with open(os.path.join(expt_dir, "config.yaml"), "w") as f:
-        yaml.dump(config, f)
-        print(f"copied config to {f.name}")
-    
-    return expt_dir
 
 
-def get_expt_dir_with_bohb_config_id(expt_dir, bohb_config_id):
-    # TODO: @Diane - Move to a separate file in 'utils' together with 'organize_experiment_saving'
-    config_id_path = "-".join(str(sub_id) for sub_id in bohb_config_id)
-    expt_dir_id = os.path.join(expt_dir, config_id_path)
-    return expt_dir_id
+
+
 
 def find_free_port():
     import socket

@@ -4,7 +4,6 @@
 # code taken from https://github.com/facebookresearch/simsiam
 import argparse
 import builtins
-import math
 import os
 import random
 import time
@@ -185,7 +184,6 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
             # ourselves based on the total number of GPUs we have
             config.finetuning.batch_size = int(config.finetuning.batch_size / ngpus_per_node)
             config.train.batch_size = int(config.train.batch_size / ngpus_per_node)
-            config.workers = int((config.expt.workers + ngpus_per_node - 1) / ngpus_per_node)
             
             # if config.expt.image_wise_gradients:
             #     model = extend(model)
@@ -648,10 +646,12 @@ def pretrain(model, images_pt, criterion_pt, optimizer_pt, losses_pt, data_time,
     
     # compute gradient and do SGD step
     optimizer_pt.zero_grad()
+    
     # if config.expt.image_wise_gradients:
     #     with backpack(BatchGrad()):
     #         loss_pt.backward()
     # else:
+    
     loss_pt.backward()
     # step does not change .grad field of the parameters.
     optimizer_pt.step()
@@ -685,10 +685,12 @@ def finetune(model, images_ft, target_ft, criterion_ft, optimizer_ft, losses_ft_
     # compute outputs
     output_ft = model(images_ft, finetuning=True)
     loss_ft = criterion_ft(output_ft, target_ft)
+    
     # if config.expt.image_wise_gradients:
     #     with backpack(BatchGrad()):
     #         loss_ft.backward()
     # else:
+    
     loss_ft.backward()
     
     if alternating_mode:
