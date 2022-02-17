@@ -23,6 +23,8 @@ import torch.optim
 import torch.utils.data
 import torch.utils.data.distributed
 import torchvision.models as models
+# from backpack import backpack, extend
+# from backpack.extensions import BatchGrad
 from jsonargparse import ArgumentParser
 from torch.utils.tensorboard import SummaryWriter
 
@@ -386,6 +388,8 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
                 if config.expt.rank == 0:
                     writer.add_scalar(writer_scalar_mode + '/Accuracy@1', top1_avg, total_iter)
 
+        # make sure to always save at the end of training
+        is_last_epoch = epoch + 1 >= config.train.epochs
         if bohb_infos is not None:
             if config.bohb.budget_mode == "epochs" and epoch % int(bohb_infos['bohb_budget'] - 1) == 0:
                 check_and_save_checkpoint(
@@ -402,7 +406,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
             elif config.bohb.budget_mode != "epochs":
                 raise ValueError("Not implemented yet!")
 
-        elif config.expt.save_model and epoch % config.expt.save_model_frequency == 0:
+        elif (config.expt.save_model and epoch % config.expt.save_model_frequency == 0) or (config.expt.save_model and is_last_epoch):
             check_and_save_checkpoint(
                 config=config,
                 ngpus_per_node=ngpus_per_node,

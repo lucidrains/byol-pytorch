@@ -279,7 +279,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir):
             optimizer_aug.load_state_dict(checkpoint['optimizer_aug'])
             total_iter = checkpoint['total_iter']
             meters = checkpoint['meters']
-            data_aug_model.load_state_dict(checkpoint['data_aug_model'])
+            data_aug_model = checkpoint['data_aug_model']
             print(f"=> loaded checkpoint '{config.expt.ssl_model_checkpoint_path}' (epoch {checkpoint['epoch']})")
         else:
             print(f"=> no checkpoint found at '{config.expt.ssl_model_checkpoint_path}'")

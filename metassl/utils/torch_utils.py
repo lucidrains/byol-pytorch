@@ -226,7 +226,7 @@ def check_and_save_checkpoint(config, ngpus_per_node, total_iter, epoch, model, 
                 save_dct['optimizer_aug'] = optimizer_aug.state_dict()
                 
             if data_aug_model is not None:
-                save_dct['data_aug_model'] = data_aug_model.state_dict()
+                save_dct['data_aug_model'] = data_aug_model  # in addition to state_dict, also save histogram stats
             
             save_checkpoint(save_dct, is_best=False, filename=os.path.join(expt_dir, f'{checkpoint_name}_{epoch:04d}.pth.tar'))
 
