@@ -38,7 +38,6 @@ try:
     from metassl.utils.meters import AverageMeter, ProgressMeter, ExponentialMovingAverageMeter, update_grad_stats_meters, initialize_all_meters
     from metassl.utils.simsiam_alternating import SimSiam
     import metassl.models.resnet_cifar as our_cifar_resnets
-    from metassl.utils.simsiam import TwoCropsTransform, GaussianBlur
     from metassl.utils.augment import create_transforms, augment_per_image
     from metassl.utils.summary import write_to_summary_writer
     from metassl.utils.torch_utils import (
@@ -59,7 +58,6 @@ except ImportError:
     from .utils.config import AttrDict, _parse_args
     from .utils.meters import AverageMeter, ProgressMeter, ExponentialMovingAverageMeter, update_grad_stats_meters, initialize_all_meters
     from .utils.simsiam_alternating import SimSiam
-    from .utils.simsiam import TwoCropsTransform, GaussianBlur
     from .models import resnet_cifar as our_cifar_resnets
     from .utils.summary import write_to_summary_writer
     from .utils.augment import create_transforms, augment_per_image
