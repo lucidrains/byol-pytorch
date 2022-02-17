@@ -521,8 +521,6 @@ def train_one_epoch(
             color_jitter_logprob_c = -(logprobs["logprob_c"] * reward)
             # color_jitter_logprob_c.backward(retain_graph=True)
             
-            # manual = data_aug_model.aug_w_c.detach().numpy() + (logprobs["logprob_c"].detach().cpu().numpy() * reward)
-            
             color_jitter_logprob_s = -(logprobs["logprob_s"] * reward)
             # color_jitter_logprob_s.backward(retain_graph=True)
             
@@ -533,9 +531,6 @@ def train_one_epoch(
             aug_loss.backward()
             
             optimizer_aug.step()
-            
-            # assert np.allclose(data_aug_model.aug_w_c.cpu().detach().numpy(), manual)
-            # print("actual parameters AFTER step:", aug_w_b)
             
             reward_meter.update(reward)
             
