@@ -7,13 +7,13 @@
 
 TRAIN_EPOCHS=150
 FINETUNING_EPOCHS=150
-WARMUP=10
+WARMUP_EPOCHS=10
 EXPT_NAME="alternating-parameterized-aug-nn-ftlr-100-ptlr-5e-2-bs-256-epochs-150-warmup-10"
 
 echo "TRAIN EPOCHS $TRAIN_EPOCHS"
 echo "FINETUNING EPOCHS $FINETUNING_EPOCHS"
 echo "EXPT NAME $EXPT_NAME"
-echo "WARMUP $WARMUP"
+echo "WARMUP EPOCHS $WARMUP_EPOCHS"
 
 #PARTITION="ml_gpu-rtx2080"
 #PARTITION="bosch_gpu-rtx2080"
@@ -38,4 +38,4 @@ source /home/ferreira/.miniconda/bin/activate metassl
 
 echo "submitted job $EXPT_NAME"
 
-srun $WORKFOLDER/cluster/train_alternating_simsiam_warmup_parameterized_aug.sh $EXPT_NAME $TRAIN_EPOCHS $FINETUNING_EPOCHS $WARMUP
+srun $WORKFOLDER/cluster/train_alternating_simsiam_warmup_parameterized_aug.sh $EXPT_NAME $TRAIN_EPOCHS $FINETUNING_EPOCHS $WARMUP_EPOCHS
