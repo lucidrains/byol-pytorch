@@ -23,6 +23,7 @@ import torch.optim
 import torch.utils.data
 import torch.utils.data.distributed
 import torchvision.models as models
+import yaml
 # from backpack import backpack, extend
 # from backpack.extensions import BatchGrad
 from jsonargparse import ArgumentParser
@@ -34,12 +35,23 @@ try:
     # For execution in PyCharm
     from metassl.utils.data import get_train_valid_loader, get_test_loader, get_loaders
     from metassl.utils.config import AttrDict, _parse_args
-    from metassl.utils.meters import AverageMeter, ProgressMeter, ExponentialMovingAverageMeter, initialize_all_meters, update_grad_stats_meters
+    from metassl.utils.meters import AverageMeter, ProgressMeter, ExponentialMovingAverageMeter, update_grad_stats_meters, initialize_all_meters
     from metassl.utils.simsiam_alternating import SimSiam
-    from metassl.utils.summary import write_to_summary_writer
     import metassl.models.resnet_cifar as our_cifar_resnets
-    from metassl.utils.torch_utils import get_newest_model, check_and_save_checkpoint, deactivate_bn, validate, accuracy, adjust_learning_rate
+    from metassl.utils.augment import create_transforms, augment_per_image, DataAugmentation
+    from metassl.utils.summary import write_to_summary_writer
     from metassl.utils.io import get_expt_dir_with_bohb_config_id, organize_experiment_saving, find_free_port
+    from metassl.utils.torch_utils import (
+        hist_to_image,
+        tensor_to_image,
+        get_newest_model,
+        check_and_save_checkpoint,
+        deactivate_bn,
+        validate,
+        accuracy,
+        adjust_learning_rate,
+        get_image_data_to_plot,
+        )
 
 except ImportError:
     # For execution in command line
@@ -47,10 +59,20 @@ except ImportError:
     from .utils.config import AttrDict, _parse_args
     from .utils.meters import AverageMeter, ProgressMeter, ExponentialMovingAverageMeter, initialize_all_meters, update_grad_stats_meters
     from .utils.simsiam_alternating import SimSiam
-    from .utils.summary import write_to_summary_writer
     from .models import resnet_cifar as our_cifar_resnets
-    from .utils.torch_utils import get_newest_model, check_and_save_checkpoint, deactivate_bn, validate, accuracy, adjust_learning_rate
+    from .utils.summary import write_to_summary_writer
+    from .utils.augment import create_transforms, augment_per_image, DataAugmentation
     from .utils.io import get_expt_dir_with_bohb_config_id, organize_experiment_saving, find_free_port
+    from .utils.torch_utils import (
+        hist_to_image,
+        tensor_to_image,
+        get_newest_model,
+        check_and_save_checkpoint,
+        deactivate_bn,
+        validate,
+        accuracy,
+        adjust_learning_rate,
+        )
 
 model_names = sorted(
     name for name in models.__dict__
@@ -277,13 +299,18 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
         weight_decay=config.finetuning.weight_decay
         )
     
+    aug_model, optimizer_aug_model, meters, total_iter = None, None, None, 0
+    parameterize_augmentations = False
+    
+    if config.learnaug.type == "colorjitter":
+        aug_model = DataAugmentation(config)
+        optimizer_aug_model = torch.optim.Adam(aug_model.parameters(), 0.001)
+        parameterize_augmentations = True
+    
     # in case a dumped model exist and ssl_model_checkpoint is not set, load that dumped model
     newest_model = get_newest_model(expt_dir)
     if newest_model and config.expt.ssl_model_checkpoint_path is None:
         config.expt.ssl_model_checkpoint_path = newest_model
-    
-    total_iter = 0
-    meters = None
     
     # optionally resume from a checkpoint
     if config.expt.ssl_model_checkpoint_path:
@@ -299,6 +326,9 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
             model.load_state_dict(checkpoint['state_dict'])
             optimizer_pt.load_state_dict(checkpoint['optimizer_pt'])
             optimizer_ft.load_state_dict(checkpoint['optimizer_ft'])
+            if config.learnaug.type == "colorjitter":
+                optimizer_aug_model.load_state_dict(checkpoint['optimizer_aug_model'])
+                aug_model = checkpoint['aug_model']
             total_iter = checkpoint['total_iter']
             meters = checkpoint['meters']
             print(f"=> loaded checkpoint '{config.expt.ssl_model_checkpoint_path}' (epoch {checkpoint['epoch']})")
@@ -306,12 +336,12 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
             print(f"=> no checkpoint found at '{config.expt.ssl_model_checkpoint_path}'")
     
     # Data loading code
-    traindir = os.path.join(config.data.dataset, 'train')
+    # traindir = os.path.join(config.data.dataset, 'train')
 
     if config.finetuning.valid_size > 0:
-        train_loader_pt, train_sampler_pt, train_loader_ft, train_sampler_ft, valid_loader_ft, test_loader_ft = get_loaders(traindir, config, parameterize_augmentation=False, bohb_infos=bohb_infos)
+        train_loader_pt, train_sampler_pt, train_loader_ft, train_sampler_ft, valid_loader_ft, test_loader_ft = get_loaders(config, parameterize_augmentation=parameterize_augmentations, bohb_infos=bohb_infos)
     else:  # TODO: @Diane - Checkout and test on *parameterized_aug*
-        train_loader_pt, train_sampler_pt, train_loader_ft, train_sampler_ft, test_loader_ft = get_loaders(traindir, config, parameterize_augmentation=False, bohb_infos=bohb_infos)
+        train_loader_pt, train_sampler_pt, train_loader_ft, train_sampler_ft, test_loader_ft = get_loaders(config, parameterize_augmentation=parameterize_augmentations, bohb_infos=bohb_infos)
 
     cudnn.benchmark = True
     writer = None
@@ -358,12 +388,15 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
             criterion_ft=criterion_ft,
             optimizer_pt=optimizer_pt,
             optimizer_ft=optimizer_ft,
+            optimizer_aug_model=optimizer_aug_model,
+            aug_model=aug_model,
             epoch=epoch,
             total_iter=total_iter,
             config=config,
             writer=writer,
             meters=meters,
             warmup=warmup,
+            parameterize_augmentations=parameterize_augmentations,
             )
 
         # Determine wheter to evaluate on the validation or test set
@@ -402,6 +435,8 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
                     optimizer_ft=optimizer_ft,
                     expt_dir=expt_dir,
                     meters=meters,
+                    optimizer_aug_model=optimizer_aug_model,
+                    aug_model=aug_model,
                 )
             elif config.bohb.budget_mode != "epochs":
                 raise ValueError("Not implemented yet!")
@@ -417,6 +452,8 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
                 optimizer_ft=optimizer_ft,
                 expt_dir=expt_dir,
                 meters=meters,
+                optimizer_aug_model=optimizer_aug_model,
+                aug_model=aug_model,
                 )
     
     if config.expt.rank == 0:
@@ -441,12 +478,15 @@ def train_one_epoch(
     criterion_ft,
     optimizer_pt,
     optimizer_ft,
+    optimizer_aug_model,
+    aug_model,
     epoch,
     total_iter,
     config,
     writer,
     meters,
     warmup=False,
+    parameterize_augmentations=False,
     ):
     # general meters
     batch_time_meter = meters["batch_time_meter"]
@@ -480,6 +520,12 @@ def train_one_epoch(
     norm_pt_std_meter_lw = meters["norm_pt_std_meter_lw"]
     norm_ft_avg_meter_lw = meters["norm_ft_avg_meter_lw"]
     norm_ft_std_meter_lw = meters["norm_ft_std_meter_lw"]
+
+    reward_meter = meters["reward_meter"]
+    norm_aug_brightness_grad_meter = meters["norm_aug_brightness_grad_meter"]
+    norm_aug_contrast_grad_meter = meters["norm_aug_contrast_grad_meter"]
+    norm_aug_saturation_grad_meter = meters["norm_aug_saturation_grad_meter"]
+    norm_aug_hue_grad_meter = meters["norm_aug_hue_grad_meter"]
     
     meters_to_print = [
         batch_time_meter,
@@ -500,32 +546,61 @@ def train_one_epoch(
         )
     
     end = time.time()
-    # TODO @Fabio
     if config.finetuning.valid_size > 0:
         # As we only need a validation set for finetuning: len(train_loader_pt) < len(train_loader_ft)
         # TODO @Diane - Check out if this won't cause any problems
         pass
     else:
         assert len(train_loader_pt) <= len(train_loader_ft), 'So since this seems to break, we should write code to run multiple finetune epoch per pretrain epoch'
+        
     for i, ((images_pt, _), (images_ft, target_ft)) in enumerate(zip(train_loader_pt, train_loader_ft)):
         
         total_iter += 1
-        
+
+        if parameterize_augmentations and config.expt.rank == 0 and i % (config.expt.print_freq * 100) == 0:
+            rand_int = torch.randint(high=images_pt.shape[0], size=(1,))
+            # permute from CHW to HWC for pyplot
+            untransformed_image = torch.permute(images_pt[rand_int].squeeze(), (1, 2, 0)).cpu()
+
+            if config.expt.gpu is not None and not isinstance(images_pt, list):
+                images_pt = images_pt.cuda(config.expt.gpu, non_blocking=True)
+
+            indices, logprobs, strengths = aug_model.sample_logprobs()
+            images_pt = aug_model(images_pt, idx_b=indices["idx_b"], idx_c=indices["idx_c"], idx_s=indices["idx_s"], idx_h=indices["idx_h"])
+
         if config.expt.gpu is not None:
             images_pt[0] = images_pt[0].cuda(config.expt.gpu, non_blocking=True)
             images_pt[1] = images_pt[1].cuda(config.expt.gpu, non_blocking=True)
             images_ft = images_ft.cuda(config.expt.gpu, non_blocking=True)
             target_ft = target_ft.cuda(config.expt.gpu, non_blocking=True)
         
+        if parameterize_augmentations and config.expt.rank == 0 and i % (config.expt.print_freq * 100) == 0:
+            image_data_to_plot_dict = get_image_data_to_plot(rand_int=rand_int, untransformed_image=untransformed_image, images_pt=images_pt, images_ft=images_ft, target_ft=target_ft, strengths=strengths)
+            
         alternating_mode = False if config.expt.is_non_grad_based else True  # default is True
-        loss_pt, backbone_grads_pt_lw, backbone_grads_pt_global, z1, z2 = pretrain(model, images_pt, criterion_pt, optimizer_pt, losses_pt_meter, data_time_meter, end, config=config, alternating_mode=alternating_mode)
+        loss_pt, backbone_grads_pt_lw, backbone_grads_pt_global, z1, z2 = pretrain(model, images_pt, criterion_pt, optimizer_pt, losses_pt_meter, data_time_meter, end, alternating_mode=alternating_mode)
 
         z_std_normalized = np.std(z1.cpu().numpy() / (torch.linalg.norm(z1, 2).cpu().numpy() + 1e-9))
         target_std_meter.update(z_std_normalized)
         
-        backbone_grads_ft_lw, backbone_grads_ft_global = None, None
+        backbone_grads_ft_lw, backbone_grads_ft_global, reward = None, None, None
         if not warmup:
             loss_ft, backbone_grads_ft_lw, backbone_grads_ft_global = finetune(model, images_ft, target_ft, criterion_ft, optimizer_ft, losses_ft_meter, top1_meter, top5_meter, config=config, alternating_mode=alternating_mode)
+
+            if parameterize_augmentations:
+                optimizer_aug_model.zero_grad()
+                reward = cos_sim_ema_meter_lw.val - cos_sim_ema_meter_lw.ema
+                
+                color_jitter_logprob_b = -logprobs["logprob_b"] * reward
+                color_jitter_logprob_c = -logprobs["logprob_c"] * reward
+                color_jitter_logprob_s = -logprobs["logprob_s"] * reward
+                color_jitter_logprob_h = -logprobs["logprob_h"] * reward
+    
+                aug_loss = color_jitter_logprob_b + color_jitter_logprob_c + color_jitter_logprob_s + color_jitter_logprob_h
+                aug_loss.backward()
+    
+                optimizer_aug_model.step()
+            
         else:
             losses_ft_meter.update(np.inf)
             loss_ft = np.inf
@@ -534,10 +609,11 @@ def train_one_epoch(
             "backbone_grads_pt_lw":     backbone_grads_pt_lw,
             "backbone_grads_pt_global": backbone_grads_pt_global,
             "backbone_grads_ft_lw":     backbone_grads_ft_lw,
-            "backbone_grads_ft_global": backbone_grads_ft_global
+            "backbone_grads_ft_global": backbone_grads_ft_global,
+            "reward":                   reward,
             }
         
-        update_grad_stats_meters(grads=grads, meters=meters, warmup=warmup)
+        update_grad_stats_meters(grads=grads, meters=meters, warmup=warmup, parameterize_augmentations=parameterize_augmentations, aug_model=aug_model)
         
         main_stats_meters = [
             cos_sim_ema_meter_global,
@@ -555,7 +631,7 @@ def train_one_epoch(
             norm_ft_avg_meter_lw,
             target_std_meter,
             ]
-        
+
         additional_stats_meters = [
             cos_sim_std_meter_lw,
             dot_prod_std_meter_lw,
@@ -569,6 +645,16 @@ def train_one_epoch(
             "additional_stats_meters": additional_stats_meters
             }
         
+        if parameterize_augmentations:
+            main_stats_meters.append(reward_meter)
+            aug_param_meters = [
+                norm_aug_brightness_grad_meter,
+                norm_aug_contrast_grad_meter,
+                norm_aug_saturation_grad_meter,
+                norm_aug_hue_grad_meter
+                ]
+            meters_to_plot["aug_param_meters"] = aug_param_meters
+        
         # measure elapsed time
         batch_time_meter.update(time.time() - end)
         end = time.time()
@@ -577,11 +663,39 @@ def train_one_epoch(
             progress.display(i)
         if config.expt.rank == 0 and i % config.expt.write_summary_frequency:
             write_to_summary_writer(total_iter, loss_pt, loss_ft, data_time_meter, batch_time_meter, optimizer_pt, optimizer_ft, top1_meter, top5_meter, meters_to_plot, writer)
-    
+            
+        # expensive stats
+        if parameterize_augmentations and config.expt.rank == 0 and i % (config.expt.print_freq * 100) == 0:
+            img = hist_to_image(aug_model.color_jitter_histogram_brightness, "Color Jitter Strength Brightness Counts")
+            writer.add_image(tag="Advanced Stats/color jitter strength brightness", img_tensor=img, global_step=total_iter)
+
+            img = hist_to_image(aug_model.color_jitter_histogram_contrast, "Color Jitter Strength Contrast Counts")
+            writer.add_image(tag="Advanced Stats/color jitter strength contrast", img_tensor=img, global_step=total_iter)
+
+            img = hist_to_image(aug_model.color_jitter_histogram_saturation, "Color Jitter Strength Saturation Counts")
+            writer.add_image(tag="Advanced Stats/color jitter strength saturation", img_tensor=img, global_step=total_iter)
+
+            img = hist_to_image(aug_model.color_jitter_histogram_hue, "Color Jitter Strength Hue Counts")
+            writer.add_image(tag="Advanced Stats/color jitter strength hue", img_tensor=img, global_step=total_iter)
+
+            img = tensor_to_image(image_data_to_plot_dict["untransformed_image"], f"Randomly sampled untransformed image")
+            writer.add_image(tag="Advanced Stats/sampled untransformed image", img_tensor=img, global_step=total_iter)
+
+            title = image_data_to_plot_dict["title"]
+
+            img = tensor_to_image(image_data_to_plot_dict["img0"], f"Randomly sampled transformed image 1\n {title}")
+            writer.add_image(tag="Advanced Stats/sampled transformed image 1", img_tensor=img, global_step=total_iter)
+
+            img = tensor_to_image(image_data_to_plot_dict["img1"], f"Randomly sampled transformed image 2\n {title}")
+            writer.add_image(tag="Advanced Stats/sampled transformed image 2", img_tensor=img, global_step=total_iter)
+
+            ft_img = tensor_to_image(image_data_to_plot_dict["ft_img"], f"Randomly sampled finetuning image\n with label {image_data_to_plot_dict['ft_label']}")
+            writer.add_image(tag="Advanced Stats/sampled finetuning image", img_tensor=ft_img, global_step=total_iter)
+            
     return total_iter
 
 
-def pretrain(model, images_pt, criterion_pt, optimizer_pt, losses_pt, data_time, end, config, alternating_mode=False):
+def pretrain(model, images_pt, criterion_pt, optimizer_pt, losses_pt, data_time, end, alternating_mode=False):
     backbone_grads_lw = OrderedDict()
     backbone_grads_global = torch.Tensor().cuda()
     
@@ -672,20 +786,6 @@ def finetune(model, images_ft, target_ft, criterion_ft, optimizer_ft, losses_ft_
     return loss_ft, backbone_grads_lw, backbone_grads_global
 
 
-
-
-
-
-
-def find_free_port():
-    import socket
-    from contextlib import closing
-    with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
-        s.bind(('', 0))
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        return s.getsockname()[1]
-
-
 if __name__ == '__main__':
     user = os.environ.get('USER')
     
@@ -715,6 +815,8 @@ if __name__ == '__main__':
     parser.add_argument('--expt.warmup_epochs', default=10, type=int, metavar='N', help='denotes the number of epochs that we only pre-train without finetuning afterwards; warmup is turned off when set to 0; we use a linear incremental schedule during warmup')
     parser.add_argument('--expt.warmup_multiplier', default=2., type=float, metavar='N', help='A factor that is multiplied with the pretraining lr used in the linear incremental learning rate scheduler during warmup. The final lr is multiplier * pre-training lr')
     parser.add_argument('--expt.warmup_both', action='store_true', help='Whether backbone and head should be both warmed up.')
+    parser.add_argument('--expt.write_summary_frequency', default=3, type=int, metavar='N', help='Specifies, after how many batches the TensorBoard summary writer should flush new data to the summary object.')
+    # parser.add_argument('--expt.image_wise_gradients', action='store_true', help='compute image wise gradients with backpack (default: False).')
     parser.add_argument('--expt.use_fix_aug_params', action='store_true', help='Use this flag if you want to try out specific aug params (e.g., from a best BOHB config). Default values will be overwritten then without crashing other experiments.')
     parser.add_argument('--expt.data_augmentation_mode', default='default', choices=['default', 'probability_augment', 'rand_augment'], help="Select which data augmentation to use. Default is for the standard SimSiam setting and for parameterize aug setting.")
     parser.add_argument('--expt.write_summary_frequency', default=3, type=int, metavar='N', help='Specifies, after how many batches the TensorBoard summary writer should flush new data to the summary object.')
@@ -755,13 +857,15 @@ if __name__ == '__main__':
     parser.add_argument('--data', default="data", type=str, metavar='N')
     parser.add_argument('--data.seed', type=int, default=123, help='the seed')
     parser.add_argument('--data.dataset', type=str, default="ImageNet", help='supported datasets: CIFAR10, CIFAR100, ImageNet')
-    parser.add_argument('--data.data_dir', type=str, default=f"/home/{user}/workspace/data/metassl", help='supported datasets: CIFAR10, CIFAR100, ImageNet')
     parser.add_argument('--data.dataset_percentage_usage', type=float, default=100.0, help='Indicates what percentage of the data is used for the experiments.')
     
     parser.add_argument('--simsiam', default="simsiam", type=str, metavar='N')
     parser.add_argument('--simsiam.dim', type=int, default=2048, help='the feature dimension')
     parser.add_argument('--simsiam.pred_dim', type=int, default=512, help='the hidden dimension of the predictor')
     parser.add_argument('--simsiam.fix_pred_lr', action="store_false", help='fix learning rate for the predictor (default: True')
+
+    parser.add_argument('--learnaug', default="learnaug", type=str, metavar='N')
+    parser.add_argument('--learnaug.type', default=None, choices=["colorjitter", "full"], help='Define which type of learned augmentation to use.')
     
     # parser.add_argument('--bohb', default="bohb", type=str, metavar='N')
     # parser.add_argument("--bohb.run_id", default="default_BOHB")

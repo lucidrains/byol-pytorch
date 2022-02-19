@@ -53,6 +53,5 @@ optim:
 data:
   seed:     123
   dataset:  'ImageNet'                    # supported datasets: CIFAR10, CIFAR100, ImageNet
-  data_dir: '/home/ferreira/workspace/data/metassl'
 
 

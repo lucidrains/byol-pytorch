@@ -32,12 +32,12 @@ warnings.filterwarnings("ignore", category=UserWarning)
 
 try:
     # For execution in PyCharm
-    from metassl.utils.data import get_train_valid_loader, get_test_loader, get_loaders, normalize_imagenet
+    from metassl.utils.data import get_train_valid_loader, get_test_loader, get_loaders
     from metassl.utils.config import AttrDict, _parse_args
     from metassl.utils.meters import AverageMeter, ProgressMeter, ExponentialMovingAverageMeter, update_grad_stats_meters, initialize_all_meters
     from metassl.utils.simsiam_alternating import SimSiam
     import metassl.models.resnet_cifar as our_cifar_resnets
-    from metassl.utils.augment import create_transforms, augment_per_image
+    from metassl.utils.augment import create_transforms, augment_per_image, DataAugmentation
     from metassl.utils.summary import write_to_summary_writer
     from metassl.utils.torch_utils import (
         hist_to_image,
@@ -49,17 +49,16 @@ try:
         accuracy,
         adjust_learning_rate,
         )
-    from metassl.utils.augment import DataAugmentation
 
 except ImportError:
     # For execution in command line
-    from .utils.data import get_train_valid_loader, get_test_loader, get_loaders, normalize_imagenet
+    from .utils.data import get_train_valid_loader, get_test_loader, get_loaders
     from .utils.config import AttrDict, _parse_args
-    from .utils.meters import AverageMeter, ProgressMeter, ExponentialMovingAverageMeter, update_grad_stats_meters, initialize_all_meters
+    from .utils.meters import AverageMeter, ProgressMeter, ExponentialMovingAverageMeter, initialize_all_meters, update_grad_stats_meters
     from .utils.simsiam_alternating import SimSiam
     from .models import resnet_cifar as our_cifar_resnets
     from .utils.summary import write_to_summary_writer
-    from .utils.augment import create_transforms, augment_per_image
+    from .utils.augment import create_transforms, augment_per_image, DataAugmentation
     from .utils.torch_utils import (
         hist_to_image,
         tensor_to_image,
@@ -70,7 +69,6 @@ except ImportError:
         accuracy,
         adjust_learning_rate,
         )
-    from .utils.augment import DataAugmentation
 
 model_names = sorted(
     name for name in models.__dict__

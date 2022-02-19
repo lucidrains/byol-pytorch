@@ -77,7 +77,6 @@ model:
 data:
   seed:                     123
   dataset:                  'ImageNet'                    # supported datasets: CIFAR10, CIFAR100, ImageNet
-  data_dir:                 '/home/ferreira/workspace/data/metassl'
   dataset_percentage_usage: 100         # Indicates what percentage of the data is used for the experiments.
 
 

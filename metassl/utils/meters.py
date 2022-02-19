@@ -67,7 +67,7 @@ class ProgressMeter(object):
         return '[' + fmt + '/' + fmt.format(num_batches) + ']'
 
 
-def update_grad_stats_meters(grads, meters, warmup):
+def update_grad_stats_meters(grads, meters, warmup, parameterize_augmentations=False, aug_model=None):
     backbone_grads_pt_lw, backbone_grads_pt_global = grads["backbone_grads_pt_lw"], grads["backbone_grads_pt_global"]
     backbone_grads_ft_lw, backbone_grads_ft_global = grads["backbone_grads_ft_lw"], grads["backbone_grads_ft_global"]
     
@@ -94,6 +94,14 @@ def update_grad_stats_meters(grads, meters, warmup):
     norm_pt_std_meter_lw = meters["norm_pt_std_meter_lw"]
     norm_ft_avg_meter_lw = meters["norm_ft_avg_meter_lw"]
     norm_ft_std_meter_lw = meters["norm_ft_std_meter_lw"]
+    
+    if parameterize_augmentations:
+        reward = grads["reward"]
+        reward_meter = meters["reward_meter"]
+        norm_aug_brightness_grad_meter = meters["norm_aug_brightness_grad_meter"]
+        norm_aug_contrast_grad_meter = meters["norm_aug_contrast_grad_meter"]
+        norm_aug_saturation_grad_meter = meters["norm_aug_saturation_grad_meter"]
+        norm_aug_hue_grad_meter = meters["norm_aug_hue_grad_meter"]
     
     if not warmup:
         if backbone_grads_ft_lw is not None:
@@ -126,6 +134,14 @@ def update_grad_stats_meters(grads, meters, warmup):
             norm_ft_meter_global.update(torch.linalg.norm(backbone_grads_ft_global, 2))
         
         norm_pt_meter_global.update(torch.linalg.norm(backbone_grads_pt_global, 2))
+
+        if parameterize_augmentations:
+            reward_meter.update(reward)
+
+            norm_aug_brightness_grad_meter.update(torch.linalg.norm(aug_model.aug_w_b.grad.data, 2))
+            norm_aug_contrast_grad_meter.update(torch.linalg.norm(aug_model.aug_w_c.grad.data, 2))
+            norm_aug_saturation_grad_meter.update(torch.linalg.norm(aug_model.aug_w_s.grad.data, 2))
+            norm_aug_hue_grad_meter.update(torch.linalg.norm(aug_model.aug_w_h.grad.data, 2))
     
     else:
         # global
@@ -147,6 +163,13 @@ def update_grad_stats_meters(grads, meters, warmup):
         norm_pt_avg_meter_lw.update(mean), norm_pt_std_meter_lw.update(std)
         
         norm_ft_avg_meter_lw.update(0.), norm_ft_std_meter_lw.update(0.)
+        
+        if parameterize_augmentations:
+            reward_meter.update(0.)
+            norm_aug_brightness_grad_meter.update(0.)
+            norm_aug_contrast_grad_meter.update(0.)
+            norm_aug_saturation_grad_meter.update(0.)
+            norm_aug_hue_grad_meter.update(0.)
 
 
 def calc_all_layer_wise_stats(
@@ -252,6 +275,12 @@ def initialize_all_meters():
     norm_ft_avg_meter_lw = AverageMeter('Norm FT layer-w. average', ':6.4f')
     norm_ft_std_meter_lw = AverageMeter('Norm FT layer-w. std.', ':6.4f')
     
+    # aug meters
+    norm_aug_brightness_grad_meter = AverageMeter('Norm Aug. brightness gradient', ':6.4f')
+    norm_aug_contrast_grad_meter = AverageMeter('Norm Aug. contrast gradient', ':6.4f')
+    norm_aug_saturation_grad_meter = AverageMeter('Norm Aug. saturation gradient', ':6.4f')
+    norm_aug_hue_grad_meter = AverageMeter('Norm Aug. hue gradient', ':6.4f')
+    
     return {
         "batch_time_meter":                      batch_time_meter,
         "data_time_meter":                       data_time_meter,
@@ -279,4 +308,8 @@ def initialize_all_meters():
         "cos_sim_ema_meter_global":              cos_sim_ema_meter_global,
         "cos_sim_ema_meter_standardized_global": cos_sim_ema_meter_standardized_global,
         "target_std_meter":                      target_std_meter,
+        "norm_aug_brightness_grad_meter":        norm_aug_brightness_grad_meter,
+        "norm_aug_contrast_grad_meter":          norm_aug_contrast_grad_meter,
+        "norm_aug_saturation_grad_meter":        norm_aug_saturation_grad_meter,
+        "norm_aug_hue_grad_meter":               norm_aug_hue_grad_meter,
         }
