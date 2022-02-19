@@ -178,13 +178,20 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
     # create model
     # TODO: @Diane - Check out and compare against baseline code
     if config.data.dataset == 'CIFAR10':
-        if config.model.use_tv_arch:
+        if config.model.arch == "tv_resnet":
             print(f"=> creating model {config.model.model_type}")
             model = SimSiam(models.__dict__[config.model.model_type], config.simsiam.dim, config.simsiam.pred_dim)
-        else:
+        elif config.model.arch == "our_resnet":
             # Use model from our model folder instead from torchvision!
             print(f"=> creating model resnet18")
+            config.simsiam.pred_dim = 2048  # TODO: @Diane - checkout
             model = SimSiam(our_cifar_resnets.resnet18, config.simsiam.dim, config.simsiam.pred_dim)
+        elif config.model.arch == "baseline_resnet":
+            from metassl.utils.baseline_simsiam import SimSiam as BaselineSimSiam
+            config.simsiam.pred_dim = 2048
+            model = BaselineSimSiam()
+        else:
+            raise NotImplementedError
 
     else:
         print(f"=> creating model {config.model.model_type}")
@@ -460,8 +467,11 @@ def train_one_epoch(
         
         get_gradients = False if config.expt.is_non_grad_based else True  # default is True
         loss_pt, backbone_grads_pt_lw, backbone_grads_pt_global, z1, z2 = pretrain(model, images_pt, criterion_pt, optimizer_pt, losses_pt_meter, data_time_meter, end, config=config, get_gradients=get_gradients)
-        
-        z_std_normalized = np.std(z1.cpu().numpy() / (torch.linalg.norm(z1, 2).cpu().numpy()) + 1e-9)
+
+        if config.data.dataset == "CIFAR10" and config.model.arch == "baseline_resnet":
+            z_std_normalized = np.std(z1.cpu().detach().numpy() / (torch.linalg.norm(z1, 2).cpu().detach().numpy()) + 1e-9)
+        else:
+            z_std_normalized = np.std(z1.cpu().numpy() / (torch.linalg.norm(z1, 2).cpu().numpy()) + 1e-9)
         target_std_meter.update(z_std_normalized)
         
         grads = {
@@ -532,7 +542,10 @@ def pretrain(model, images_pt, criterion_pt, optimizer_pt, losses_pt, data_time,
     
     # pre-training
     # compute outputs
-    p1, p2, z1, z2 = model(x1=images_pt[0], x2=images_pt[1], finetuning=False)
+    if config.data.dataset == "CIFAR10" and config.model.arch == "baseline_resnet":
+        p1, p2, z1, z2 = model(im_aug1=images_pt[0], im_aug2=images_pt[1])
+    else:
+        p1, p2, z1, z2 = model(x1=images_pt[0], x2=images_pt[1], finetuning=False)
     
     # compute losses
     loss_pt = -(criterion_pt(p1, z2).mean() + criterion_pt(p2, z1).mean()) * 0.5
@@ -671,7 +684,7 @@ if __name__ == '__main__':
     parser.add_argument('--model.model_type', type=str, default='resnet50', help='all torchvision ResNets')
     parser.add_argument('--model.seed', type=int, default=123, help='the seed')
     parser.add_argument('--model.turn_off_bn', action='store_true', help='turns off all batch norm instances in the model')
-    parser.add_argument('--model.use_tv_arch', action='store_true', help='Use torch vision architecture for CIFAR10')
+    parser.add_argument('--model.arch', type=str, default="baseline_resnet", choices=["our_resnet", "tv_resnet", "baseline_resnet"], help='Select architecture for CIFAR10')
     
     parser.add_argument('--data', default="data", type=str, metavar='N')
     parser.add_argument('--data.seed', type=int, default=123, help='the seed')

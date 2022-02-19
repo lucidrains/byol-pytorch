@@ -282,7 +282,10 @@ def validate(val_loader, model, criterion, config, finetuning=False):
             target = target.cuda(config.expt.gpu, non_blocking=True)
             
             # compute output
-            output = model(images, finetuning=finetuning)
+            if config.data.dataset == "CIFAR10" and config.model.arch == "baseline_resnet":
+                output = model(images)
+            else:
+                output = model(images, finetuning=finetuning)
             loss = criterion(output, target)
             
             # measure accuracy and record loss

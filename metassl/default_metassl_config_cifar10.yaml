@@ -73,7 +73,7 @@ model:
   model_type:  "resnet18"                # supported models: all torchvision ResNets
   seed:        123
   turn_off_bn: False                     # turns off all batch norm instances in the model
-  use_tv_arch: False                     # Use torch vision architecture for CIFAR10
+  arch:        "baseline_resnet"              # Select architecture for CIFAR10; choices=["our_resnet", "tv_resnet", "baseline_resnet"]
 
 
 #######################################

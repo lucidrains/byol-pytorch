@@ -174,14 +174,34 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
 
     # create model
     # TODO: @Diane - Check out and compare against baseline code
-    if config.data.dataset == 'CIFAR10':
-        if config.model.use_tv_arch:
+    if config.data.dataset == "CIFAR10":
+        if config.model.arch == "tv_resnet":
             print(f"=> creating model {config.model.model_type}")
             model = SimSiam(models.__dict__[config.model.model_type], config.simsiam.dim, config.simsiam.pred_dim)
-        else:
+        elif config.model.arch == "our_resnet":
             # Use model from our model folder instead from torchvision!
             print(f"=> creating model resnet18")
             model = SimSiam(our_cifar_resnets.resnet18, config.simsiam.dim, config.simsiam.pred_dim)
+        elif config.model.arch == "baseline_resnet":
+            from metassl.utils.resnet_cifar import ResNet18, ResNet34, ResNet50, ResNet101, ResNet152
+            def get_backbone(backbone_name, num_cls=10):
+                models = {'resnet18': ResNet18(low_dim=num_cls),
+                          'resnet34': ResNet34(low_dim=num_cls),
+                          'resnet50': ResNet50(low_dim=num_cls),
+                          'resnet101': ResNet101(low_dim=num_cls),
+                          'resnet152': ResNet152(low_dim=num_cls)}
+                return models[backbone_name]
+            model = get_backbone('resnet18')
+
+            # freeze all layers but the last fc
+            for name, param in model.named_parameters():
+                if name not in ['fc.weight', 'fc.bias']:
+                    param.requires_grad = False
+            # init the fc layer
+            model.fc.weight.data.normal_(mean=0.0, std=0.01)
+            model.fc.bias.data.zero_()
+        else:
+            raise NotImplementedError
     else:
         print(f"=> creating model '{config.model.model_type}'")
         model = SimSiam(models.__dict__[config.model.model_type], config.simsiam.dim, config.simsiam.pred_dim)
@@ -190,6 +210,32 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
         print("Turning off BatchNorm in entire model.")
         deactivate_bn(model)
         model.encoder_head[6].bias.requires_grad = True
+
+    # Baseline Code ----------------------------------------------------------------------------------------------------
+    if config.data.dataset == "CIFAR10":
+        # TODO: @Diane - fix hardcoding
+        pretrained = "/home/wagn3rd/Projects/metassl/experiments/CIFAR10/cifar10_baseline_arch/checkpoint_0799.pth.tar"
+        pretrained = "experiments/CIFAR10/testing_new_arch/checkpoint_0004.pth.tar"
+        if True:
+            if os.path.isfile(pretrained):
+                print("=> loading checkpoint '{}'".format(pretrained))
+                checkpoint = torch.load(pretrained, map_location="cpu")
+                state_dict = checkpoint['state_dict']
+
+                new_state_dict = dict()
+                for old_key, value in state_dict.items():
+                    if old_key.startswith('backbone') and 'fc' not in old_key:
+                        new_key = old_key.replace('backbone.', '')
+                        new_state_dict[new_key] = value
+
+                start_epoch = 0
+                msg = model.load_state_dict(new_state_dict, strict=False)
+                # assert set(msg.missing_keys) == {"fc.weight", "fc.bias"}
+
+                print("=> loaded pre-trained model '{}'".format(pretrained))
+            else:
+                print("=> no checkpoint found at '{}'".format(pretrained))
+    # ------------------------------------------------------------------------------------------------------------------
 
     # infer learning rate !before changing batch size! > see lines below
     # TODO: @Fabio - keep for CIFAR10? (metassl code); lr_b = 0.06, lr_m = 0.03 * 512 / 256 = 0.06 also
@@ -242,6 +288,12 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
     # define loss function (criterion) and optimizer
     criterion_ft = nn.CrossEntropyLoss().cuda(config.expt.gpu)
 
+    # Baseline Code ----------------------------------------------------------------------------------------------------
+    if config.data.dataset == "CIFAR10" and config.model.arch == "baseline_resnet":
+        parameters = list(filter(lambda p: p.requires_grad, model.parameters()))
+        assert len(parameters) == 2  # fc.weight, fc.bias
+    # ------------------------------------------------------------------------------------------------------------------
+
     optimizer_ft = torch.optim.SGD(
         params=model.module.classifier_head.parameters() if config.expt.distributed else model.parameters(), # TODO: @Fabio - check together with optim_params_pt,
         lr=init_lr_ft,
@@ -259,29 +311,34 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
 
     total_iter = 0
     meters = None
-    
-    # optionally resume from a checkpoint
-    if config.expt.ssl_model_checkpoint_path:
-        if os.path.isfile(config.expt.ssl_model_checkpoint_path):
-            print(f"=> loading checkpoint '{config.expt.ssl_model_checkpoint_path}'")
-            if config.expt.gpu is None:
-                checkpoint = torch.load(config.expt.ssl_model_checkpoint_path)
+
+    # MetaSSL code -----------------------------------------------------------------------------------------------------
+    if config.data.dataset == "CIFAR10":
+        pass
+    else:
+        # optionally resume from a checkpoint
+        if config.expt.ssl_model_checkpoint_path:
+            if os.path.isfile(config.expt.ssl_model_checkpoint_path):
+                print(f"=> loading checkpoint '{config.expt.ssl_model_checkpoint_path}'")
+                if config.expt.gpu is None:
+                    checkpoint = torch.load(config.expt.ssl_model_checkpoint_path)
+                else:
+                    # Map model to be loaded to specified single gpu.
+                    loc = f'cuda:{config.expt.gpu}'
+                    checkpoint = torch.load(config.expt.ssl_model_checkpoint_path, map_location=loc)
+
+                if "meters_ft" in checkpoint and checkpoint["meters_ft"]:
+                    meters = checkpoint["meters_ft"]
+                if "epoch_ft" in checkpoint:
+                    config.finetuning.start_epoch = checkpoint['epoch_ft']
+                    print(f"=> loaded checkpoint '{config.expt.ssl_model_checkpoint_path}' (ft epoch {checkpoint['epoch_ft']})")
+                if "optimizer_ft" in checkpoint and checkpoint['optimizer_ft']:
+                    optimizer_ft.load_state_dict(checkpoint['optimizer_ft'])
+
+                model.load_state_dict(checkpoint['state_dict'])
             else:
-                # Map model to be loaded to specified single gpu.
-                loc = f'cuda:{config.expt.gpu}'
-                checkpoint = torch.load(config.expt.ssl_model_checkpoint_path, map_location=loc)
-            
-            if "meters_ft" in checkpoint and checkpoint["meters_ft"]:
-                meters = checkpoint["meters_ft"]
-            if "epoch_ft" in checkpoint:
-                config.finetuning.start_epoch = checkpoint['epoch_ft']
-                print(f"=> loaded checkpoint '{config.expt.ssl_model_checkpoint_path}' (ft epoch {checkpoint['epoch_ft']})")
-            if "optimizer_ft" in checkpoint and checkpoint['optimizer_ft']:
-                optimizer_ft.load_state_dict(checkpoint['optimizer_ft'])
-                
-            model.load_state_dict(checkpoint['state_dict'])
-        else:
-            print(f"=> no checkpoint found at '{config.expt.ssl_model_checkpoint_path}'")
+                print(f"=> no checkpoint found at '{config.expt.ssl_model_checkpoint_path}'")
+    # ------------------------------------------------------------------------------------------------------------------
     
     # Data loading code
     traindir = os.path.join(config.data.dataset, 'train')  # TODO: @Fabio - What about validir / testdir?
@@ -547,12 +604,23 @@ def finetune(model, images_ft, target_ft, criterion_ft, optimizer_ft, losses_ft_
     if get_gradients:
         model.module.backbone.requires_grad_(True)
     else:
-        model.module.backbone.requires_grad_(False)
+        if config.data.dataset == "CIFAR10" and config.model.arch == "baseline_resnet":
+            # TODO @Diane - checkout
+            pass
+        else:
+            model.module.backbone.requires_grad_(False)
     
-    model.module.classifier_head.requires_grad_(True)
+    if config.data.dataset == "CIFAR10" and config.model.arch == "baseline_resnet":
+        # TODO @Diane - checkout
+        pass
+    else:
+        model.module.classifier_head.requires_grad_(True)
     
     # compute outputs
-    output_ft = model(images_ft, finetuning=True)
+    if config.data.dataset == "CIFAR10" and config.model.arch == "baseline_resnet":
+        output_ft = model(images_ft)
+    else:
+        output_ft = model(images_ft, finetuning=True)
     loss_ft = criterion_ft(output_ft, target_ft)
     loss_ft.backward()
     
@@ -571,7 +639,11 @@ def finetune(model, images_ft, target_ft, criterion_ft, optimizer_ft, losses_ft_
     # only optimizes classifier head parameters
     optimizer_ft.step()
 
-    model.module.backbone.requires_grad_(False)
+    if config.data.dataset == "CIFAR10" and config.model.arch == "baseline_resnet":
+        # TODO @Diane - checkout
+        pass
+    else:
+        model.module.backbone.requires_grad_(False)
     # just to make sure to prevent grad leakage
     for param in model.module.parameters():
         param.grad = None
@@ -691,7 +763,7 @@ if __name__ == '__main__':
     parser.add_argument('--model.model_type', type=str, default='resnet50', help='all torchvision ResNets')
     parser.add_argument('--model.seed', type=int, default=123, help='the seed')
     parser.add_argument('--model.turn_off_bn', action='store_true', help='turns off all batch norm instances in the model')
-    parser.add_argument('--model.use_tv_arch', action='store_true', help='Use torch vision architecture for CIFAR10')
+    parser.add_argument('--model.arch', type=str, default="baseline_resnet", choices=["our_resnet", "tv_resnet", "baseline_resnet"], help='Select architecture for CIFAR10')
     
     parser.add_argument('--data', default="data", type=str, metavar='N')
     parser.add_argument('--data.seed', type=int, default=123, help='the seed')
