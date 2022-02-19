@@ -205,7 +205,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
             # DistributedDataParallel, we need to divide the batch size
             # ourselves based on the total number of GPUs we have
             config.train.batch_size = int(config.train.batch_size / ngpus_per_node)
-            config.workers = int((config.expt.workers + ngpus_per_node - 1) / ngpus_per_node)
+        
             model = torch.nn.parallel.DistributedDataParallel(
                 model,
                 device_ids=[config.expt.gpu],
