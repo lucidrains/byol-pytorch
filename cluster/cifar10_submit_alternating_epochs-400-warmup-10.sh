@@ -8,6 +8,7 @@
 TRAIN_EPOCHS=400
 WARMUP_EPOCHS=10
 EXPT_NAME="cifar10-alternating-epochs-$TRAIN_EPOCHS-warmup-$WARMUP_EPOCHS"
+LEARNAUG_TYPE="default"
 
 echo "EXPT NAME $EXPT_NAME"
 
@@ -33,5 +34,5 @@ export PYTHONPATH=$PYTHONPATH:$WORKFOLDER
 source /home/ferreira/.miniconda/bin/activate metassl
 
 echo "submitted job $EXPT_NAME"
-echo "running srun with command: srun $WORKFOLDER/cluster/train_cifar10_alternating_simsiam_warmup_default_config_epochs_warmup.sh $EXPT_NAME $TRAIN_EPOCHS $WARMUP_EPOCHS"
-srun $WORKFOLDER/cluster/train_cifar10_alternating_simsiam_warmup_default_config_epochs_warmup.sh $EXPT_NAME $TRAIN_EPOCHS $WARMUP_EPOCHS
+echo "running srun with command: srun $WORKFOLDER/cluster/train_cifar10_alternating_simsiam_default_config_epochs_warmup.sh $EXPT_NAME $TRAIN_EPOCHS $WARMUP_EPOCHS $LEARNAUG_TYPE"
+srun $WORKFOLDER/cluster/train_cifar10_alternating_simsiam_default_config_epochs_warmup.sh $EXPT_NAME $TRAIN_EPOCHS $WARMUP_EPOCHS $LEARNAUG_TYPE

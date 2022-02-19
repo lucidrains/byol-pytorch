@@ -6,6 +6,7 @@
 #SBATCH --array=0-10%1
 
 EXPT_NAME="cifar10-alternating-default-config"
+LEARNAUG_TYPE="default"
 
 echo "EXPT NAME $EXPT_NAME"
 
@@ -31,5 +32,5 @@ export PYTHONPATH=$PYTHONPATH:$WORKFOLDER
 source /home/ferreira/.miniconda/bin/activate metassl
 
 echo "submitted job $EXPT_NAME"
-echo "running srun with command: $WORKFOLDER/cluster/train_cifar10_alternating_simsiam_warmup_default_config.sh $EXPT_NAME"
-srun $WORKFOLDER/cluster/train_cifar10_alternating_simsiam_warmup_default_config.sh $EXPT_NAME
+echo "running srun with command: $WORKFOLDER/cluster/train_cifar10_alternating_simsiam_default_config.sh $EXPT_NAME $LEARNAUG_TYPE"
+srun $WORKFOLDER/cluster/train_cifar10_alternating_simsiam_default_config.sh $EXPT_NAME $LEARNAUG_TYPE

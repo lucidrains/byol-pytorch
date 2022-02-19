@@ -1,19 +1,14 @@
 #!/bin/bash
 #SBATCH -p alldlc_gpu-rtx2080
 #SBATCH --gres=gpu:8
-#SBATCH --job-name=alternating-parameterized-aug-nn-ftlr-100-ptlr-5e-2-bs-256-epochs-800-warmup-10
+#SBATCH --job-name=cifar10-alternating-learnaug-colorjitter-default-config
 #SBATCH -o /work/dlclarge2/ferreira-metassl/metassl/experiments/logs/%x.%N.%A.%a.out
-#SBATCH --array=0-25%1
+#SBATCH --array=0-10%1
 
-TRAIN_EPOCHS=800
-FINETUNING_EPOCHS=800
-WARMUP=10
-EXPT_NAME="alternating-parameterized-aug-nn-ftlr-100-ptlr-5e-2-bs-256-epochs-800-warmup-10"
+EXPT_NAME="cifar10-alternating-learnaug-colorjitter-default-config"
+LEARNAUG_TYPE="colorjitter"
 
-echo "TRAIN EPOCHS $TRAIN_EPOCHS"
-echo "FINETUNING EPOCHS $FINETUNING_EPOCHS"
 echo "EXPT NAME $EXPT_NAME"
-echo "WARMUP $WARMUP"
 
 #PARTITION="ml_gpu-rtx2080"
 #PARTITION="bosch_gpu-rtx2080"
@@ -31,11 +26,11 @@ export LD_LIBRARY_PATH=/usr/local/cuda-10.0/lib64:$LD_LIBRARY_PATH
 
 source variables.sh
 
-echo $WORKFOLDER
+echo "WORKFOLDER $WORKFOLDER"
 export PYTHONPATH=$PYTHONPATH:$WORKFOLDER
 
 source /home/ferreira/.miniconda/bin/activate metassl
 
 echo "submitted job $EXPT_NAME"
-
-srun $WORKFOLDER/cluster/train_alternating_simsiam_warmup_parameterized_aug.sh $EXPT_NAME $TRAIN_EPOCHS $FINETUNING_EPOCHS $WARMUP
+echo "running srun with command: $WORKFOLDER/cluster/train_cifar10_alternating_simsiam_default_config.sh $EXPT_NAME $LEARNAUG_TYPE"
+srun $WORKFOLDER/cluster/train_cifar10_alternating_simsiam_default_config.sh $EXPT_NAME $LEARNAUG_TYPE
