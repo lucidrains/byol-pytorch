@@ -91,6 +91,11 @@ simsiam:
   pred_dim:    512                              # hidden dimension of the predictor (default: 512)
   fix_pred_lr: True                        # Fix learning rate for the predictor
 
+########################################
+####       Learn Augmentations       ###
+########################################
+learnaug:
+    type:     "colorjitter"             # Define which type of learned augmentation to use.
 
 #######################################
 ###       BOHB Specific             ###
