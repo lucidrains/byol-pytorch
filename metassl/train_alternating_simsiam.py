@@ -558,7 +558,7 @@ def train_one_epoch(
         total_iter += 1
 
         if parameterize_augmentations:
-            if config.expt.rank == 0 and i % (config.expt.print_freq * 100) == 0:
+            if config.expt.rank == 0 and i % (config.expt.print_freq * 1000) == 0:
                 rand_int = torch.randint(high=images_pt.shape[0], size=(1,))
                 # permute from CHW to HWC for pyplot
                 untransformed_image = torch.permute(images_pt[rand_int].squeeze(), (1, 2, 0)).cpu()
