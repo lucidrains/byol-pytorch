@@ -578,7 +578,7 @@ def organize_experiment_saving(user, config, is_bohb_run):
     if user == "wagn3rd":  # Diane's local machine
         expt_root_dir = "experiments"
     elif user == "wagnerd":  # Diane cluster
-        expt_root_dir = "/work/dlclarge2/wagnerd-metassl_experiments"
+        expt_root_dir = "/work/dlclarge2/wagnerd-metassl-experiments/metassl"
     else:
         expt_root_dir = f"/home/{user}/workspace/experiments/metassl"
     
