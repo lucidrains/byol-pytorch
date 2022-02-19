@@ -595,6 +595,9 @@ if __name__ == '__main__':
     parser.add_argument('--simsiam.pred_dim', type=int, default=512, help='the hidden dimension of the predictor')
     parser.add_argument('--simsiam.fix_pred_lr', action="store_false", help='fix learning rate for the predictor (default: True')
     
+    parser.add_argument('--learnaug', default="learnaug", type=str, metavar='N')
+    parser.add_argument('--learnaug.type', default="default", choices=["colorjitter", "default", "full_net"], help='Define which type of learned augmentation to use.')
+    
     # parser.add_argument('--bohb', default="bohb", type=str, metavar='N')
     # parser.add_argument("--bohb.run_id", default="default_BOHB")
     # parser.add_argument("--bohb.seed", type=int, default=123, help="random seed")
