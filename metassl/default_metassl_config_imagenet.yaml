@@ -23,7 +23,7 @@ expt:
   advanced_stats:               True                          # compute advanced stats such as cosine similarity and dot product, only used in alternating mode
   is_non_grad_based:            False                         # Set this flag to run default SimSiam or BOHB runs
   warmup_epochs:                10                            # Denotes the number of epochs that we only pre-train without finetuning afterwards; warmup is turned off when set to 0; we use a linear incremental schedule during warmup
-  warmup_multiplier:            2.                            # A factor that is multiplied with the pretraining lr used in the linear incremental learning rate scheduler during warmup. The final lr is multiplier * pre-training lr
+  warmup_multiplier:            1.                            # A factor that is multiplied with the pretraining lr used in the linear incremental learning rate scheduler during warmup. The final lr is multiplier * pre-training lr
   warmup_both:                  False                         # Whether backbone and head should be both warmed up.
   use_fix_aug_params:           False                         # Use this flag if you want to try out specific aug params (e.g., from a best BOHB config). Default values will be overwritten then without crashing other experiments.
   data_augmentation_mode:       'default'                     # Select which data augmentation to use. Default is for the standard SimSiam setting and for parameterize aug setting. choices=['default', 'probability_augment', 'rand_augment']

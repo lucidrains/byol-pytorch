@@ -24,9 +24,9 @@ expt:
   advanced_stats:               True                          # compute advanced stats such as cosine similarity and dot product, only used in alternating mode
   is_non_grad_based:            False                         # Set this flag to run default SimSiam or BOHB runs
   warmup_epochs:                10                            # denotes the number of epochs that we only pre-train without finetuning afterwards; warmup is turned off when set to 0; we use a linear incremental schedule during warmup
-  warmup_multiplier:            2.                            # denotes the number of epochs that we only pre-train without finetuning afterwards; warmup is turned off when set to 0; we use a linear incremental schedule during warmup
+  warmup_multiplier:            1.                            # denotes the number of epochs that we only pre-train without finetuning afterwards; warmup is turned off when set to 0; we use a linear incremental schedule during warmup
   warmup_both:                  False                         # Whether backbone and head should be both warmed up.
-  write_summary_frequency:      3                             # Specifies, after how many batches the TensorBoard summary writer should flush new data to the summary object.
+  write_summary_frequency:      10                             # Specifies, after how many batches the TensorBoard summary writer should flush new data to the summary object.
 
 #######################################
 ###     Training Configuration      ###
