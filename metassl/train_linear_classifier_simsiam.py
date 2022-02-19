@@ -263,14 +263,11 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
             model.load_state_dict(checkpoint['state_dict'])
         else:
             print(f"=> no checkpoint found at '{config.expt.ssl_model_checkpoint_path}'")
-    
-    # Data loading code
-    traindir = os.path.join(config.data.dataset, 'train')
 
     if config.finetuning.valid_size > 0:
-        train_loader_pt, train_sampler_pt, train_loader_ft, train_sampler_ft, valid_loader_ft, test_loader_ft = get_loaders(traindir, config, parameterize_augmentation=False, bohb_infos=bohb_infos)
+        train_loader_pt, train_sampler_pt, train_loader_ft, train_sampler_ft, valid_loader_ft, test_loader_ft = get_loaders(config, parameterize_augmentation=False, bohb_infos=bohb_infos)
     else:  # TODO: @Diane - Checkout and test on *parameterized_aug*
-        train_loader_pt, train_sampler_pt, train_loader_ft, train_sampler_ft, test_loader_ft = get_loaders(traindir, config, parameterize_augmentation=False, bohb_infos=bohb_infos)
+        train_loader_pt, train_sampler_pt, train_loader_ft, train_sampler_ft, test_loader_ft = get_loaders(config, parameterize_augmentation=False, bohb_infos=bohb_infos)
 
     cudnn.benchmark = True
     writer = None
@@ -284,18 +281,8 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
         
         if config.expt.distributed:
             train_sampler_ft.set_epoch(epoch)
-        warmup = config.expt.warmup_epochs > epoch
-        print(f"Warmup status: {warmup}")
 
-        if warmup:
-            cur_lr_ft = adjust_learning_rate(optimizer_ft, init_lr_ft, epoch, total_epochs=config.expt.warmup_epochs, warmup=True, multiplier=config.expt.warmup_multiplier)
-            print(f"warming up phase (FT)")
-        else:
-            cur_lr_ft = adjust_learning_rate(optimizer_ft, init_lr_ft, epoch, total_epochs=config.finetuning.epochs)
-
-        # reset ft meter when transitioning from warmup to normal training
-        if not warmup and config.expt.warmup_epochs > epoch - 1:
-            meters["losses_ft_meter"].reset()
+        cur_lr_ft = adjust_learning_rate(optimizer_ft, init_lr_ft, epoch, total_epochs=config.finetuning.epochs)
 
         if config.expt.wd_decay_ft:
             # Do annealing
@@ -321,7 +308,6 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
             config=config,
             writer=writer,
             meters=meters,
-            warmup=warmup,
             )
 
         # Determine wheter to evaluate on the validation or test set
@@ -403,7 +389,6 @@ def train_one_epoch(
     config,
     writer,
     meters,
-    warmup=False,
     ):
     # general meters
     batch_time_meter = meters["batch_time_meter"]
@@ -444,18 +429,13 @@ def train_one_epoch(
 
         get_gradients = False if config.expt.is_non_grad_based else True  # default is True
 
-        loss_ft, backbone_grads_ft_lw, backbone_grads_ft_global = finetune(model, images, target, criterion_ft, optimizer_ft, losses_ft_meter, top1_meter, top5_meter, config=config, get_gradients=get_gradients)
+        loss_ft, backbone_grads_ft_lw, backbone_grads_ft_global = finetune(model, images, target, criterion_ft, optimizer_ft, losses_ft_meter, top1_meter, top5_meter, get_gradients=get_gradients)
 
-        if not warmup:
-            mean, std = calc_layer_wise_stats(backbone_grads_pt=backbone_grads_ft_lw, backbone_grads_ft=None, metric_type="norm")
-            norm_ft_avg_meter_lw.update(mean), norm_ft_std_meter_lw.update(std)
+        mean, std = calc_layer_wise_stats(backbone_grads_pt=backbone_grads_ft_lw, backbone_grads_ft=None, metric_type="norm")
+        norm_ft_avg_meter_lw.update(mean), norm_ft_std_meter_lw.update(std)
 
-            norm_ft_meter_global.update(torch.linalg.norm(backbone_grads_ft_global, 2))
-        else:
-            norm_ft_meter_global.update(0.)
-            norm_ft_avg_meter_lw.update(0.)
-            norm_ft_std_meter_lw.update(0.)
-            
+        norm_ft_meter_global.update(torch.linalg.norm(backbone_grads_ft_global, 2))
+        
         main_stats_meters = [
             norm_ft_meter_global,
             norm_ft_avg_meter_lw,
@@ -487,7 +467,7 @@ def train_one_epoch(
     return total_iter
 
 
-def finetune(model, images_ft, target_ft, criterion_ft, optimizer_ft, losses_ft_meter, top1_meter, top5_meter, config, get_gradients=False):
+def finetune(model, images_ft, target_ft, criterion_ft, optimizer_ft, losses_ft_meter, top1_meter, top5_meter, get_gradients=False):
     backbone_grads_lw = OrderedDict()
     backbone_grads_global = torch.Tensor().cuda()
     

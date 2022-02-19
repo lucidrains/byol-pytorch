@@ -278,13 +278,10 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
         else:
             print(f"=> no checkpoint found at '{config.expt.ssl_model_checkpoint_path}'")
     
-    # Data loading code
-    traindir = os.path.join(config.data.dataset, 'train')
-    
     if config.finetuning.valid_size > 0:
-        train_loader_pt, train_sampler_pt, train_loader_ft, train_sampler_ft, valid_loader_ft, test_loader_ft = get_loaders(traindir, config, parameterize_augmentation=False, bohb_infos=bohb_infos)
+        train_loader_pt, train_sampler_pt, train_loader_ft, train_sampler_ft, valid_loader_ft, test_loader_ft = get_loaders(config, parameterize_augmentation=False, bohb_infos=bohb_infos)
     else:  # TODO: @Diane - Checkout and test on *parameterized_aug*
-        train_loader_pt, train_sampler_pt, train_loader_ft, train_sampler_ft, test_loader_ft = get_loaders(traindir, config, parameterize_augmentation=False, bohb_infos=bohb_infos)
+        train_loader_pt, train_sampler_pt, train_loader_ft, train_sampler_ft, test_loader_ft = get_loaders(config, parameterize_augmentation=False, bohb_infos=bohb_infos)
     
     cudnn.benchmark = True
     writer = None
@@ -305,14 +302,12 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
         
         if warmup:
             cur_lr_pt = adjust_learning_rate(optimizer_pt, init_lr_pt, epoch, total_epochs=config.expt.warmup_epochs, warmup=True, multiplier=config.expt.warmup_multiplier)
+            print(f"warming up phase (PT)")
+            init_lr_pt = cur_lr_pt  # after warmup, we should start lr decay from last warmed up lr
         else:
             cur_lr_pt = adjust_learning_rate(optimizer_pt, init_lr_pt, epoch, total_epochs=config.train.epochs)
         
         print(f"Current LR: {cur_lr_pt}")
-        
-        # reset ft meter when transitioning from warmup to normal training
-        if not warmup and config.expt.warmup_epochs > epoch - 1:
-            meters["losses_ft_meter"].reset()
 
         if config.expt.wd_decay_pt:
             # Do annealing
