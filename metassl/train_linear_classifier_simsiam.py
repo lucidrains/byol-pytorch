@@ -280,7 +280,6 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
     if not meters:
         meters = initialize_all_meters()
     
-    epoch = None
     for epoch in range(config.finetuning.start_epoch, config.finetuning.epochs):
         
         if config.expt.distributed:
@@ -380,9 +379,11 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
                 checkpoint_name="linear_cls",
                 )
     
-    
     if config.expt.rank == 0:
         writer.close()
+        
+        batch_time_meter = meters["batch_time_meter"]
+        print(f"total batch time elapsed: {batch_time_meter.sum:.2f}s")
     
     # BOHB only --------------------------------------------------------------------------------------------------------
     # Save validation metric in a .txt (as for mp.spawn returning values is not trivial)
@@ -423,10 +424,6 @@ def train_one_epoch(
         losses_pt_meter,
         losses_ft_meter,
         top1_meter,
-        # cos_sim_ema_meter_lw,
-        # cos_sim_ema_meter_standardized_lw,
-        # cos_sim_ema_meter_global,
-        # cos_sim_ema_meter_standardized_global,
         target_std_meter,
         ]
     
@@ -437,7 +434,6 @@ def train_one_epoch(
         )
     
     end = time.time()
-    
     for i, (images, target) in enumerate(train_loader_ft):
         
         total_iter += 1
@@ -448,17 +444,8 @@ def train_one_epoch(
 
         get_gradients = False if config.expt.is_non_grad_based else True  # default is True
 
-    
         loss_ft, backbone_grads_ft_lw, backbone_grads_ft_global = finetune(model, images, target, criterion_ft, optimizer_ft, losses_ft_meter, top1_meter, top5_meter, config=config, get_gradients=get_gradients)
 
-        # grads = {
-        #     "backbone_grads_pt_lw":     None,
-        #     "backbone_grads_pt_global": None,
-        #     "backbone_grads_ft_lw":     backbone_grads_ft_lw,
-        #     "backbone_grads_ft_global": backbone_grads_ft_global
-        #     }
-
-        # update_grad_stats_meters(grads=grads, meters=meters, warmup=warmup)
         if not warmup:
             mean, std = calc_layer_wise_stats(backbone_grads_pt=backbone_grads_ft_lw, backbone_grads_ft=None, metric_type="norm")
             norm_ft_avg_meter_lw.update(mean), norm_ft_std_meter_lw.update(std)
@@ -470,27 +457,12 @@ def train_one_epoch(
             norm_ft_std_meter_lw.update(0.)
             
         main_stats_meters = [
-            # cos_sim_ema_meter_global,
-            # cos_sim_ema_meter_standardized_global,
-            # cos_sim_ema_meter_lw,
-            # cos_sim_ema_meter_standardized_lw,
-            # cos_sim_std_meter_standardized_lw,
-            # dot_prod_meter_global,
-            # dot_prod_avg_meter_lw,
-            # eucl_dis_meter_global,
-            # eucl_dis_avg_meter_lw,
-            # norm_pt_meter_global,
-            # norm_pt_avg_meter_lw,
             norm_ft_meter_global,
             norm_ft_avg_meter_lw,
             target_std_meter,
             ]
 
         additional_stats_meters = [
-            # cos_sim_std_meter_lw,
-            # dot_prod_std_meter_lw,
-            # eucl_dis_std_meter_lw,
-            # norm_pt_std_meter_lw,
             norm_ft_std_meter_lw
             ]
 
@@ -591,8 +563,8 @@ if __name__ == '__main__':
     parser.add_argument('--expt.use_fix_aug_params', action='store_true', help='Use this flag if you want to try out specific aug params (e.g., from a best BOHB config). Default values will be overwritten then without crashing other experiments.')
     parser.add_argument('--expt.data_augmentation_mode', default='default', choices=['default', 'probability_augment', 'rand_augment'], help="Select which data augmentation to use. Default is for the standard SimSiam setting and for parameterize aug setting.")
     parser.add_argument('--expt.write_summary_frequency', default=3, type=int, metavar='N', help='Specifies, after how many batches the TensorBoard summary writer should flush new data to the summary object.')
-    parser.add_argument('--expt.wd_decay_pt', action="store_true", help='use weight decay decay (annealing) during pre-training? (default: True)')
-    parser.add_argument('--expt.wd_decay_ft', action="store_true", help='use weight decay decay (annealing) during fine-tuning? (default: True)')
+    parser.add_argument('--expt.wd_decay_pt', action="store_true", help='use weight decay decay (annealing) during pre-training? (default: False)')
+    parser.add_argument('--expt.wd_decay_ft', action="store_true", help='use weight decay decay (annealing) during fine-tuning? (default: False)')
     
     parser.add_argument('--train', default="train", type=str, metavar='N')
     parser.add_argument('--train.batch_size', default=256, type=int, metavar='N', help='in distributed setting this is the total batch size, i.e. batch size = individual bs * number of GPUs')
@@ -636,22 +608,22 @@ if __name__ == '__main__':
     parser.add_argument('--simsiam.pred_dim', type=int, default=512, help='the hidden dimension of the predictor')
     parser.add_argument('--simsiam.fix_pred_lr', action="store_false", help='fix learning rate for the predictor (default: True')
     
-    parser.add_argument('--bohb', default="bohb", type=str, metavar='N')
-    parser.add_argument("--bohb.run_id", default="default_BOHB")
-    parser.add_argument("--bohb.seed", type=int, default=123, help="random seed")
-    parser.add_argument("--bohb.n_iterations", type=int, default=10, help="How many BOHB iterations")
-    parser.add_argument("--bohb.min_budget", type=int, default=2)
-    parser.add_argument("--bohb.max_budget", type=int, default=4)
-    parser.add_argument("--bohb.budget_mode", type=str, default="epochs", choices=["epochs", "data"], help="Choose your desired fidelity")
-    parser.add_argument("--bohb.eta", type=int, default=2)
-    parser.add_argument("--bohb.configspace_mode", type=str, default='color_jitter_strengths', choices=["imagenet_probability_simsiam_augment", "cifar10_probability_simsiam_augment", "color_jitter_strengths", "rand_augment", "probability_augment", "double_probability_augment"],
-    help='Define which configspace to use.')
-    parser.add_argument("--bohb.nic_name", default="lo", help="The network interface to use")  # local: "lo", cluster: "eth0"
-    parser.add_argument("--bohb.port", type=int, default=0)
-    parser.add_argument("--bohb.worker", action="store_true", help="Make this execution a worker server")
-    parser.add_argument("--bohb.warmstarting", type=bool, default=False)
-    parser.add_argument("--bohb.warmstarting_dir", type=str, default=None)
-    parser.add_argument("--bohb.test_env", action='store_true', help='If using this flag, the master runs a worker in the background and workers are not being shutdown after registering results.')
+    # parser.add_argument('--bohb', default="bohb", type=str, metavar='N')
+    # parser.add_argument("--bohb.run_id", default="default_BOHB")
+    # parser.add_argument("--bohb.seed", type=int, default=123, help="random seed")
+    # parser.add_argument("--bohb.n_iterations", type=int, default=10, help="How many BOHB iterations")
+    # parser.add_argument("--bohb.min_budget", type=int, default=2)
+    # parser.add_argument("--bohb.max_budget", type=int, default=4)
+    # parser.add_argument("--bohb.budget_mode", type=str, default="epochs", choices=["epochs", "data"], help="Choose your desired fidelity")
+    # parser.add_argument("--bohb.eta", type=int, default=2)
+    # parser.add_argument("--bohb.configspace_mode", type=str, default='color_jitter_strengths', choices=["imagenet_probability_simsiam_augment", "cifar10_probability_simsiam_augment", "color_jitter_strengths", "rand_augment", "probability_augment", "double_probability_augment"],
+    # help='Define which configspace to use.')
+    # parser.add_argument("--bohb.nic_name", default="lo", help="The network interface to use")  # local: "lo", cluster: "eth0"
+    # parser.add_argument("--bohb.port", type=int, default=0)
+    # parser.add_argument("--bohb.worker", action="store_true", help="Make this execution a worker server")
+    # parser.add_argument("--bohb.warmstarting", type=bool, default=False)
+    # parser.add_argument("--bohb.warmstarting_dir", type=str, default=None)
+    # parser.add_argument("--bohb.test_env", action='store_true', help='If using this flag, the master runs a worker in the background and workers are not being shutdown after registering results.')
 
     parser.add_argument("--use_fixed_args", action="store_true", help="Flag to control whether to take arguments from yaml file as default or from arg parse")
     

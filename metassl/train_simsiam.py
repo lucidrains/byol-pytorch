@@ -294,7 +294,6 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
     if not meters:
         meters = initialize_all_meters()
     
-    epoch = None
     for epoch in range(config.train.start_epoch, config.train.epochs):
         
         if config.expt.distributed:
@@ -382,10 +381,13 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
                 expt_dir=expt_dir,
                 meters=meters,
                 )
-    
+
     # shut down writer at end of training
     if config.expt.rank == 0:
         writer.close()
+
+        batch_time_meter = meters["batch_time_meter"]
+        print(f"total batch time elapsed: {batch_time_meter.sum:.2f}s")
 
 
 def train_one_epoch(
@@ -428,7 +430,6 @@ def train_one_epoch(
         )
     
     end = time.time()
-    # TODO @Fabio
     
     for i, (images_pt, _) in enumerate(train_loader_pt):
         
@@ -454,28 +455,13 @@ def train_one_epoch(
         update_grad_stats_meters(grads=grads, meters=meters, warmup=warmup)
         
         main_stats_meters = [
-            # cos_sim_ema_meter_global,
-            # cos_sim_ema_meter_standardized_global,
-            # cos_sim_ema_meter_lw,
-            # cos_sim_ema_meter_standardized_lw,
-            # cos_sim_std_meter_standardized_lw,
-            # dot_prod_meter_global,
-            # dot_prod_avg_meter_lw,
-            # eucl_dis_meter_global,
-            # eucl_dis_avg_meter_lw,
             norm_pt_meter_global,
             norm_pt_avg_meter_lw,
-            # norm_ft_meter_global,
-            # norm_ft_avg_meter_lw,
             target_std_meter,
             ]
         
         additional_stats_meters = [
-            # cos_sim_std_meter_lw,
-            # dot_prod_std_meter_lw,
-            # eucl_dis_std_meter_lw,
             norm_pt_std_meter_lw,
-            # norm_ft_std_meter_lw
             ]
         
         meters_to_plot = {
@@ -615,22 +601,22 @@ if __name__ == '__main__':
     parser.add_argument('--simsiam.pred_dim', type=int, default=512, help='the hidden dimension of the predictor')
     parser.add_argument('--simsiam.fix_pred_lr', action="store_false", help='fix learning rate for the predictor (default: True')
     
-    parser.add_argument('--bohb', default="bohb", type=str, metavar='N')
-    parser.add_argument("--bohb.run_id", default="default_BOHB")
-    parser.add_argument("--bohb.seed", type=int, default=123, help="random seed")
-    parser.add_argument("--bohb.n_iterations", type=int, default=10, help="How many BOHB iterations")
-    parser.add_argument("--bohb.min_budget", type=int, default=2)
-    parser.add_argument("--bohb.max_budget", type=int, default=4)
-    parser.add_argument("--bohb.budget_mode", type=str, default="epochs", choices=["epochs", "data"], help="Choose your desired fidelity")
-    parser.add_argument("--bohb.eta", type=int, default=2)
-    parser.add_argument("--bohb.configspace_mode", type=str, default='color_jitter_strengths', choices=["imagenet_probability_simsiam_augment", "cifar10_probability_simsiam_augment", "color_jitter_strengths", "rand_augment", "probability_augment", "double_probability_augment"],
-    help='Define which configspace to use.')
-    parser.add_argument("--bohb.nic_name", default="lo", help="The network interface to use")  # local: "lo", cluster: "eth0"
-    parser.add_argument("--bohb.port", type=int, default=0)
-    parser.add_argument("--bohb.worker", action="store_true", help="Make this execution a worker server")
-    parser.add_argument("--bohb.warmstarting", type=bool, default=False)
-    parser.add_argument("--bohb.warmstarting_dir", type=str, default=None)
-    parser.add_argument("--bohb.test_env", action='store_true', help='If using this flag, the master runs a worker in the background and workers are not being shutdown after registering results.')
+    # parser.add_argument('--bohb', default="bohb", type=str, metavar='N')
+    # parser.add_argument("--bohb.run_id", default="default_BOHB")
+    # parser.add_argument("--bohb.seed", type=int, default=123, help="random seed")
+    # parser.add_argument("--bohb.n_iterations", type=int, default=10, help="How many BOHB iterations")
+    # parser.add_argument("--bohb.min_budget", type=int, default=2)
+    # parser.add_argument("--bohb.max_budget", type=int, default=4)
+    # parser.add_argument("--bohb.budget_mode", type=str, default="epochs", choices=["epochs", "data"], help="Choose your desired fidelity")
+    # parser.add_argument("--bohb.eta", type=int, default=2)
+    # parser.add_argument("--bohb.configspace_mode", type=str, default='color_jitter_strengths', choices=["imagenet_probability_simsiam_augment", "cifar10_probability_simsiam_augment", "color_jitter_strengths", "rand_augment", "probability_augment", "double_probability_augment"],
+    # help='Define which configspace to use.')
+    # parser.add_argument("--bohb.nic_name", default="lo", help="The network interface to use")  # local: "lo", cluster: "eth0"
+    # parser.add_argument("--bohb.port", type=int, default=0)
+    # parser.add_argument("--bohb.worker", action="store_true", help="Make this execution a worker server")
+    # parser.add_argument("--bohb.warmstarting", type=bool, default=False)
+    # parser.add_argument("--bohb.warmstarting_dir", type=str, default=None)
+    # parser.add_argument("--bohb.test_env", action='store_true', help='If using this flag, the master runs a worker in the background and workers are not being shutdown after registering results.')
     
     parser.add_argument("--use_fixed_args", action="store_true", help="Flag to control whether to take arguments from yaml file as default or from arg parse")
     

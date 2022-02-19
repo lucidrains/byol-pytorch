@@ -51,17 +51,17 @@ train:
 
 finetuning:
   batch_size:        256                  # in distributed setting this is the total batch size, i.e. batch size = individual bs * number of GPUs
-  epochs:            90                    # number of finetuning epochs
-  start_epoch:       0                     # start training at epoch n
+  epochs:            100                  # number of finetuning epochs
+  start_epoch:       0                    # start training at epoch n
   optimizer:         "sgd"                # optimizer type, options: lars adam adamW rmsprop adabelief sgd
-  schedule:          "cosine"              # learning rate schedule, options: 'cosine' 'cosineW' 'plateau' 'step' 'const' 'cosineWarm' 'exponential' 'None' (BOHO case)
+  schedule:          "cosine"             # learning rate schedule, options: 'cosine' 'cosineW' 'plateau' 'step' 'const' 'cosineWarm' 'exponential' 'None' (BOHO case)
   weight_decay:      0.
-  momentum:          0.9                   # momentum of SGD solver
-  lr:                100                    # the default LR
-  valid_size:        0.0                   # If valid_size > 0, pick some images from the trainset to do evaluation on. If valid_size=0 evaluation is done on the testset.
+  momentum:          0.9                  # momentum of SGD solver
+  lr:                100                  # the default LR
+  valid_size:        0.0                  # If valid_size > 0, pick some images from the trainset to do evaluation on. If valid_size=0 evaluation is done on the testset.
   data_augmentation: 'none'               # Select if and how finetuning gets augmented. choices=['none', 'p_probability_augment_pt', 'p_probability_augment_ft', 'p_probability_augment_1-pt']
-  wd_start:          1.e-3                 # Upper value of WD Decay. Only used when wd_decay is True.
-  wd_end:            1.e-6                 # Lower value of WD Decay. Only used when wd_decay is True.
+  wd_start:          1.e-3                # Upper value of WD Decay. Only used when wd_decay is True.
+  wd_end:            1.e-6                # Lower value of WD Decay. Only used when wd_decay is True.
 #######################################
 ###       Model Configuration       ###
 #######################################
@@ -101,9 +101,7 @@ simsiam:
 #  max_budget:       20
 #  budget_mode:      "epochs"                    # Choose your desired fidelity between 'epochs' and 'data'
 #  eta:              2
-#  configspace_mode: "color_jitter_strengths"    # Define which configspace to use
-#  # choices=["imagenet_probability_augment",
-#  # "cifar10_probability_augment", "color_jitter_strengths"]
+#  configspace_mode: "color_jitter_strengths"    # Define which configspace to use choices=["imagenet_probability_augment", "cifar10_probability_augment", "color_jitter_strengths"]
 #  nic_name:         "lo"                        # Define the network interface to use > local: "lo", cluster: "eth0"
 #  port:             0
 #  worker:           False                       # Make this execution a worker server, action="store_true"
