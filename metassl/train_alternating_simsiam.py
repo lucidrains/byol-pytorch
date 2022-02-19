@@ -307,6 +307,8 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
         optimizer_aug_model = torch.optim.Adam(aug_model.parameters(), 0.001)
         parameterize_augmentations = True
     
+    print(f"Parameterization mode: {parameterize_augmentations} ({config.learnaug.type})")
+    
     # in case a dumped model exist and ssl_model_checkpoint is not set, load that dumped model
     newest_model = get_newest_model(expt_dir)
     if newest_model and config.expt.ssl_model_checkpoint_path is None:
@@ -557,10 +559,11 @@ def train_one_epoch(
         
         total_iter += 1
 
-        if parameterize_augmentations and config.expt.rank == 0 and i % (config.expt.print_freq * 100) == 0:
-            rand_int = torch.randint(high=images_pt.shape[0], size=(1,))
-            # permute from CHW to HWC for pyplot
-            untransformed_image = torch.permute(images_pt[rand_int].squeeze(), (1, 2, 0)).cpu()
+        if parameterize_augmentations:
+            if config.expt.rank == 0 and i % (config.expt.print_freq * 100) == 0:
+                rand_int = torch.randint(high=images_pt.shape[0], size=(1,))
+                # permute from CHW to HWC for pyplot
+                untransformed_image = torch.permute(images_pt[rand_int].squeeze(), (1, 2, 0)).cpu()
 
             if config.expt.gpu is not None and not isinstance(images_pt, list):
                 images_pt = images_pt.cuda(config.expt.gpu, non_blocking=True)
@@ -569,12 +572,14 @@ def train_one_epoch(
             images_pt = aug_model(images_pt, idx_b=indices["idx_b"], idx_c=indices["idx_c"], idx_s=indices["idx_s"], idx_h=indices["idx_h"])
 
         if config.expt.gpu is not None:
+            images_pt[0] = images_pt[0].contiguous()
+            images_pt[1] = images_pt[1].contiguous()
             images_pt[0] = images_pt[0].cuda(config.expt.gpu, non_blocking=True)
             images_pt[1] = images_pt[1].cuda(config.expt.gpu, non_blocking=True)
             images_ft = images_ft.cuda(config.expt.gpu, non_blocking=True)
             target_ft = target_ft.cuda(config.expt.gpu, non_blocking=True)
         
-        if parameterize_augmentations and config.expt.rank == 0 and i % (config.expt.print_freq * 100) == 0:
+        if parameterize_augmentations and config.expt.rank == 0 and i % (config.expt.print_freq * 1000) == 0:
             image_data_to_plot_dict = get_image_data_to_plot(rand_int=rand_int, untransformed_image=untransformed_image, images_pt=images_pt, images_ft=images_ft, target_ft=target_ft, strengths=strengths)
             
         alternating_mode = False if config.expt.is_non_grad_based else True  # default is True
@@ -665,7 +670,7 @@ def train_one_epoch(
             write_to_summary_writer(total_iter, loss_pt, loss_ft, data_time_meter, batch_time_meter, optimizer_pt, optimizer_ft, top1_meter, top5_meter, meters_to_plot, writer)
             
         # expensive stats
-        if parameterize_augmentations and config.expt.rank == 0 and i % (config.expt.print_freq * 100) == 0:
+        if parameterize_augmentations and config.expt.rank == 0 and i % (config.expt.print_freq * 1000) == 0:
             img = hist_to_image(aug_model.color_jitter_histogram_brightness, "Color Jitter Strength Brightness Counts")
             writer.add_image(tag="Advanced Stats/color jitter strength brightness", img_tensor=img, global_step=total_iter)
 
@@ -818,7 +823,7 @@ if __name__ == '__main__':
     # parser.add_argument('--expt.image_wise_gradients', action='store_true', help='compute image wise gradients with backpack (default: False).')
     parser.add_argument('--expt.use_fix_aug_params', action='store_true', help='Use this flag if you want to try out specific aug params (e.g., from a best BOHB config). Default values will be overwritten then without crashing other experiments.')
     parser.add_argument('--expt.data_augmentation_mode', default='default', choices=['default', 'probability_augment', 'rand_augment'], help="Select which data augmentation to use. Default is for the standard SimSiam setting and for parameterize aug setting.")
-    parser.add_argument('--expt.write_summary_frequency', default=3, type=int, metavar='N', help='Specifies, after how many batches the TensorBoard summary writer should flush new data to the summary object.')
+    parser.add_argument('--expt.write_summary_frequency', default=10, type=int, metavar='N', help='Specifies, after how many batches the TensorBoard summary writer should flush new data to the summary object.')
     parser.add_argument('--expt.wd_decay_pt', action="store_true", help='use weight decay decay (annealing) during pre-training? (default: False)')
     parser.add_argument('--expt.wd_decay_ft', action="store_true", help='use weight decay decay (annealing) during fine-tuning? (default: False)')
     
