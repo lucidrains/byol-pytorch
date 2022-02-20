@@ -1,15 +1,16 @@
 #!/bin/bash
 #SBATCH -p alldlc_gpu-rtx2080
 #SBATCH --gres=gpu:8
-#SBATCH --job-name=wd_decay-cifar10-pt_epochs-800-ft_epochs-100-warmup-10-wdd_pt-false-wdd_ft-false
+#SBATCH --job-name=wd_decay-imagenet-pt_epochs-100-ft_epochs-100-warmup-10-wdd_pt-true-wdd_ft-false-wd_start_4e-2-wd_end_4e-1
 #SBATCH -o /work/dlclarge2/ferreira-metassl/metassl/experiments/logs/%x.%N.%A.%a.out
-#SBATCH --array=0-3%1
+#SBATCH --array=0-10%1
+#SBATCH --exclude=dlcgpu19
 
-TRAIN_EPOCHS=800
+TRAIN_EPOCHS=100
 FINETUNING_EPOCHS=100
 WARMUP_EPOCHS=10
-EXPT_NAME="wd_decay-cifar10-pt_epochs-800-ft_epochs-100-warmup-10-wdd_pt-false-wdd_ft-false"
-CONFIG="metassl/default_metassl_config_cifar10.yaml"
+EXPT_NAME="wd_decay-imagenet-pt_epochs-100-ft_epochs-100-warmup-10-wdd_pt-true-wdd_ft-false-wd_start_1e-3-wd_end_1e-7"
+CONFIG="metassl/default_metassl_config_imagenet.yaml"
 
 echo "TRAIN EPOCHS $TRAIN_EPOCHS"
 echo "FINETUNING EPOCHS $FINETUNING_EPOCHS"
@@ -31,7 +32,6 @@ export LD_LIBRARY_PATH=/usr/local/cuda-9.0/lib64:$LD_LIBRARY_PATH
 export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
 export LD_LIBRARY_PATH=/usr/local/cuda-10.0/lib64:$LD_LIBRARY_PATH
 
-
 source variables.sh
 
 echo $WORKFOLDER
@@ -40,5 +40,6 @@ export PYTHONPATH=$PYTHONPATH:$WORKFOLDER
 source /home/ferreira/.miniconda/bin/activate metassl
 
 echo "submitted job $EXPT_NAME"
+echo "command used: srun $WORKFOLDER/cluster/weight_decay_decay/imagenet_train_finetune_wdd_pt_true_wdd_ft_false-wd_start_4e-2-wd_end_4e-1.sh $EXPT_NAME $TRAIN_EPOCHS $FINETUNING_EPOCHS $WARMUP_EPOCHS $CONFIG"
 
-srun $WORKFOLDER/cluster/weight_decay_decay/cifar_train_finetune_wdd_pt_false_wdd_ft_false.sh $EXPT_NAME $TRAIN_EPOCHS $FINETUNING_EPOCHS $WARMUP_EPOCHS $CONFIG
+srun $WORKFOLDER/cluster/weight_decay_decay/imagenet_train_finetune_wdd_pt_true_wdd_ft_false-wd_start_4e-2-wd_end_4e-1.sh $EXPT_NAME $TRAIN_EPOCHS $FINETUNING_EPOCHS $WARMUP_EPOCHS $CONFIG
