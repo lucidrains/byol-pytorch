@@ -1,11 +1,14 @@
 #!/bin/bash
-#SBATCH -p alldlc_gpu-rtx2080
+#SBATCH -p bosch_gpu-rtx2080
 #SBATCH --gres=gpu:8
-#SBATCH --job-name=cifar10-alternating-default-config
+#SBATCH --job-name=cifar10-alternating-epochs-800-small-lr
 #SBATCH -o /work/dlclarge2/ferreira-metassl/metassl/experiments/logs/%x.%N.%A.%a.out
 #SBATCH --array=0-10%1
 
-EXPT_NAME="cifar10-alternating-default-config"
+EXPT_NAME="cifar10-alternating-epochs-800-small-lr"
+TRAIN_EPOCHS=800
+FINETUNING_EPOCHS=800
+WARMUP_EPOCHS=10
 LEARNAUG_TYPE="default"
 
 echo "EXPT NAME $EXPT_NAME"
@@ -32,5 +35,5 @@ export PYTHONPATH=$PYTHONPATH:$WORKFOLDER
 source /home/ferreira/.miniconda/bin/activate metassl
 
 echo "submitted job $EXPT_NAME"
-echo "running srun with command: $WORKFOLDER/cluster/train_cifar10_alternating_simsiam_default_config.sh $EXPT_NAME $LEARNAUG_TYPE"
-srun $WORKFOLDER/cluster/train_cifar10_alternating_simsiam_default_config.sh $EXPT_NAME $LEARNAUG_TYPE
+echo "running srun with command: srun $WORKFOLDER/cluster/train_cifar10_alternating_simsiam_small_lr.sh $EXPT_NAME $TRAIN_EPOCHS $FINETUNING_EPOCHS $WARMUP_EPOCHS $LEARNAUG_TYPE"
+srun $WORKFOLDER/cluster/train_cifar10_alternating_simsiam_small_lr.sh $EXPT_NAME $TRAIN_EPOCHS $FINETUNING_EPOCHS $WARMUP_EPOCHS $LEARNAUG_TYPE

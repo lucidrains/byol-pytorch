@@ -1,21 +1,17 @@
 #!/bin/bash
-#SBATCH -p alldlc_gpu-rtx2080
+#SBATCH -p bosch_gpu-rtx2080 
 #SBATCH --gres=gpu:8
-#SBATCH --job-name=wd_decay-cifar10-pt_epochs-800-ft_epochs-100-warmup-10-wdd_pt-false-wdd_ft-false
+#SBATCH --job-name=cifar10-alternating-learnaug-colorjitter-epochs-800
 #SBATCH -o /work/dlclarge2/ferreira-metassl/metassl/experiments/logs/%x.%N.%A.%a.out
-#SBATCH --array=0-3%1
+#SBATCH --array=0-10%1
 
+EXPT_NAME="cifar10-alternating-learnaug-colorjitter-epochs-800"
 TRAIN_EPOCHS=800
-FINETUNING_EPOCHS=100
+FINETUNING_EPOCHS=800
 WARMUP_EPOCHS=10
-EXPT_NAME="wd_decay-cifar10-pt_epochs-800-ft_epochs-100-warmup-10-wdd_pt-false-wdd_ft-false"
-CONFIG="metassl/default_metassl_config_cifar10.yaml"
+LEARNAUG_TYPE="colorjitter"
 
-echo "TRAIN EPOCHS $TRAIN_EPOCHS"
-echo "FINETUNING EPOCHS $FINETUNING_EPOCHS"
 echo "EXPT NAME $EXPT_NAME"
-echo "WARMUP EPOCHS $WARMUP_EPOCHS"
-echo "CONFIG $CONFIG"
 
 #PARTITION="ml_gpu-rtx2080"
 #PARTITION="bosch_gpu-rtx2080"
@@ -31,14 +27,13 @@ export LD_LIBRARY_PATH=/usr/local/cuda-9.0/lib64:$LD_LIBRARY_PATH
 export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
 export LD_LIBRARY_PATH=/usr/local/cuda-10.0/lib64:$LD_LIBRARY_PATH
 
-
 source variables.sh
 
-echo $WORKFOLDER
+echo "WORKFOLDER $WORKFOLDER"
 export PYTHONPATH=$PYTHONPATH:$WORKFOLDER
 
 source /home/ferreira/.miniconda/bin/activate metassl
 
 echo "submitted job $EXPT_NAME"
-
-srun $WORKFOLDER/cluster/weight_decay_decay/cifar_train_finetune_wdd_pt_false_wdd_ft_false.sh $EXPT_NAME $TRAIN_EPOCHS $FINETUNING_EPOCHS $WARMUP_EPOCHS $CONFIG
+echo "running srun with command: srun $WORKFOLDER/cluster/train_cifar10_alternating_simsiam.sh $EXPT_NAME $TRAIN_EPOCHS $FINETUNING_EPOCHS $WARMUP_EPOCHS $LEARNAUG_TYPE"
+srun $WORKFOLDER/cluster/train_cifar10_alternating_simsiam.sh $EXPT_NAME $TRAIN_EPOCHS $FINETUNING_EPOCHS $WARMUP_EPOCHS $LEARNAUG_TYPE
