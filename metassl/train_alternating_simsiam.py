@@ -365,7 +365,6 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
         if warmup:
             cur_lr_pt = adjust_learning_rate(optimizer_pt, init_lr_pt, epoch, total_epochs=config.expt.warmup_epochs, warmup=True, multiplier=config.expt.warmup_multiplier)
             print(f"warming up phase (PT)")
-            init_lr_pt = cur_lr_pt  # after warmup, we should start lr decay from last warmed up lr
         else:
             cur_lr_pt = adjust_learning_rate(optimizer_pt, init_lr_pt, epoch, total_epochs=config.train.epochs)
         
