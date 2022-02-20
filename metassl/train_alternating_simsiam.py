@@ -351,6 +351,8 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
     if not meters:
         meters = initialize_all_meters()
     
+    assert config.finetuning.epochs == config.train.epochs, "in alternating mode, the number of train and finetuning epochs are assumed to be equal"
+    
     for epoch in range(config.train.start_epoch, config.train.epochs):
         
         if config.expt.distributed:
