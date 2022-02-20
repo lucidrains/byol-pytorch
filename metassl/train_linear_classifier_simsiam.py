@@ -170,7 +170,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
             backend=config.expt.dist_backend, init_method=config.expt.dist_url,
             world_size=config.expt.world_size, rank=config.expt.rank
             )
-        torch.distributed.barrier()
+        torch.distributed.barrier()  # TODO: @Fabio?
 
     # create model
     # TODO: @Diane - Check out and compare against baseline code
@@ -212,10 +212,9 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
         model.encoder_head[6].bias.requires_grad = True
 
     # Baseline Code ----------------------------------------------------------------------------------------------------
-    if config.data.dataset == "CIFAR10":
+    if config.data.dataset == "CIFAR10" and config.model.arch == "baseline_resnet":
         # TODO: @Diane - fix hardcoding
-        pretrained = "/home/wagn3rd/Projects/metassl/experiments/CIFAR10/cifar10_baseline_arch/checkpoint_0799.pth.tar"
-        pretrained = "experiments/CIFAR10/testing_new_arch/checkpoint_0004.pth.tar"
+        pretrained = "experiments/CIFAR10/dipti/checkpoint_0799.pth.tar"
         if True:
             if os.path.isfile(pretrained):
                 print("=> loading checkpoint '{}'".format(pretrained))
@@ -224,13 +223,15 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
 
                 new_state_dict = dict()
                 for old_key, value in state_dict.items():
+                    if old_key.startswith('module'):
+                        old_key = old_key[len('module.'):]
                     if old_key.startswith('backbone') and 'fc' not in old_key:
                         new_key = old_key.replace('backbone.', '')
                         new_state_dict[new_key] = value
 
                 start_epoch = 0
                 msg = model.load_state_dict(new_state_dict, strict=False)
-                # assert set(msg.missing_keys) == {"fc.weight", "fc.bias"}
+                assert set(msg.missing_keys) == {"fc.weight", "fc.bias"}
 
                 print("=> loaded pre-trained model '{}'".format(pretrained))
             else:
@@ -294,13 +295,21 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
         assert len(parameters) == 2  # fc.weight, fc.bias
     # ------------------------------------------------------------------------------------------------------------------
 
-    optimizer_ft = torch.optim.SGD(
-        params=model.module.classifier_head.parameters() if config.expt.distributed else model.parameters(), # TODO: @Fabio - check together with optim_params_pt,
-        lr=init_lr_ft,
-        momentum=config.finetuning.momentum,
-        weight_decay=config.finetuning.weight_decay
+    if config.data.dataset == "CIFAR10" and config.model.arch == "baseline_resnet":
+        optimizer_ft = torch.optim.SGD(
+            params=model.module.classifier_head.parameters() if config.expt.distributed else parameters,  # TODO: @Fabio - check together with optim_params_pt,
+            lr=init_lr_ft,
+            momentum=config.finetuning.momentum,
+            weight_decay=config.finetuning.weight_decay
         )
-    
+    else:
+        optimizer_ft = torch.optim.SGD(
+            params=model.module.classifier_head.parameters() if config.expt.distributed else model.parameters(),  # TODO: @Fabio - check together with optim_params_pt,
+            lr=init_lr_ft,
+            momentum=config.finetuning.momentum,
+            weight_decay=config.finetuning.weight_decay
+        )
+
     # in case a dumped model exist and ssl_model_checkpoint is not set, load that dumped model
     newest_model = get_newest_model(expt_dir, suffix="linear_cls*.pth.tar")
     if not newest_model:
@@ -313,7 +322,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
     meters = None
 
     # MetaSSL code -----------------------------------------------------------------------------------------------------
-    if config.data.dataset == "CIFAR10":
+    if config.data.dataset == "CIFAR10" and config.model.arch == "baseline_resnet":
         pass
     else:
         # optionally resume from a checkpoint
