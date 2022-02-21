@@ -405,17 +405,23 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
                 raise ValueError("Not implemented yet!")
         
         elif (config.expt.save_model and epoch % config.expt.save_model_frequency == 0) or (config.expt.save_model and is_last_epoch):
-            check_and_save_checkpoint(
-                config=config,
-                ngpus_per_node=ngpus_per_node,
-                total_iter=total_iter,
-                epoch=epoch,
-                model=model,
-                optimizer_pt=optimizer_pt,
-                optimizer_ft=None,
-                expt_dir=expt_dir,
-                meters=meters,
-                )
+            if config.data.dataset == "CIFAR10" and config.model.arch == "baseline_resnet":
+                checkpoint_name = 'checkpoint'
+                save_checkpoint_baseline_code(epoch=epoch, model=model, optimizer=optimizer_pt, acc=meters,
+                                              filename=os.path.join(expt_dir, f'{checkpoint_name}_{epoch:04d}.pth.tar'),
+                                              msg='Saving...')
+            else:
+                check_and_save_checkpoint(
+                    config=config,
+                    ngpus_per_node=ngpus_per_node,
+                    total_iter=total_iter,
+                    epoch=epoch,
+                    model=model,
+                    optimizer_pt=optimizer_pt,
+                    optimizer_ft=None,
+                    expt_dir=expt_dir,
+                    meters=meters,
+                    )
     
     # shut down writer at end of training
     if config.expt.rank == 0:
@@ -629,6 +635,18 @@ def find_free_port():
         s.bind(('', 0))
         s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         return s.getsockname()[1]
+
+def save_checkpoint_baseline_code(epoch, model, optimizer, acc, filename, msg):
+    state = {
+        'epoch': epoch,
+        'arch': 'resnet18',
+        'state_dict': model.state_dict(),
+        'optimizer': optimizer.state_dict(),
+        'meters': acc
+        # 'top1_acc': acc
+    }
+    torch.save(state, filename)
+    print(msg)
 
 
 if __name__ == '__main__':
