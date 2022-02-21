@@ -186,8 +186,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
         elif config.model.arch == "our_resnet":
             # Use model from our model folder instead from torchvision!
             print(f"=> creating model resnet18")
-            config.simsiam.pred_dim = 2048  # TODO: @Diane - checkout
-            model = SimSiam(our_cifar_resnets.resnet18, config.simsiam.dim, config.simsiam.pred_dim)
+            model = SimSiam(our_cifar_resnets.resnet18, config.simsiam.dim, config.simsiam.pred_dim, num_classes=10)
         elif config.model.arch == "baseline_resnet":
             from metassl.utils.baseline_simsiam import SimSiam as BaselineSimSiam
             config.simsiam.pred_dim = 2048
@@ -198,7 +197,9 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
     else:
         print(f"=> creating model {config.model.model_type}")
         model = SimSiam(models.__dict__[config.model.model_type], config.simsiam.dim, config.simsiam.pred_dim)
-    
+
+    print(model)
+
     if config.model.turn_off_bn:
         print("Turning off BatchNorm in entire model.")
         deactivate_bn(model)
