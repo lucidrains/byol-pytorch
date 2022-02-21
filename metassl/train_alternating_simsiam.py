@@ -198,9 +198,9 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
     print(f"=> creating model '{config.model.model_type}'")
     if config.data.dataset == 'CIFAR10':
         # Use model from our model folder instead from torchvision!
-        model = SimSiam(our_cifar_resnets.resnet18, config.simsiam.dim, config.simsiam.pred_dim)
+        model = SimSiam(our_cifar_resnets.resnet18, config.simsiam.dim, config.simsiam.pred_dim, num_classes=10)
     else:
-        model = SimSiam(models.__dict__[config.model.model_type], config.simsiam.dim, config.simsiam.pred_dim)
+        model = SimSiam(models.__dict__[config.model.model_type], config.simsiam.dim, config.simsiam.pred_dim, num_classes=1000)
     
     # todo: check backpack + ddp + resnet with sam; backpack raises errors when using inplace operations
     # if config.expt.image_wise_gradients:
