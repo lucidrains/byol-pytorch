@@ -94,7 +94,7 @@ def main(config, expt_dir, bohb_infos=None):
         # config.expt.dist_url = "tcp://localhost:" + master_port
         # print(f"{config.expt.dist_url=}")
         
-        print(f"\n\n\n\n\n\n{bohb_infos=}\n\n\n\n\n\n")
+        print(f"\n\n\n\n\n\nbohb_infos: {bohb_infos}\n\n\n\n\n\n")
     # ------------------------------------------------------------------------------------------------------------------
 
     if config.expt.seed is not None:
@@ -146,7 +146,7 @@ def main(config, expt_dir, bohb_infos=None):
     if bohb_infos is not None:
         with open(expt_dir + "/current_val_metric.txt", 'r') as f:
             val_metric = f.read()
-        print(f"{val_metric=}")
+        print(f"val_metric: {val_metric}")
         return float(val_metric)
     # ------------------------------------------------------------------------------------------------------------------
 

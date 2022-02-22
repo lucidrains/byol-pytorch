@@ -139,7 +139,7 @@ def get_train_valid_loader(
                                                 download=True, transform=train_transform)
         # valid_dataset
         # --------------------------------------------------------------------------------------------------------------
-        print(f"{valid_size=}")
+        print(f"valid_size: {valid_size}")
         valid_dataset = torchvision.datasets.CIFAR10(root='datasets/CIFAR10', train=True,
                                            download=True, transform=valid_transform)
     else:

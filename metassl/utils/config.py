@@ -67,6 +67,6 @@ def print_missing_params_in_yaml(key, value, cfg):
         for keylow, _ in value.items():
             try:
                 if keylow not in cfg[key]:
-                    print(f"{key=},{keylow=}")
+                    print(f"key: {key}, keylow: {keylow}")
             except:
                 pass
