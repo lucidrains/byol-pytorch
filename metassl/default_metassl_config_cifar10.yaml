@@ -116,3 +116,10 @@ bohb:
   warmstarting:     False
   warmstarting_dir: None
   test_env:         False
+
+#######################################
+###       NEPS Specific             ###
+#######################################
+neps:
+  is_neps_run:    False                         # Set this flag to run a NEPS experiment.
+

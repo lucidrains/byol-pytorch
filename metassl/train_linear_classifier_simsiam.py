@@ -60,7 +60,8 @@ model_names = sorted(
     )
 
 
-def main(config, expt_dir, bohb_infos=None):
+def main(config, expt_dir, bohb_infos=None, hyperparameters=None):
+    print("\n\n\nFINETUNING\n\n\n")
     # BOHB only --------------------------------------------------------------------------------------------------------
     if bohb_infos is not None:
         # Integrate budget based on budget_mode
@@ -131,10 +132,10 @@ def main(config, expt_dir, bohb_infos=None):
         config.expt.world_size = ngpus_per_node * config.expt.world_size
         # Use torch.multiprocessing.spawn to launch distributed processes: the
         # main_worker process function
-        mp.spawn(main_worker, nprocs=ngpus_per_node, args=(ngpus_per_node, config, expt_dir, bohb_infos))
+        mp.spawn(main_worker, nprocs=ngpus_per_node, args=(ngpus_per_node, config, expt_dir, bohb_infos, hyperparameters))
     else:
         # Simply call main_worker function
-        main_worker(config.expt.gpu, ngpus_per_node, config, expt_dir, bohb_infos)
+        main_worker(config.expt.gpu, ngpus_per_node, config, expt_dir, bohb_infos, hyperparameters)
     
     # BOHB only --------------------------------------------------------------------------------------------------------
     # Read validation metric from the .txt (as for mp.spawn returning values is not trivial)
@@ -144,9 +145,16 @@ def main(config, expt_dir, bohb_infos=None):
         print(f"val_metric: {val_metric}")
         return float(val_metric)
     # ------------------------------------------------------------------------------------------------------------------
+    # NEPS only --------------------------------------------------------------------------------------------------------
+    # Read validation metric from the .txt (as for mp.spawn returning values is not trivial)
+    if len(hyperparameters) > 0:
+        with open(str(expt_dir) + "/current_val_metric.txt", 'r') as f:
+            val_metric = f.read()
+        print(f"val_metric: {val_metric}")
+        return float(val_metric)
+    # ------------------------------------------------------------------------------------------------------------------
 
-
-def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
+def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos, hyperparameters):
     config.expt.gpu = gpu
 
     # suppress printing if not master
@@ -181,7 +189,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
         elif config.model.arch == "our_resnet":
             # Use model from our model folder instead from torchvision!
             print(f"=> creating model resnet18")
-            model = SimSiam(our_cifar_resnets.resnet18, config.simsiam.dim, config.simsiam.pred_dim)
+            model = SimSiam(our_cifar_resnets.resnet18, config.simsiam.dim, config.simsiam.pred_dim, num_classes=10)
         elif config.model.arch == "baseline_resnet":
             from metassl.utils.resnet_cifar import ResNet18, ResNet34, ResNet50, ResNet101, ResNet152
             def get_backbone(backbone_name, num_cls=10):
@@ -475,7 +483,13 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
         with open(expt_dir + "/current_val_metric.txt", 'w+') as f:
             f.write(f"{top1_avg.item()}\n")
     # ------------------------------------------------------------------------------------------------------------------
-
+    # NEPS only --------------------------------------------------------------------------------------------------------
+    # Save validation metric in a .txt (as for mp.spawn returning values is not trivial)
+    if len(hyperparameters) > 0:
+        with open(str(expt_dir) + "/current_val_metric.txt", 'w+') as f:
+            f.write(f"{-top1_avg.item()}\n")
+            # f.write(f"{-top1_avg}\n")
+    # ------------------------------------------------------------------------------------------------------------------
 
 def train_one_epoch(
     train_loader_ft,

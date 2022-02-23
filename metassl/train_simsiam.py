@@ -8,6 +8,7 @@
 # code taken from https://github.com/facebookresearch/simsiam
 import argparse
 import builtins
+import logging
 import os
 import pathlib
 import random
@@ -15,6 +16,7 @@ import time
 import warnings
 import math
 from collections import OrderedDict
+from copy import deepcopy
 
 import jsonargparse
 import numpy as np
@@ -65,7 +67,11 @@ model_names = sorted(
     )
 
 
-def main(config, expt_dir, bohb_infos=None):
+def main(working_directory, config, bohb_infos=None, **hyperparameters):
+    config = deepcopy(config)  # Important for NEPS (for not overwriting pretraining stuff in finetuning and vice versa)
+    print("\n\n\nPRETRAINING\n\n\n")
+    expt_dir = working_directory  # NEPS implementation requires "working_directory" as the first argument
+
     # BOHB only --------------------------------------------------------------------------------------------------------
     if bohb_infos is not None:
         # Integrate budget based on budget_mode
@@ -95,6 +101,14 @@ def main(config, expt_dir, bohb_infos=None):
         # print(f"{config.expt.dist_url=}")
         
         print(f"\n\n\n\n\n\nbohb_infos: {bohb_infos}\n\n\n\n\n\n")
+    # ------------------------------------------------------------------------------------------------------------------
+
+    # NEPS only --------------------------------------------------------------------------------------------------------
+    if config.neps.is_neps_run:
+        print(f"Hyperparameters: {hyperparameters}")
+        learning_rate = hyperparameters["learning_rate"]
+        print(f"Learning rate: {learning_rate}")
+        config.train.lr = learning_rate
     # ------------------------------------------------------------------------------------------------------------------
 
     if config.expt.seed is not None:
@@ -149,6 +163,13 @@ def main(config, expt_dir, bohb_infos=None):
         print(f"val_metric: {val_metric}")
         return float(val_metric)
     # ------------------------------------------------------------------------------------------------------------------
+    # NEPS only --------------------------------------------------------------------------------------------------------
+    # Read validation metric from the .txt (as for mp.spawn returning values is not trivial)
+    if len(hyperparameters) > 0:
+        from metassl.train_linear_classifier_simsiam import main as main_ft
+        val_metric = main_ft(config=config, expt_dir=expt_dir, bohb_infos=None, hyperparameters=hyperparameters)
+        return float(val_metric)
+    # ------------------------------------------------------------------------------------------------------------------
 
 
 def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
@@ -198,7 +219,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
         print(f"=> creating model {config.model.model_type}")
         model = SimSiam(models.__dict__[config.model.model_type], config.simsiam.dim, config.simsiam.pred_dim)
 
-    print(model)
+    # print(model)
 
     if config.model.turn_off_bn:
         print("Turning off BatchNorm in entire model.")
@@ -745,7 +766,10 @@ if __name__ == '__main__':
     parser.add_argument("--bohb.warmstarting", type=bool, default=False)
     parser.add_argument("--bohb.warmstarting_dir", type=str, default=None)
     parser.add_argument("--bohb.test_env", action='store_true', help='If using this flag, the master runs a worker in the background and workers are not being shutdown after registering results.')
-    
+
+    parser.add_argument('--neps', default="neps", type=str, metavar='NEPS')
+    parser.add_argument("--neps.is_neps_run", action='store_true', help='Set this flag to run a NEPS experiment.')
+
     parser.add_argument("--use_fixed_args", action="store_true", help="Flag to control whether to take arguments from yaml file as default or from arg parse")
     
     config = _parse_args(config_parser, parser)
@@ -766,11 +790,20 @@ if __name__ == '__main__':
         if config.bohb.configspace_mode == 'double_probability_augment' and config.finetuning.data_augmentation != "p_probability_augment_ft":
             raise ValueError("If you run a BOHB experiment with 'double_probability_augment' configspace mode, you also need to select 'p_probability_augment_ft' as finetuning data augmentation mode!")
     
-    # Run BOHB / main
-    if is_bohb_run:
-        from metassl.hyperparameter_optimization.master import start_bohb_master
-        
-        start_bohb_master(yaml_config=config, expt_dir=expt_dir)
+
+
+    if config.neps.is_neps_run:
+        import neps
+        logging.basicConfig(level=logging.INFO)
+        pipeline_space = dict(learning_rate=neps.FloatParameter(lower=0, upper=1))
+        neps.run(run_pipeline=main, pipeline_space=pipeline_space, working_directory=expt_dir, max_evaluations_total=5, run_pipeline_args=(config, ))
+        # max_evaluations_per_run=1
     
     else:
-        main(config=config, expt_dir=expt_dir)
+        # Run BOHB / main
+        if is_bohb_run:
+            from metassl.hyperparameter_optimization.master import start_bohb_master
+
+            start_bohb_master(yaml_config=config, expt_dir=expt_dir)
+        else:
+            main(working_directory=expt_dir, config=config)
