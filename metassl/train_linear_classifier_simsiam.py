@@ -147,7 +147,7 @@ def main(config, expt_dir, bohb_infos=None, hyperparameters=None):
     # ------------------------------------------------------------------------------------------------------------------
     # NEPS only --------------------------------------------------------------------------------------------------------
     # Read validation metric from the .txt (as for mp.spawn returning values is not trivial)
-    if len(hyperparameters) > 0:
+    if hyperparameters is not None:
         with open(str(expt_dir) + "/current_val_metric.txt", 'r') as f:
             val_metric = f.read()
         print(f"val_metric: {val_metric}")
@@ -222,7 +222,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos, hyperparamete
     # Baseline Code ----------------------------------------------------------------------------------------------------
     if config.data.dataset == "CIFAR10" and config.model.arch == "baseline_resnet":
         # TODO: @Diane - fix hardcoding
-        pretrained = "experiments/CIFAR10/dipti/checkpoint_0799.pth.tar"
+        pretrained = "experiments/CIFAR10/reproduced_results/checkpoint_0799.pth.tar"
         if True:
             if os.path.isfile(pretrained):
                 print("=> loading checkpoint '{}'".format(pretrained))
@@ -485,7 +485,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos, hyperparamete
     # ------------------------------------------------------------------------------------------------------------------
     # NEPS only --------------------------------------------------------------------------------------------------------
     # Save validation metric in a .txt (as for mp.spawn returning values is not trivial)
-    if len(hyperparameters) > 0:
+    if hyperparameters is not None:
         with open(str(expt_dir) + "/current_val_metric.txt", 'w+') as f:
             f.write(f"{-top1_avg.item()}\n")
             # f.write(f"{-top1_avg}\n")
@@ -815,6 +815,9 @@ if __name__ == '__main__':
     parser.add_argument("--bohb.warmstarting", type=bool, default=False)
     parser.add_argument("--bohb.warmstarting_dir", type=str, default=None)
     parser.add_argument("--bohb.test_env", action='store_true', help='If using this flag, the master runs a worker in the background and workers are not being shutdown after registering results.')
+
+    parser.add_argument('--neps', default="neps", type=str, metavar='NEPS')
+    parser.add_argument("--neps.is_neps_run", action='store_true', help='Set this flag to run a NEPS experiment.')
 
     parser.add_argument("--use_fixed_args", action="store_true", help="Flag to control whether to take arguments from yaml file as default or from arg parse")
     
