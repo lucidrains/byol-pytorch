@@ -230,6 +230,8 @@ def get_test_loader(
     if dataset_name == "CIFAR10":
         transform = transforms.Compose(
             [
+                transforms.Resize(int(32 * (8 / 7)), interpolation=Image.BICUBIC),
+                transforms.CenterCrop(32),
                 transforms.ToTensor(),
                 transforms.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.2023, 0.1994, 0.2010])
             ]
@@ -238,6 +240,8 @@ def get_test_loader(
     elif dataset_name == "CIFAR100":
         transform = transforms.Compose(
             [
+                transforms.Resize(int(32 * (8 / 7)), interpolation=Image.BICUBIC),
+                transforms.CenterCrop(32),
                 transforms.ToTensor(),
                 transforms.Normalize(mean=[0.5071, 0.4865, 0.4409], std=[0.2673, 0.2564, 0.2762])
             ]
@@ -406,12 +410,18 @@ def get_train_valid_transforms(dataset_name, use_fix_aug_params, bohb_infos, get
             )
         else:  # TODO: Check out which data augmentations are being used here!
             train_transform = transforms.Compose([
+                    transforms.RandomResizedCrop(32, scale=(0.8, 1.0),
+                                                 ratio=(3.0 / 4.0, 4.0 / 3.0),
+                                                 interpolation=Image.BICUBIC),
+                    transforms.RandomHorizontalFlip(),
                     transforms.ToTensor(),
                     normalize_cifar10,
                 ]
             )
 
             valid_transform = transforms.Compose([
+                    transforms.Resize(int(32 * (8 / 7)), interpolation=Image.BICUBIC),
+                    transforms.CenterCrop(32),
                     transforms.ToTensor(),
                     normalize_cifar10,
                 ]
