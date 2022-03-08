@@ -13,7 +13,6 @@ from metassl.utils.imagenet import ImageNet
 from .simsiam import GaussianBlur, TwoCropsTransform
 from .torch_utils import DistributedSampler
 
-datasets
 
 normalize_imagenet = transforms.Normalize(
     mean=[0.485, 0.456, 0.406],
@@ -251,7 +250,7 @@ def get_test_loader(
 
         transform = transforms.Compose(
             [
-                transforms.Resize(256),
+                transforms.Resize(256, interpolation=Image.BICUBIC),
                 transforms.CenterCrop(224),
                 transforms.ToTensor(),
                 normalize_imagenet,
@@ -344,16 +343,20 @@ def get_train_valid_transforms(dataset_name, use_fix_aug_params, bohb_infos, get
     contrast_strength = 0.4
     saturation_strength = 0.4
     hue_strength = 0.1
+    p_solarize = 0
+    solarize_threshold = 255
     if use_fix_aug_params:
         # You can overwrite parameters here if you want to try out a specific setting.
         # Due to the flag, default experiments won't be affected by this.
-        p_colorjitter = 0.8
-        p_grayscale = 0.2
+        p_colorjitter = 0.32011207176587564
+        p_grayscale = 0.13152910682197913
+        p_solarize = 0.38645378707287636
+        solarize_threshold = 121
         p_gaussianblur = 0.5 if dataset_name == 'ImageNet' else 0
-        brightness_strength = 1.1592547258007664
-        contrast_strength = 1.160211615089221
-        saturation_strength = 0.9843846879329252
-        hue_strength = 0.19030216963226004
+        brightness_strength = 0.5918737491981877
+        contrast_strength = 1.1513307570530626
+        saturation_strength = 0.01767797917203415
+        hue_strength = 0.08749582439198282
 
     # BOHB - probability augment configspace
     if bohb_infos is not None and bohb_infos['bohb_configspace'].endswith('probability_simsiam_augment'):
@@ -369,13 +372,15 @@ def get_train_valid_transforms(dataset_name, use_fix_aug_params, bohb_infos, get
         hue_strength = bohb_infos['bohb_config']['hue_strength']
 
     # For testing
-    # print(f"{p_colorjitter=}")
-    # print(f"{p_grayscale=}")
-    # print(f"{p_gaussianblur=}")
-    # print(f"{brightness_strength=}")
-    # print(f"{contrast_strength=}")
-    # print(f"{saturation_strength=}")
-    # print(f"{hue_strength=}")
+    print(f"p_colorjitter: {p_colorjitter}")
+    print(f"p_grayscale: {p_grayscale}")
+    print(f"p_gaussianblur: {p_gaussianblur}")
+    print(f"p_solarize: {p_solarize}")
+    print(f"solarize_threshold: {solarize_threshold}")
+    print(f"brightness_strength: {brightness_strength}")
+    print(f"contrast_strength: {contrast_strength}")
+    print(f"saturation_strength: {saturation_strength}")
+    print(f"hue_strength: {hue_strength}")
     # ------------------------------------------------------------------------------------------------------------------
 
     if dataset_name == "CIFAR10":
@@ -384,17 +389,18 @@ def get_train_valid_transforms(dataset_name, use_fix_aug_params, bohb_infos, get
             if parameterize_augmentation:
                 # rest is done outside
                 train_transform = transforms.Compose([
-                    transforms.RandomResizedCrop(size=32, scale=(0.2, 1.)),
+                    transforms.RandomResizedCrop(size=32, scale=(0.2, 1.), interpolation=Image.BICUBIC),
                     transforms.ToTensor(),
                     ])
             else:
                 train_transform = TwoCropsTransform(
                     transforms.Compose(
                         [
-                            transforms.RandomResizedCrop(size=32, scale=(0.2, 1.)),
+                            transforms.RandomResizedCrop(size=32, scale=(0.2, 1.), interpolation=Image.BICUBIC),
                             transforms.RandomApply([transforms.ColorJitter(brightness=brightness_strength, contrast=contrast_strength, saturation=saturation_strength, hue=hue_strength)], p=p_colorjitter),
                             transforms.RandomGrayscale(p=p_grayscale),
                             transforms.RandomHorizontalFlip(),
+                            transforms.RandomSolarize(threshold=solarize_threshold, p=p_solarize),
                             transforms.ToTensor(),
                             normalize_cifar10,
                             ]
@@ -403,6 +409,8 @@ def get_train_valid_transforms(dataset_name, use_fix_aug_params, bohb_infos, get
 
             valid_transform = TwoCropsTransform(
                 transforms.Compose([
+                    transforms.Resize(int(32 * (8 / 7)), interpolation=Image.BICUBIC),
+                    transforms.CenterCrop(32),
                     transforms.ToTensor(),
                     normalize_cifar10,
                     ]
@@ -410,9 +418,10 @@ def get_train_valid_transforms(dataset_name, use_fix_aug_params, bohb_infos, get
             )
         else:  # TODO: Check out which data augmentations are being used here!
             train_transform = transforms.Compose([
-                    transforms.RandomResizedCrop(32, scale=(0.8, 1.0),
-                                                 ratio=(3.0 / 4.0, 4.0 / 3.0),
-                                                 interpolation=Image.BICUBIC),
+                    # transforms.RandomResizedCrop(32, scale=(0.8, 1.0),
+                    #                              ratio=(3.0 / 4.0, 4.0 / 3.0),
+                    #                              interpolation=Image.BICUBIC),
+                    transforms.RandomResizedCrop(size=32, scale=(0.2, 1.), interpolation=Image.BICUBIC),
                     transforms.RandomHorizontalFlip(),
                     transforms.ToTensor(),
                     normalize_cifar10,
@@ -450,18 +459,19 @@ def get_train_valid_transforms(dataset_name, use_fix_aug_params, bohb_infos, get
             if parameterize_augmentation:
                 # rest is done outside
                 train_transform = transforms.Compose([
-                    transforms.RandomResizedCrop(224, scale=(0.2, 1.)),
+                    transforms.RandomResizedCrop(224, scale=(0.2, 1.), interpolation=Image.BICUBIC),
                     transforms.ToTensor(),
                     ])
             else:
                 train_transform = TwoCropsTransform(
                     transforms.Compose(
                         [
-                            transforms.RandomResizedCrop(224, scale=(0.2, 1.)),
+                            transforms.RandomResizedCrop(224, scale=(0.2, 1.), interpolation=Image.BICUBIC),
                             transforms.RandomApply([transforms.ColorJitter(brightness=brightness_strength, contrast=contrast_strength, saturation=saturation_strength, hue=hue_strength)], p=p_colorjitter),
                             transforms.RandomGrayscale(p=p_grayscale),
                             transforms.RandomApply([GaussianBlur([.1, 2.])], p=p_gaussianblur),
                             transforms.RandomHorizontalFlip(),
+                            transforms.RandomSolarize(threshold=solarize_threshold, p=p_solarize),
                             transforms.ToTensor(),
                             normalize_imagenet
                             ]
@@ -480,7 +490,7 @@ def get_train_valid_transforms(dataset_name, use_fix_aug_params, bohb_infos, get
                 )
         else:
             train_transform = transforms.Compose([
-                                transforms.RandomResizedCrop(224),
+                                transforms.RandomResizedCrop(224, interpolation=Image.BICUBIC),
                                 transforms.RandomHorizontalFlip(),
                                 transforms.ToTensor(),
                                 normalize_imagenet,
