@@ -31,6 +31,8 @@ normalize_cifar100 = transforms.Normalize(
 
 
 def get_train_valid_loader(
+    config,
+    neps_hyperparameters,
     data_dir,
     batch_size,
     random_seed,
@@ -50,7 +52,6 @@ def get_train_valid_loader(
     use_fix_aug_params=False,
     data_augmentation_mode='default',
     finetuning_data_augmentation='none',
-
     ):
     """
     Utility function for loading and returning train and valid
@@ -94,7 +95,7 @@ def get_train_valid_loader(
     if data_augmentation_mode == 'default':
         # default SimSiam Stuff + Fabio Stuff
         # TODO @Fabio/Diane - generate specific mode for Fabio stuff
-        train_transform, valid_transform = get_train_valid_transforms(dataset_name, use_fix_aug_params, bohb_infos, get_fine_tuning_loaders, parameterize_augmentation)
+        train_transform, valid_transform = get_train_valid_transforms(config, dataset_name, use_fix_aug_params, bohb_infos, get_fine_tuning_loaders, parameterize_augmentation, neps_hyperparameters)
     elif data_augmentation_mode == 'probability_augment':
         from .probability_augment import probability_augment
         train_transform, valid_transform = probability_augment(dataset_name, get_fine_tuning_loaders, bohb_infos, use_fix_aug_params, finetuning_data_augmentation)
@@ -330,7 +331,7 @@ def plot_images(images, cls_true, cls_pred=None):
     plt.show()
 
 
-def get_train_valid_transforms(dataset_name, use_fix_aug_params, bohb_infos, get_fine_tuning_loaders, parameterize_augmentation):
+def get_train_valid_transforms(config, dataset_name, use_fix_aug_params, bohb_infos, get_fine_tuning_loaders, parameterize_augmentation, neps_hyperparameters):
     # ------------------------------------------------------------------------------------------------------------------
     # Specify data augmentation hyperparameters for the pretraining part
     # ------------------------------------------------------------------------------------------------------------------
@@ -339,12 +340,14 @@ def get_train_valid_transforms(dataset_name, use_fix_aug_params, bohb_infos, get
     p_colorjitter = 0.8
     p_grayscale = 0.2
     p_gaussianblur = 0.5 if dataset_name == 'ImageNet' else 0
+    p_horizontal_flip = 0.5
+    p_solarize = 0
     brightness_strength = 0.4
     contrast_strength = 0.4
     saturation_strength = 0.4
     hue_strength = 0.1
-    p_solarize = 0
     solarize_threshold = 255
+
     if use_fix_aug_params:
         # You can overwrite parameters here if you want to try out a specific setting.
         # Due to the flag, default experiments won't be affected by this.
@@ -371,16 +374,36 @@ def get_train_valid_transforms(dataset_name, use_fix_aug_params, bohb_infos, get
         saturation_strength = bohb_infos['bohb_config']['saturation_strength']
         hue_strength = bohb_infos['bohb_config']['hue_strength']
 
+    # NEPS only --------------------------------------------------------------------------------------------------------
+    if config.neps.is_neps_run:
+        if config.neps.config_space == "parameterized_cifar10_augmentation" and neps_hyperparameters is not None:
+            print(f"Hyperparameters: {neps_hyperparameters}")
+            # Probabilities
+            p_colorjitter = neps_hyperparameters["p_colorjitter"]
+            p_grayscale = neps_hyperparameters["p_grayscale"]
+            p_horizontal_flip = neps_hyperparameters["p_horizontal_flip"]
+            p_solarize = neps_hyperparameters["p_solarize"]
+
+            # Strengths and Thresholds
+            brightness_strength = neps_hyperparameters["brightness_strength"]
+            contrast_strength = neps_hyperparameters["contrast_strength"]
+            saturation_strength = neps_hyperparameters["saturation_strength"]
+            hue_strength = neps_hyperparameters["hue_strength"]
+            solarize_threshold = neps_hyperparameters["solarize_threshold"]
+
+    # ------------------------------------------------------------------------------------------------------------------
+
     # For testing
     print(f"p_colorjitter: {p_colorjitter}")
     print(f"p_grayscale: {p_grayscale}")
     print(f"p_gaussianblur: {p_gaussianblur}")
+    print(f"p_horizontal_flip: {p_horizontal_flip}")
     print(f"p_solarize: {p_solarize}")
-    print(f"solarize_threshold: {solarize_threshold}")
     print(f"brightness_strength: {brightness_strength}")
     print(f"contrast_strength: {contrast_strength}")
     print(f"saturation_strength: {saturation_strength}")
     print(f"hue_strength: {hue_strength}")
+    print(f"solarize_threshold: {solarize_threshold}")
     # ------------------------------------------------------------------------------------------------------------------
 
     if dataset_name == "CIFAR10":
@@ -399,7 +422,7 @@ def get_train_valid_transforms(dataset_name, use_fix_aug_params, bohb_infos, get
                             transforms.RandomResizedCrop(size=32, scale=(0.2, 1.), interpolation=Image.BICUBIC),
                             transforms.RandomApply([transforms.ColorJitter(brightness=brightness_strength, contrast=contrast_strength, saturation=saturation_strength, hue=hue_strength)], p=p_colorjitter),
                             transforms.RandomGrayscale(p=p_grayscale),
-                            transforms.RandomHorizontalFlip(),
+                            transforms.RandomHorizontalFlip(p_horizontal_flip),
                             transforms.RandomSolarize(threshold=solarize_threshold, p=p_solarize),
                             transforms.ToTensor(),
                             normalize_cifar10,
@@ -511,8 +534,10 @@ def get_train_valid_transforms(dataset_name, use_fix_aug_params, bohb_infos, get
     return train_transform, valid_transform
 
 
-def get_loaders(traindir, config, parameterize_augmentation=False, bohb_infos=None):
+def get_loaders(traindir, config, parameterize_augmentation=False, bohb_infos=None, neps_hyperparameters=None):
     train_loader_pt, _, train_sampler_pt, _ = get_train_valid_loader(
+        config=config,
+        neps_hyperparameters=neps_hyperparameters,
         data_dir=traindir,
         batch_size=config.train.batch_size,
         random_seed=config.expt.seed,
@@ -534,6 +559,8 @@ def get_loaders(traindir, config, parameterize_augmentation=False, bohb_infos=No
         )
     
     train_loader_ft, valid_loader_ft, train_sampler_ft, _ = get_train_valid_loader(
+        config=config,
+        neps_hyperparameters=neps_hyperparameters,
         data_dir=traindir,
         batch_size=config.finetuning.batch_size,
         random_seed=config.expt.seed,
