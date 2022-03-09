@@ -1,5 +1,6 @@
 import ConfigSpace as CS
 import ConfigSpace.hyperparameters as CSH
+import neps
 
 
 def get_imagenet_probability_simsiam_augment_configspace():
@@ -118,3 +119,20 @@ def get_double_probability_augment_configspace():
 
     )
     return cs
+
+def get_parameterized_cifar10_augmentation_configspace():
+    # Probabilities
+    p_colorjitter = neps.FloatParameter(lower=0, upper=1, log=False)
+    p_grayscale = neps.FloatParameter(lower=0, upper=1, log=False)
+    p_horizontal_flip = neps.FloatParameter(lower=0, upper=1, log=False)
+    p_solarize = neps.FloatParameter(lower=0, upper=1, log=False)
+
+    # Strengths and Thresholds
+    brightness_strength = neps.FloatParameter(lower=0, upper=1.5, log=False)
+    contrast_strength = neps.FloatParameter(lower=0, upper=1.5, log=False)
+    saturation_strength = neps.FloatParameter(lower=0, upper=1.5, log=False)
+    hue_strength = neps.FloatParameter(lower=0, upper=0.5, log=False)
+    solarize_threshold = neps.IntegerParameter(lower=0, upper=255, log=False)
+
+    pipeline_space = dict(p_colorjitter=p_colorjitter, p_grayscale=p_grayscale, p_horizontal_flip=p_horizontal_flip, p_solarize=p_solarize, brightness_strength=brightness_strength, contrast_strength=contrast_strength, saturation_strength=saturation_strength, hue_strength=hue_strength, solarize_threshold=solarize_threshold)
+    return pipeline_space

@@ -34,6 +34,7 @@ import yaml
 from jsonargparse import ArgumentParser
 from torch.utils.tensorboard import SummaryWriter
 
+from metassl.hyperparameter_optimization.configspaces import get_parameterized_cifar10_augmentation_configspace
 from metassl.utils.criterion import SimSiamLoss
 
 warnings.filterwarnings("ignore", category=UserWarning)
@@ -105,10 +106,11 @@ def main(working_directory, config, bohb_infos=None, **hyperparameters):
 
     # NEPS only --------------------------------------------------------------------------------------------------------
     if config.neps.is_neps_run:
-        print(f"Hyperparameters: {hyperparameters}")
-        learning_rate = hyperparameters["learning_rate"]
-        print(f"Learning rate: {learning_rate}")
-        config.train.lr = learning_rate
+        neps_hyperparameters = hyperparameters
+        # print(f"Hyperparameters: {hyperparameters}")
+        # learning_rate = hyperparameters["learning_rate"]
+        # print(f"Learning rate: {learning_rate}")
+        # config.train.lr = learning_rate
     # ------------------------------------------------------------------------------------------------------------------
 
     if config.expt.seed is not None:
@@ -150,10 +152,10 @@ def main(working_directory, config, bohb_infos=None, **hyperparameters):
         config.expt.world_size = ngpus_per_node * config.expt.world_size
         # Use torch.multiprocessing.spawn to launch distributed processes: the
         # main_worker process function
-        mp.spawn(main_worker, nprocs=ngpus_per_node, args=(ngpus_per_node, config, expt_dir, bohb_infos))
+        mp.spawn(main_worker, nprocs=ngpus_per_node, args=(ngpus_per_node, config, expt_dir, bohb_infos, neps_hyperparameters))
     else:
         # Simply call main_worker function
-        main_worker(config.expt.gpu, ngpus_per_node, config, expt_dir, bohb_infos)
+        main_worker(config.expt.gpu, ngpus_per_node, config, expt_dir, bohb_infos, neps_hyperparameters)
     
     # BOHB only --------------------------------------------------------------------------------------------------------
     # Read validation metric from the .txt (as for mp.spawn returning values is not trivial)
@@ -165,14 +167,14 @@ def main(working_directory, config, bohb_infos=None, **hyperparameters):
     # ------------------------------------------------------------------------------------------------------------------
     # NEPS only --------------------------------------------------------------------------------------------------------
     # Read validation metric from the .txt (as for mp.spawn returning values is not trivial)
-    if len(hyperparameters) > 0:
+    if config.neps.is_neps_run:
         from metassl.train_linear_classifier_simsiam import main as main_ft
-        val_metric = main_ft(config=config, expt_dir=expt_dir, bohb_infos=None, hyperparameters=hyperparameters)
+        val_metric = main_ft(config=config, expt_dir=expt_dir, bohb_infos=None, hyperparameters=neps_hyperparameters)
         return float(val_metric)
     # ------------------------------------------------------------------------------------------------------------------
 
 
-def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
+def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos, neps_hyperparameters):
     config.expt.gpu = gpu
     
     # suppress printing if not master
@@ -338,9 +340,9 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos):
     traindir = os.path.join(config.data.dataset, 'train')  # TODO: @Fabio - What about validir / testdir?
     
     if config.finetuning.valid_size > 0:
-        train_loader_pt, train_sampler_pt, train_loader_ft, train_sampler_ft, valid_loader_ft, test_loader_ft = get_loaders(traindir, config, parameterize_augmentation=False, bohb_infos=bohb_infos)
+        train_loader_pt, train_sampler_pt, train_loader_ft, train_sampler_ft, valid_loader_ft, test_loader_ft = get_loaders(traindir, config, parameterize_augmentation=False, bohb_infos=bohb_infos, neps_hyperparameters=neps_hyperparameters)
     else:
-        train_loader_pt, train_sampler_pt, train_loader_ft, train_sampler_ft, test_loader_ft = get_loaders(traindir, config, parameterize_augmentation=False, bohb_infos=bohb_infos)
+        train_loader_pt, train_sampler_pt, train_loader_ft, train_sampler_ft, test_loader_ft = get_loaders(traindir, config, parameterize_augmentation=False, bohb_infos=bohb_infos, neps_hyperparameters=neps_hyperparameters)
     
     cudnn.benchmark = True
     writer = None
@@ -768,7 +770,8 @@ if __name__ == '__main__':
     parser.add_argument("--bohb.test_env", action='store_true', help='If using this flag, the master runs a worker in the background and workers are not being shutdown after registering results.')
 
     parser.add_argument('--neps', default="neps", type=str, metavar='NEPS')
-    parser.add_argument("--neps.is_neps_run", action='store_true', help='Set this flag to run a NEPS experiment.')
+    parser.add_argument('--neps.is_neps_run', action='store_true', help='Set this flag to run a NEPS experiment.')
+    parser.add_argument('--neps.config_space', type=str, default='parameterized_cifar10_augmentation', choices=['parameterized_cifar10_augmentation', 'probability_augment'], help='Define which configspace to use.')
 
     parser.add_argument("--use_fixed_args", action="store_true", help="Flag to control whether to take arguments from yaml file as default or from arg parse")
     
@@ -795,8 +798,12 @@ if __name__ == '__main__':
     if config.neps.is_neps_run:
         import neps
         logging.basicConfig(level=logging.INFO)
-        pipeline_space = dict(learning_rate=neps.FloatParameter(lower=0, upper=1))
-        neps.run(run_pipeline=main, pipeline_space=pipeline_space, working_directory=expt_dir, max_evaluations_total=5, run_pipeline_args=(config, ))
+        # pipeline_space = dict(learning_rate=neps.FloatParameter(lower=0, upper=1))
+        if config.neps.config_space == 'parameterized_cifar10_augmentation':
+            pipeline_space = get_parameterized_cifar10_augmentation_configspace()
+        else:
+            raise NotImplementedError
+        neps.run(run_pipeline=main, pipeline_space=pipeline_space, working_directory=expt_dir, max_evaluations_total=20, run_pipeline_args=(config, ))
         # max_evaluations_per_run=1
     
     else:
