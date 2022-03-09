@@ -18,17 +18,22 @@
   mkdir -p /work/dlclarge2/wagnerd-metassl-experiments/metassl/CIFAR10/{{EXPERIMENT_NAME}}/cluster_oe/
   sbatch --output=/work/dlclarge2/wagnerd-metassl-experiments/metassl/CIFAR10/{{EXPERIMENT_NAME}}/cluster_oe/%x.%N.%j.err_out --error=/work/dlclarge2/wagnerd-metassl-experiments/metassl/CIFAR10/{{EXPERIMENT_NAME}}/cluster_oe/%x.%N.%j.err_out --export=EXPERIMENT_NAME={{EXPERIMENT_NAME}} cluster/submit_cifar10_baseline_ft.sh
 
-# Submit alternating SimSiam on CIFAR10 with default setting to reproduce results
-@simsiam_cifar10_default EXPERIMENT_NAME:
-  #!/usr/bin/env bash
-  mkdir -p /work/dlclarge2/wagnerd-metassl_experiments/CIFAR10/{{EXPERIMENT_NAME}}/cluster_oe/
-  sbatch --exclude=dlcgpu42 --nodelist=dlcgpu14 --output=/work/dlclarge2/wagnerd-metassl_experiments/CIFAR10/{{EXPERIMENT_NAME}}/cluster_oe/%x.%N.%j.err_out --error=/work/dlclarge2/wagnerd-metassl_experiments/CIFAR10/{{EXPERIMENT_NAME}}/cluster_oe/%x.%N.%j.err_out --export=EXPERIMENT_NAME={{EXPERIMENT_NAME}} cluster/submit_alternating_simsiam_cifar10_default.sh
 
-# Submit alternating SimSiam on CIFAR10 with some experimental settings
-@simsiam_cifar10_workspace EXPERIMENT_NAME:
+# ---------------------------------------------------------------------------------------
+# SIMSIAM ON IMAGENET
+# ---------------------------------------------------------------------------------------
+
+# Submit SimSiam baseline on IMAGENET - PT
+@imagenet_baseline_pt EXPERIMENT_NAME:
   #!/usr/bin/env bash
-  mkdir -p /work/dlclarge2/wagnerd-metassl_experiments/CIFAR10/{{EXPERIMENT_NAME}}/cluster_oe/
-  sbatch --exclude=dlcgpu42 --nodelist=dlcgpu43 --output=/work/dlclarge2/wagnerd-metassl_experiments/CIFAR10/{{EXPERIMENT_NAME}}/cluster_oe/%x.%N.%j.err_out --error=/work/dlclarge2/wagnerd-metassl_experiments/CIFAR10/{{EXPERIMENT_NAME}}/cluster_oe/%x.%N.%j.err_out --export=EXPERIMENT_NAME={{EXPERIMENT_NAME}} cluster/submit_alternating_simsiam_cifar10_workspace.sh
+  mkdir -p /work/dlclarge2/wagnerd-metassl-experiments/metassl/ImageNet/{{EXPERIMENT_NAME}}/cluster_oe/
+  sbatch --output=/work/dlclarge2/wagnerd-metassl-experiments/metassl/ImageNet/{{EXPERIMENT_NAME}}/cluster_oe/%x.%N.%j.err_out --error=/work/dlclarge2/wagnerd-metassl-experiments/metassl/ImageNet/{{EXPERIMENT_NAME}}/cluster_oe/%x.%N.%j.err_out --export=EXPERIMENT_NAME={{EXPERIMENT_NAME}} cluster/submit_imagenet_baseline_pt.sh
+
+# Submit SimSiam baseline on IMAGENET - FT
+@imagenet_baseline_ft EXPERIMENT_NAME:
+  #!/usr/bin/env bash
+  mkdir -p /work/dlclarge2/wagnerd-metassl-experiments/metassl/ImageNet/{{EXPERIMENT_NAME}}/cluster_oe/
+  sbatch --output=/work/dlclarge2/wagnerd-metassl-experiments/metassl/ImageNet/{{EXPERIMENT_NAME}}/cluster_oe/%x.%N.%j.err_out --error=/work/dlclarge2/wagnerd-metassl-experiments/metassl/ImageNet/{{EXPERIMENT_NAME}}/cluster_oe/%x.%N.%j.err_out --export=EXPERIMENT_NAME={{EXPERIMENT_NAME}} cluster/submit_cifar10_imagenet_ft.sh
 
 # ---------------------------------------------------------------------------------------
 # SIMSIAM ON CIFAR10 WITH BOHB
