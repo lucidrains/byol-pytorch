@@ -699,7 +699,7 @@ def organize_experiment_saving(user, config, is_bohb_run):
     if not os.path.exists(expt_dir):
         os.makedirs(expt_dir)
     
-    with open(os.path.join(expt_dir, "config.yaml"), "w") as f:
+    with open(os.path.join(expt_dir, "ft_config.yaml"), "w") as f:
         yaml.dump(config, f)
         print(f"copied config to {f.name}")
     
