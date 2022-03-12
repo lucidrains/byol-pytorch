@@ -1,6 +1,5 @@
 import ConfigSpace as CS
 import ConfigSpace.hyperparameters as CSH
-import neps
 
 
 def get_imagenet_probability_simsiam_augment_configspace():
@@ -121,6 +120,7 @@ def get_double_probability_augment_configspace():
     return cs
 
 def get_parameterized_cifar10_augmentation_configspace():
+    import neps
     # Probabilities
     p_colorjitter = neps.FloatParameter(lower=0, upper=1, log=False)
     p_grayscale = neps.FloatParameter(lower=0, upper=1, log=False)
