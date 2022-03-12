@@ -223,6 +223,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos, hyperparamete
     if config.data.dataset == "CIFAR10" and config.model.arch == "baseline_resnet":
         # TODO: @Diane - fix hardcoding
         pretrained = "experiments/CIFAR10/reproduced_results/checkpoint_0799.pth.tar"
+        pretrained = config.expt.target_model_checkpoint_path
         if True:
             if os.path.isfile(pretrained):
                 print("=> loading checkpoint '{}'".format(pretrained))
