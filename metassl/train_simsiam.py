@@ -72,7 +72,7 @@ def main(working_directory, config, bohb_infos=None, **hyperparameters):
     config = deepcopy(config)  # Important for NEPS (for not overwriting pretraining stuff in finetuning and vice versa)
     print("\n\n\nPRETRAINING\n\n\n")
     expt_dir = working_directory  # NEPS implementation requires "working_directory" as the first argument
-
+    
     # BOHB only --------------------------------------------------------------------------------------------------------
     if bohb_infos is not None:
         # Integrate budget based on budget_mode
@@ -103,7 +103,7 @@ def main(working_directory, config, bohb_infos=None, **hyperparameters):
         
         print(f"\n\n\n\n\n\nbohb_infos: {bohb_infos}\n\n\n\n\n\n")
     # ------------------------------------------------------------------------------------------------------------------
-
+    neps_hyperparameters = None
     # NEPS only --------------------------------------------------------------------------------------------------------
     if config.neps.is_neps_run:
         neps_hyperparameters = hyperparameters
@@ -803,7 +803,9 @@ if __name__ == '__main__':
             pipeline_space = get_parameterized_cifar10_augmentation_configspace()
         else:
             raise NotImplementedError
-        neps.run(run_pipeline=main, pipeline_space=pipeline_space, working_directory=expt_dir, max_evaluations_total=20, run_pipeline_args=(config, ))
+        from functools import partial
+        main = partial(main, config=config)
+        neps.run(run_pipeline=main, pipeline_space=pipeline_space, working_directory=expt_dir, max_evaluations_total=200, max_evaluations_per_run=1)
         # max_evaluations_per_run=1
     
     else:
