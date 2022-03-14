@@ -5,7 +5,7 @@ expt:
   expt_name:                    'pre-training-full-train-data-fix-lr-100-256'
   expt_mode:                    'ImageNet'                    # Define which dataset to use to select the correct yaml file.
   save_model:                   True                          # save the model to disc
-  save_model_frequency:         5                            # save model frequency in # of epochs
+  save_model_frequency:         10                            # save model frequency in # of epochs
   ssl_model_checkpoint_path:    null                          # path to the pre-trained model, resumes training if model with same config exists
   target_model_checkpoint_path: null                          # path to the downstream task model, resumes training if model with same config exists
   print_freq:                   10                            # print frequency
@@ -23,11 +23,11 @@ expt:
   advanced_stats:               True                          # compute advanced stats such as cosine similarity and dot product, only used in alternating mode
   is_non_grad_based:            False                         # Set this flag to run default SimSiam or BOHB runs
   warmup_epochs:                10                            # Denotes the number of epochs that we only pre-train without finetuning afterwards; warmup is turned off when set to 0; we use a linear incremental schedule during warmup
-  warmup_multiplier:            2.                            # A factor that is multiplied with the pretraining lr used in the linear incremental learning rate scheduler during warmup. The final lr is multiplier * pre-training lr
+  warmup_multiplier:            1.                            # A factor that is multiplied with the pretraining lr used in the linear incremental learning rate scheduler during warmup. The final lr is multiplier * pre-training lr
   warmup_both:                  False                         # Whether backbone and head should be both warmed up.
   use_fix_aug_params:           False                         # Use this flag if you want to try out specific aug params (e.g., from a best BOHB config). Default values will be overwritten then without crashing other experiments.
   data_augmentation_mode:       'default'                     # Select which data augmentation to use. Default is for the standard SimSiam setting and for parameterize aug setting. choices=['default', 'probability_augment', 'rand_augment']
-  write_summary_frequency:      3                             # Specifies, after how many batches the TensorBoard summary writer should flush new data to the summary object.
+  write_summary_frequency:      10                             # Specifies, after how many batches the TensorBoard summary writer should flush new data to the summary object.
   wd_decay_pt:                  False                         # use weight decay decay (annealing) during pre-training? (default: True)
   wd_decay_ft:                  False                         # use weight decay decay (annealing) during fine-tuning? (default: True)
   run_knn_val:                  False                         # activate knn evaluation during training (default: False)
@@ -51,14 +51,14 @@ train:
 
 finetuning:
   batch_size:        256                  # in distributed setting this is the total batch size, i.e. batch size = individual bs * number of GPUs
-  epochs:            90                    # number of finetuning epochs
-  start_epoch:       0                     # start training at epoch n
+  epochs:            100                  # number of finetuning epochs
+  start_epoch:       0                    # start training at epoch n
   optimizer:         "sgd"                # optimizer type, options: lars adam adamW rmsprop adabelief sgd
-  schedule:          "cosine"              # learning rate schedule, options: 'cosine' 'cosineW' 'plateau' 'step' 'const' 'cosineWarm' 'exponential' 'None' (BOHO case)
+  schedule:          "cosine"             # learning rate schedule, options: 'cosine' 'cosineW' 'plateau' 'step' 'const' 'cosineWarm' 'exponential' 'None' (BOHO case)
   weight_decay:      0.
-  momentum:          0.9                   # momentum of SGD solver
-  lr:                100                    # the default LR
-  valid_size:        0.0                   # If valid_size > 0, pick some images from the trainset to do evaluation on. If valid_size=0 evaluation is done on the testset.
+  momentum:          0.9                  # momentum of SGD solver
+  lr:                100                  # the default LR
+  valid_size:        0.0                  # If valid_size > 0, pick some images from the trainset to do evaluation on. If valid_size=0 evaluation is done on the testset.
   data_augmentation: 'none'               # Select if and how finetuning gets augmented. choices=['none', 'p_probability_augment_pt', 'p_probability_augment_ft', 'p_probability_augment_1-pt']
   wd_start:          1.e-3                 # Upper value of WD Decay. Only used when wd_decay is True.
   wd_end:            1.e-6                 # Lower value of WD Decay. Only used when wd_decay is True.
@@ -78,7 +78,6 @@ model:
 data:
   seed:                     123
   dataset:                  'ImageNet'                    # supported datasets: CIFAR10, CIFAR100, ImageNet
-  data_dir:                 '/home/ferreira/workspace/data/metassl'
   dataset_percentage_usage: 100         # Indicates what percentage of the data is used for the experiments.
 
 
@@ -90,6 +89,13 @@ simsiam:
   pred_dim:    512                              # hidden dimension of the predictor (default: 512)
   fix_pred_lr: True                        # Fix learning rate for the predictor
   use_baselines_loss: False                # Set this flag to use the loss from the baseline code (PT)
+
+########################################
+####       Learn Augmentations       ###
+########################################
+learnaug:
+    type:     "colorjitter"             # Define which type of learned augmentation to use.
+
 
 ########################################
 ####       BOHB Specific             ###

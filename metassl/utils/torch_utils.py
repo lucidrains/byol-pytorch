@@ -204,7 +204,7 @@ def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
         shutil.copyfile(filename, 'model_best.pth.tar')
 
 
-def check_and_save_checkpoint(config, ngpus_per_node, total_iter, epoch, model, optimizer_pt, optimizer_ft, expt_dir, meters, optimizer_aug=None, data_aug_model=None, checkpoint_name="checkpoint"):
+def check_and_save_checkpoint(config, ngpus_per_node, total_iter, epoch, model, optimizer_pt, optimizer_ft, expt_dir, meters, optimizer_aug_model=None, aug_model=None, checkpoint_name="checkpoint"):
     if not config.expt.multiprocessing_distributed or (config.expt.multiprocessing_distributed and config.expt.rank % ngpus_per_node == 0):
             save_dct = {
                 'total_iter':   total_iter,
@@ -222,11 +222,11 @@ def check_and_save_checkpoint(config, ngpus_per_node, total_iter, epoch, model, 
                 save_dct["epoch"] = epoch + 1
                 save_dct["meters"] = meters
             
-            if optimizer_aug is not None:
-                save_dct['optimizer_aug'] = optimizer_aug.state_dict()
+            if optimizer_aug_model is not None:
+                save_dct['optimizer_aug_model'] = optimizer_aug_model.state_dict()
                 
-            if data_aug_model is not None:
-                save_dct['data_aug_model'] = data_aug_model.state_dict()
+            if aug_model is not None:
+                save_dct['aug_model'] = aug_model  # in addition to state_dict, also save histogram stats
             
             save_checkpoint(save_dct, is_best=False, filename=os.path.join(expt_dir, f'{checkpoint_name}_{epoch:04d}.pth.tar'))
 
@@ -243,6 +243,23 @@ def hist_to_image(hist_dict, title=None):
     image = ToTensor()(image)
     plt.close()
     return image
+
+
+def get_image_data_to_plot(rand_int, untransformed_image, images_pt, images_ft, target_ft, strengths):
+    # permute from CHW to HWC for pyplot
+    img0 = torch.permute(images_pt[0][rand_int].squeeze(), (1, 2, 0)).cpu()
+    img1 = torch.permute(images_pt[1][rand_int].squeeze(), (1, 2, 0)).cpu()
+    img_ft = torch.permute(images_ft[rand_int].squeeze(), (1, 2, 0)).cpu()
+    label_ft = target_ft[rand_int].item()
+    title = f"b:{strengths['strength_b']}, c: {strengths['strength_c']}, s: {strengths['strength_s']}, h: {strengths['strength_h']}"
+    return {
+        "untransformed_image": untransformed_image,
+        "img0":                img0,
+        "img1":                img1,
+        "title":               title,
+        "ft_img":              img_ft,
+        "ft_label":            label_ft,
+        }
 
 
 def tensor_to_image(tensor, title=None):

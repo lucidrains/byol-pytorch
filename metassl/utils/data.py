@@ -33,7 +33,6 @@ normalize_cifar100 = transforms.Normalize(
 def get_train_valid_loader(
     config,
     neps_hyperparameters,
-    data_dir,
     batch_size,
     random_seed,
     valid_size=0.1,
@@ -41,7 +40,7 @@ def get_train_valid_loader(
     show_sample=False,
     num_workers=1,
     pin_memory=True,
-    download=True,
+    download=False,
     dataset_name="ImageNet",
     distributed=False,
     drop_last=True,
@@ -60,7 +59,6 @@ def get_train_valid_loader(
     If using CUDA, num_workers should be set to 1 and pin_memory to True.
     Params
     ------
-    - data_dir: path directory to the dataset.
     - batch_size: how many samples per batch to load.
     - augment: whether to apply the data augmentation scheme
       mentioned in the paper. Only applied on the train split.
@@ -124,24 +122,23 @@ def get_train_valid_loader(
             from .albumentation_datasets import Cifar10AlbumentationsPT
             if not get_fine_tuning_loaders:
                 train_dataset = Cifar10AlbumentationsPT(root='datasets/CIFAR10', train=True,
-                                                        download=True, transform=train_transform)
+                                                        download=download, transform=train_transform)
             else:
                 if finetuning_data_augmentation != 'none':
                     from .albumentation_datasets import Cifar10AlbumentationsFT
                     train_dataset = Cifar10AlbumentationsFT(root='datasets/CIFAR10', train=True,
-                                                               download=True, transform=train_transform)
+                                                               download=download, transform=train_transform)
                 # TODO: @Diane - Refactor
                 else:
                     train_dataset = torchvision.datasets.CIFAR10(root='datasets/CIFAR10', train=True,
-                                                                 download=True, transform=train_transform)
+                                                                 download=download, transform=train_transform)
         else:
             train_dataset = torchvision.datasets.CIFAR10(root='datasets/CIFAR10', train=True,
-                                                download=True, transform=train_transform)
+                                                download=download, transform=train_transform)
         # valid_dataset
         # --------------------------------------------------------------------------------------------------------------
-        print(f"valid_size: {valid_size}")
         valid_dataset = torchvision.datasets.CIFAR10(root='datasets/CIFAR10', train=True,
-                                           download=True, transform=valid_transform)
+                                           download=download, transform=valid_transform)
     else:
         # not supported
         raise ValueError('invalid dataset name=%s' % dataset)
@@ -194,12 +191,11 @@ def get_train_valid_loader(
 
 
 def get_test_loader(
-        data_dir,
         batch_size,
         shuffle=True,
         num_workers=1,
         pin_memory=True,
-        download=True,
+        download=False,
         dataset_name="ImageNet",
         drop_last=False,
 ):
@@ -209,7 +205,6 @@ def get_test_loader(
     If using CUDA, num_workers should be set to 1 and pin_memory to True.
     Params
     ------
-    - data_dir: path directory to the dataset.
     - batch_size: how many samples per batch to load.
     - shuffle: whether to shuffle the dataset after every epoch.
     - num_workers: number of subprocesses to use when loading the dataset.
@@ -233,7 +228,7 @@ def get_test_loader(
                 transforms.Resize(int(32 * (8 / 7)), interpolation=Image.BICUBIC),
                 transforms.CenterCrop(32),
                 transforms.ToTensor(),
-                transforms.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.2023, 0.1994, 0.2010])
+                normalize_cifar10,
             ]
         )
 
@@ -243,7 +238,7 @@ def get_test_loader(
                 transforms.Resize(int(32 * (8 / 7)), interpolation=Image.BICUBIC),
                 transforms.CenterCrop(32),
                 transforms.ToTensor(),
-                transforms.Normalize(mean=[0.5071, 0.4865, 0.4409], std=[0.2673, 0.2564, 0.2762])
+                normalize_cifar100,
             ]
         )
 
@@ -274,14 +269,11 @@ def get_test_loader(
     elif dataset_name == "CIFAR10":
         dataset = torchvision.datasets.CIFAR10(
             root='datasets/CIFAR10', train=False,
-            download=True, transform=transform
+            download=download, transform=transform
         )
     else:
-        # load the dataset
-        dataset = dataset(
-            root=data_dir, train=False,
-            download=download, transform=transform,
-        )
+        raise NotImplementedError("Dataset not supported.")
+        
 
     data_loader = torch.utils.data.DataLoader(
         dataset, batch_size=batch_size, shuffle=shuffle,
@@ -290,45 +282,6 @@ def get_test_loader(
     )
 
     return data_loader
-
-
-def plot_images(images, cls_true, cls_pred=None):
-    """
-    Adapted from https://github.com/Hvass-Labs/TensorFlow-Tutorials/
-    """
-    label_names = [
-        'airplane',
-        'automobile',
-        'bird',
-        'cat',
-        'deer',
-        'dog',
-        'frog',
-        'horse',
-        'ship',
-        'truck'
-    ]
-
-    fig, axes = plt.subplots(3, 3)
-
-    for i, ax in enumerate(axes.flat):
-        # plot img
-        ax.imshow(images[i, :, :, :], interpolation='spline16')
-
-        # show true & predicted classes
-        cls_true_name = label_names[cls_true[i]]
-        if cls_pred is None:
-            xlabel = "{0} ({1})".format(cls_true_name, cls_true[i])
-        else:
-            cls_pred_name = label_names[cls_pred[i]]
-            xlabel = "True: {0}\nPred: {1}".format(
-                cls_true_name, cls_pred_name
-            )
-        ax.set_xlabel(xlabel)
-        ax.set_xticks([])
-        ax.set_yticks([])
-
-    plt.show()
 
 
 def get_train_valid_transforms(config, dataset_name, use_fix_aug_params, bohb_infos, get_fine_tuning_loaders, parameterize_augmentation, neps_hyperparameters):
@@ -412,7 +365,6 @@ def get_train_valid_transforms(config, dataset_name, use_fix_aug_params, bohb_in
             if parameterize_augmentation:
                 # rest is done outside
                 train_transform = transforms.Compose([
-                    transforms.RandomResizedCrop(size=32, scale=(0.2, 1.), interpolation=Image.BICUBIC),
                     transforms.ToTensor(),
                     ])
             else:
@@ -534,11 +486,10 @@ def get_train_valid_transforms(config, dataset_name, use_fix_aug_params, bohb_in
     return train_transform, valid_transform
 
 
-def get_loaders(traindir, config, parameterize_augmentation=False, bohb_infos=None, neps_hyperparameters=None):
+def get_loaders(config, parameterize_augmentation=False, bohb_infos=None, download=False, neps_hyperparameters=None):
     train_loader_pt, _, train_sampler_pt, _ = get_train_valid_loader(
         config=config,
         neps_hyperparameters=neps_hyperparameters,
-        data_dir=traindir,
         batch_size=config.train.batch_size,
         random_seed=config.expt.seed,
         valid_size=config.finetuning.valid_size,
@@ -546,7 +497,7 @@ def get_loaders(traindir, config, parameterize_augmentation=False, bohb_infos=No
         shuffle=True,
         num_workers=config.expt.workers,
         pin_memory=True,
-        download=False,
+        download=download,
         distributed=config.expt.distributed,
         drop_last=True,
         get_fine_tuning_loaders=False,
@@ -561,7 +512,6 @@ def get_loaders(traindir, config, parameterize_augmentation=False, bohb_infos=No
     train_loader_ft, valid_loader_ft, train_sampler_ft, _ = get_train_valid_loader(
         config=config,
         neps_hyperparameters=neps_hyperparameters,
-        data_dir=traindir,
         batch_size=config.finetuning.batch_size,
         random_seed=config.expt.seed,
         valid_size=config.finetuning.valid_size,
@@ -569,11 +519,11 @@ def get_loaders(traindir, config, parameterize_augmentation=False, bohb_infos=No
         shuffle=True,
         num_workers=config.expt.workers,
         pin_memory=True,
-        download=False,
+        download=download,
         distributed=config.expt.distributed,
         drop_last=True,
         get_fine_tuning_loaders=True,
-        parameterize_augmentation=False,
+        parameterize_augmentation=False,  # we never parameterize augmentations in the FT case
         bohb_infos=bohb_infos,
         dataset_percentage_usage=config.data.dataset_percentage_usage,
         use_fix_aug_params=config.expt.use_fix_aug_params,
@@ -582,13 +532,12 @@ def get_loaders(traindir, config, parameterize_augmentation=False, bohb_infos=No
         )
     
     test_loader_ft = get_test_loader(
-        data_dir=traindir,
         batch_size=config.finetuning.batch_size,
         dataset_name=config.data.dataset,
         shuffle=False,
         num_workers=config.expt.workers,
         pin_memory=True,
-        download=False,
+        download=download,
         drop_last=False,
         )
     

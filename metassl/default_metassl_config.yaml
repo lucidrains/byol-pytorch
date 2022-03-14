@@ -24,9 +24,9 @@ expt:
   advanced_stats:               True                          # compute advanced stats such as cosine similarity and dot product, only used in alternating mode
   is_non_grad_based:            False                         # Set this flag to run default SimSiam or BOHB runs
   warmup_epochs:                10                            # denotes the number of epochs that we only pre-train without finetuning afterwards; warmup is turned off when set to 0; we use a linear incremental schedule during warmup
-  warmup_multiplier:            2.                            # denotes the number of epochs that we only pre-train without finetuning afterwards; warmup is turned off when set to 0; we use a linear incremental schedule during warmup
+  warmup_multiplier:            1.                            # denotes the number of epochs that we only pre-train without finetuning afterwards; warmup is turned off when set to 0; we use a linear incremental schedule during warmup
   warmup_both:                  False                         # Whether backbone and head should be both warmed up.
-  write_summary_frequency:      3                             # Specifies, after how many batches the TensorBoard summary writer should flush new data to the summary object.
+  write_summary_frequency:      10                             # Specifies, after how many batches the TensorBoard summary writer should flush new data to the summary object.
 
 #######################################
 ###     Training Configuration      ###
@@ -66,7 +66,6 @@ model:
 data:
   seed:     123
   dataset:  'ImageNet'                    # supported datasets: CIFAR10, CIFAR100, ImageNet
-  data_dir: '/home/ferreira/workspace/data/metassl'
 
 
 #######################################
@@ -77,6 +76,11 @@ simsiam:
   pred_dim:    512                              # hidden dimension of the predictor (default: 512)
   fix_pred_lr: True                        # Fix learning rate for the predictor
 
+########################################
+####       Learn Augmentations       ###
+########################################
+learnaug:
+    type:     "colorjitter"             # Define which type of learned augmentation to use.
 
 ########################################
 ####       BOHB Specific             ###

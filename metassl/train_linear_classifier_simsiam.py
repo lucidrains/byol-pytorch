@@ -8,7 +8,6 @@
 import argparse
 import builtins
 import os
-import pathlib
 import random
 import time
 import warnings
@@ -16,7 +15,6 @@ from collections import OrderedDict
 import math
 
 import jsonargparse
-import numpy as np
 import torch
 import torch.backends.cudnn as cudnn
 import torch.distributed as dist
@@ -27,7 +25,6 @@ import torch.optim
 import torch.utils.data
 import torch.utils.data.distributed
 import torchvision.models as models
-import yaml
 from jsonargparse import ArgumentParser
 from torch.utils.tensorboard import SummaryWriter
 
@@ -42,6 +39,7 @@ try:
     from metassl.utils.summary import write_to_summary_writer
     import metassl.models.resnet_cifar as our_cifar_resnets
     from metassl.utils.torch_utils import get_newest_model, check_and_save_checkpoint, deactivate_bn, validate, accuracy, adjust_learning_rate
+    from metassl.utils.io import get_expt_dir_with_bohb_config_id, organize_experiment_saving, find_free_port
 
 except ImportError:
     # For execution in command line
@@ -52,6 +50,7 @@ except ImportError:
     from .utils.summary import write_to_summary_writer
     from .models import resnet_cifar as our_cifar_resnets
     from .utils.torch_utils import get_newest_model, check_and_save_checkpoint, deactivate_bn, validate, accuracy, adjust_learning_rate
+    from .utils.io import get_expt_dir_with_bohb_config_id, organize_experiment_saving, find_free_port
 
 model_names = sorted(
     name for name in models.__dict__
@@ -185,7 +184,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos, hyperparamete
     if config.data.dataset == "CIFAR10":
         if config.model.arch == "tv_resnet":
             print(f"=> creating model {config.model.model_type}")
-            model = SimSiam(models.__dict__[config.model.model_type], config.simsiam.dim, config.simsiam.pred_dim)
+            model = SimSiam(models.__dict__[config.model.model_type], config.simsiam.dim, config.simsiam.pred_dim, num_classes=10)
         elif config.model.arch == "our_resnet":
             # Use model from our model folder instead from torchvision!
             print(f"=> creating model resnet18")
@@ -212,7 +211,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos, hyperparamete
             raise NotImplementedError
     else:
         print(f"=> creating model '{config.model.model_type}'")
-        model = SimSiam(models.__dict__[config.model.model_type], config.simsiam.dim, config.simsiam.pred_dim)
+        model = SimSiam(models.__dict__[config.model.model_type], config.simsiam.dim, config.simsiam.pred_dim, num_classes=1000)
     
     if config.model.turn_off_bn:
         print("Turning off BatchNorm in entire model.")
@@ -365,14 +364,12 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos, hyperparamete
             else:
                 print(f"=> no checkpoint found at '{config.expt.ssl_model_checkpoint_path}'")
     # ------------------------------------------------------------------------------------------------------------------
-    
-    # Data loading code
-    traindir = os.path.join(config.data.dataset, 'train')  # TODO: @Fabio - What about validir / testdir?
+
 
     if config.finetuning.valid_size > 0:
-        train_loader_pt, train_sampler_pt, train_loader_ft, train_sampler_ft, valid_loader_ft, test_loader_ft = get_loaders(traindir, config, parameterize_augmentation=False, bohb_infos=bohb_infos)
+        train_loader_pt, train_sampler_pt, train_loader_ft, train_sampler_ft, valid_loader_ft, test_loader_ft = get_loaders(config, parameterize_augmentation=False, bohb_infos=bohb_infos)
     else:
-        train_loader_pt, train_sampler_pt, train_loader_ft, train_sampler_ft, test_loader_ft = get_loaders(traindir, config, parameterize_augmentation=False, bohb_infos=bohb_infos)
+        train_loader_pt, train_sampler_pt, train_loader_ft, train_sampler_ft, test_loader_ft = get_loaders(config, parameterize_augmentation=False, bohb_infos=bohb_infos)
 
     cudnn.benchmark = True
     writer = None
@@ -382,23 +379,13 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos, hyperparamete
     if not meters:
         meters = initialize_all_meters()
     
-    epoch = None  # TODO: delete this as it is unused
+
     for epoch in range(config.finetuning.start_epoch, config.finetuning.epochs):
         
         if config.expt.distributed:
             train_sampler_ft.set_epoch(epoch)
-        warmup = config.expt.warmup_epochs > epoch
-        print(f"Warmup status: {warmup}")
 
-        if warmup:
-            cur_lr_ft = adjust_learning_rate(optimizer_ft, init_lr_ft, epoch, total_epochs=config.expt.warmup_epochs, warmup=True, multiplier=config.expt.warmup_multiplier)
-            print(f"warming up phase (FT)")
-        else:
-            cur_lr_ft = adjust_learning_rate(optimizer_ft, init_lr_ft, epoch, total_epochs=config.finetuning.epochs, use_alternative_scheduler=config.finetuning.use_alternative_scheduler)
-
-        # reset ft meter when transitioning from warmup to normal training
-        if not warmup and config.expt.warmup_epochs > epoch - 1:
-            meters["losses_ft_meter"].reset()
+        cur_lr_ft = adjust_learning_rate(optimizer_ft, init_lr_ft, epoch, total_epochs=config.finetuning.epochs, use_alternative_scheduler=config.finetuning.use_alternative_scheduler)
 
         if config.expt.wd_decay_ft:
             # Do annealing
@@ -424,7 +411,6 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos, hyperparamete
             config=config,
             writer=writer,
             meters=meters,
-            warmup=warmup,
             )
 
         # Determine wheter to evaluate on the validation or test set
@@ -483,9 +469,11 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos, hyperparamete
                 checkpoint_name="linear_cls",
                 )
     
-    
     if config.expt.rank == 0:
         writer.close()
+        
+        batch_time_meter = meters["batch_time_meter"]
+        print(f"total batch time elapsed: {batch_time_meter.sum:.2f}s")
     
     # BOHB only --------------------------------------------------------------------------------------------------------
     # Save validation metric in a .txt (as for mp.spawn returning values is not trivial)
@@ -511,7 +499,6 @@ def train_one_epoch(
     config,
     writer,
     meters,
-    warmup=False,
     ):
     # general meters
     batch_time_meter = meters["batch_time_meter"]
@@ -532,10 +519,6 @@ def train_one_epoch(
         losses_pt_meter,
         losses_ft_meter,
         top1_meter,
-        # cos_sim_ema_meter_lw,
-        # cos_sim_ema_meter_standardized_lw,
-        # cos_sim_ema_meter_global,
-        # cos_sim_ema_meter_standardized_global,
         target_std_meter,
         ]
     
@@ -546,7 +529,6 @@ def train_one_epoch(
         )
     
     end = time.time()
-    
     for i, (images, target) in enumerate(train_loader_ft):
         
         total_iter += 1
@@ -557,49 +539,20 @@ def train_one_epoch(
 
         get_gradients = False if config.expt.is_non_grad_based else True  # default is True
 
-    
-        loss_ft, backbone_grads_ft_lw, backbone_grads_ft_global = finetune(model, images, target, criterion_ft, optimizer_ft, losses_ft_meter, top1_meter, top5_meter, config=config, get_gradients=get_gradients)
+        loss_ft, backbone_grads_ft_lw, backbone_grads_ft_global = finetune(model, images, target, criterion_ft, optimizer_ft, losses_ft_meter, top1_meter, top5_meter, get_gradients=get_gradients)
 
-        # grads = {
-        #     "backbone_grads_pt_lw":     None,
-        #     "backbone_grads_pt_global": None,
-        #     "backbone_grads_ft_lw":     backbone_grads_ft_lw,
-        #     "backbone_grads_ft_global": backbone_grads_ft_global
-        #     }
+        mean, std = calc_layer_wise_stats(backbone_grads_pt=backbone_grads_ft_lw, backbone_grads_ft=None, metric_type="norm")
+        norm_ft_avg_meter_lw.update(mean), norm_ft_std_meter_lw.update(std)
 
-        # update_grad_stats_meters(grads=grads, meters=meters, warmup=warmup)
-        if not warmup:
-            mean, std = calc_layer_wise_stats(backbone_grads_pt=backbone_grads_ft_lw, backbone_grads_ft=None, metric_type="norm")
-            norm_ft_avg_meter_lw.update(mean), norm_ft_std_meter_lw.update(std)
-
-            norm_ft_meter_global.update(torch.linalg.norm(backbone_grads_ft_global, 2))
-        else:
-            norm_ft_meter_global.update(0.)
-            norm_ft_avg_meter_lw.update(0.)
-            norm_ft_std_meter_lw.update(0.)
-            
+        norm_ft_meter_global.update(torch.linalg.norm(backbone_grads_ft_global, 2))
+        
         main_stats_meters = [
-            # cos_sim_ema_meter_global,
-            # cos_sim_ema_meter_standardized_global,
-            # cos_sim_ema_meter_lw,
-            # cos_sim_ema_meter_standardized_lw,
-            # cos_sim_std_meter_standardized_lw,
-            # dot_prod_meter_global,
-            # dot_prod_avg_meter_lw,
-            # eucl_dis_meter_global,
-            # eucl_dis_avg_meter_lw,
-            # norm_pt_meter_global,
-            # norm_pt_avg_meter_lw,
             norm_ft_meter_global,
             norm_ft_avg_meter_lw,
             target_std_meter,
             ]
 
         additional_stats_meters = [
-            # cos_sim_std_meter_lw,
-            # dot_prod_std_meter_lw,
-            # eucl_dis_std_meter_lw,
-            # norm_pt_std_meter_lw,
             norm_ft_std_meter_lw
             ]
 
@@ -624,7 +577,7 @@ def train_one_epoch(
     return total_iter
 
 
-def finetune(model, images_ft, target_ft, criterion_ft, optimizer_ft, losses_ft_meter, top1_meter, top5_meter, config, get_gradients=False):
+def finetune(model, images_ft, target_ft, criterion_ft, optimizer_ft, losses_ft_meter, top1_meter, top5_meter, get_gradients=False):
     backbone_grads_lw = OrderedDict()
     backbone_grads_global = torch.Tensor().cuda()
     
@@ -684,52 +637,6 @@ def finetune(model, images_ft, target_ft, criterion_ft, optimizer_ft, losses_ft_
     return loss_ft, backbone_grads_lw, backbone_grads_global
 
 
-def organize_experiment_saving(user, config, is_bohb_run):
-    # TODO: @Diane - Move to a separate file in 'utils' together with 'get_expt_dir_with_bohb_config_id'
-    # Set expt_root_dir based on user and experiment mode
-    if user == "wagn3rd":  # Diane's local machine
-        expt_root_dir = "experiments"
-    elif user == "wagnerd":  # Diane cluster
-        expt_root_dir = "/work/dlclarge2/wagnerd-metassl-experiments/metassl"
-    else:
-        expt_root_dir = f"/home/{user}/workspace/experiments/metassl"
-
-    # Set expt_dir based on whether it is a BOHB run or not + differenciate between users
-    if is_bohb_run:
-        # for start_bohb_master (directory where config.json and results.json are being saved)
-        expt_dir = os.path.join(expt_root_dir, "BOHB", config.data.dataset, config.expt.expt_name)
-    else:
-        if user == "wagn3rd" or user == "wagnerd":
-            expt_dir = os.path.join(expt_root_dir, config.data.dataset, config.expt.expt_name)
-        else:
-            expt_dir = os.path.join(expt_root_dir, config.expt.expt_name)
-
-    # TODO FABIO: if folder exists, create a new one with incremental suffix (-1, -2) and implement a flag ""
-    # Create directory (if not yet existing) and save config.yaml
-    if not os.path.exists(expt_dir):
-        os.makedirs(expt_dir)
-    
-    with open(os.path.join(expt_dir, "ft_config.yaml"), "w") as f:
-        yaml.dump(config, f)
-        print(f"copied config to {f.name}")
-    
-    return expt_dir
-
-
-def get_expt_dir_with_bohb_config_id(expt_dir, bohb_config_id):
-    # TODO: @Diane - Move to a separate file in 'utils' together with 'organize_experiment_saving'
-    config_id_path = "-".join(str(sub_id) for sub_id in bohb_config_id)
-    expt_dir_id = os.path.join(expt_dir, config_id_path)
-    return expt_dir_id
-
-def find_free_port():
-    import socket
-    from contextlib import closing
-    with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
-        s.bind(('', 0))
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        return s.getsockname()[1]
-
 
 if __name__ == '__main__':
     user = os.environ.get('USER')
@@ -742,7 +649,7 @@ if __name__ == '__main__':
     parser.add_argument('--expt.expt_name', default='pre-training-fix-lr-100-256', type=str, help='experiment name')
     parser.add_argument('--expt.expt_mode', default='ImageNet', choices=["ImageNet", "CIFAR10", "ImageNet_BOHB", "CIFAR10_BOHB"], help='Define which dataset to use to select the correct yaml file.')
     parser.add_argument('--expt.save_model', action='store_false', help='save the model to disc or not (default: True)')
-    parser.add_argument('--expt.save_model_frequency', default=5, type=int, metavar='N', help='save model frequency in # of epochs')
+    parser.add_argument('--expt.save_model_frequency', default=10, type=int, metavar='N', help='save model frequency in # of epochs')
     parser.add_argument('--expt.ssl_model_checkpoint_path', type=str, help='path to the pre-trained model, resumes training if model with same config exists')
     parser.add_argument('--expt.target_model_checkpoint_path', type=str, help='path to the downstream task model, resumes training if model with same config exists')
     parser.add_argument('--expt.print_freq', default=10, type=int, metavar='N')
@@ -758,12 +665,12 @@ if __name__ == '__main__':
     parser.add_argument('--expt.evaluate', action='store_true', help='evaluate model on validation set once and terminate (default: False)')
     parser.add_argument('--expt.is_non_grad_based', action='store_true', help='Set this flag to run default SimSiam or BOHB runs')
     parser.add_argument('--expt.warmup_epochs', default=10, type=int, metavar='N', help='denotes the number of epochs that we only pre-train without finetuning afterwards; warmup is turned off when set to 0; we use a linear incremental schedule during warmup')
-    parser.add_argument('--expt.warmup_multiplier', default=2., type=float, metavar='N', help='A factor that is multiplied with the pretraining lr used in the linear incremental learning rate scheduler during warmup. The final lr is multiplier * pre-training lr')
+    parser.add_argument('--expt.warmup_multiplier', default=1., type=float, metavar='N', help='A factor that is multiplied with the pretraining lr used in the linear incremental learning rate scheduler during warmup. The final lr is multiplier * pre-training lr')
     parser.add_argument('--expt.use_fix_aug_params', action='store_true', help='Use this flag if you want to try out specific aug params (e.g., from a best BOHB config). Default values will be overwritten then without crashing other experiments.')
     parser.add_argument('--expt.data_augmentation_mode', default='default', choices=['default', 'probability_augment', 'rand_augment'], help="Select which data augmentation to use. Default is for the standard SimSiam setting and for parameterize aug setting.")
-    parser.add_argument('--expt.write_summary_frequency', default=3, type=int, metavar='N', help='Specifies, after how many batches the TensorBoard summary writer should flush new data to the summary object.')
-    parser.add_argument('--expt.wd_decay_pt', action="store_true", help='use weight decay decay (annealing) during pre-training? (default: True)')
-    parser.add_argument('--expt.wd_decay_ft', action="store_true", help='use weight decay decay (annealing) during fine-tuning? (default: True)')
+    parser.add_argument('--expt.write_summary_frequency', default=10, type=int, metavar='N', help='Specifies, after how many batches the TensorBoard summary writer should flush new data to the summary object.')
+    parser.add_argument('--expt.wd_decay_pt', action="store_true", help='use weight decay decay (annealing) during pre-training? (default: False)')
+    parser.add_argument('--expt.wd_decay_ft', action="store_true", help='use weight decay decay (annealing) during fine-tuning? (default: False)')
     
     parser.add_argument('--train', default="train", type=str, metavar='N')
     parser.add_argument('--train.batch_size', default=256, type=int, metavar='N', help='in distributed setting this is the total batch size, i.e. batch size = individual bs * number of GPUs')
@@ -801,7 +708,6 @@ if __name__ == '__main__':
     parser.add_argument('--data', default="data", type=str, metavar='N')
     parser.add_argument('--data.seed', type=int, default=123, help='the seed')
     parser.add_argument('--data.dataset', type=str, default="ImageNet", help='supported datasets: CIFAR10, CIFAR100, ImageNet')
-    parser.add_argument('--data.data_dir', type=str, default=f"/home/{user}/workspace/data/metassl", help='supported datasets: CIFAR10, CIFAR100, ImageNet')
     parser.add_argument('--data.dataset_percentage_usage', type=float, default=100.0, help='Indicates what percentage of the data is used for the experiments.')
     
     parser.add_argument('--simsiam', default="simsiam", type=str, metavar='N')
@@ -809,22 +715,25 @@ if __name__ == '__main__':
     parser.add_argument('--simsiam.pred_dim', type=int, default=512, help='the hidden dimension of the predictor')
     parser.add_argument('--simsiam.fix_pred_lr', action="store_false", help='fix learning rate for the predictor (default: True')
     
-    parser.add_argument('--bohb', default="bohb", type=str, metavar='N')
-    parser.add_argument("--bohb.run_id", default="default_BOHB")
-    parser.add_argument("--bohb.seed", type=int, default=123, help="random seed")
-    parser.add_argument("--bohb.n_iterations", type=int, default=10, help="How many BOHB iterations")
-    parser.add_argument("--bohb.min_budget", type=int, default=2)
-    parser.add_argument("--bohb.max_budget", type=int, default=4)
-    parser.add_argument("--bohb.budget_mode", type=str, default="epochs", choices=["epochs", "data"], help="Choose your desired fidelity")
-    parser.add_argument("--bohb.eta", type=int, default=2)
-    parser.add_argument("--bohb.configspace_mode", type=str, default='color_jitter_strengths', choices=["imagenet_probability_simsiam_augment", "cifar10_probability_simsiam_augment", "color_jitter_strengths", "rand_augment", "probability_augment", "double_probability_augment"],
-    help='Define which configspace to use.')
-    parser.add_argument("--bohb.nic_name", default="lo", help="The network interface to use")  # local: "lo", cluster: "eth0"
-    parser.add_argument("--bohb.port", type=int, default=0)
-    parser.add_argument("--bohb.worker", action="store_true", help="Make this execution a worker server")
-    parser.add_argument("--bohb.warmstarting", type=bool, default=False)
-    parser.add_argument("--bohb.warmstarting_dir", type=str, default=None)
-    parser.add_argument("--bohb.test_env", action='store_true', help='If using this flag, the master runs a worker in the background and workers are not being shutdown after registering results.')
+    parser.add_argument('--learnaug', default="learnaug", type=str, metavar='N')
+    parser.add_argument('--learnaug.type', default="default", choices=["colorjitter", "default", "full_net"], help='Define which type of learned augmentation to use.')
+    
+    # parser.add_argument('--bohb', default="bohb", type=str, metavar='N')
+    # parser.add_argument("--bohb.run_id", default="default_BOHB")
+    # parser.add_argument("--bohb.seed", type=int, default=123, help="random seed")
+    # parser.add_argument("--bohb.n_iterations", type=int, default=10, help="How many BOHB iterations")
+    # parser.add_argument("--bohb.min_budget", type=int, default=2)
+    # parser.add_argument("--bohb.max_budget", type=int, default=4)
+    # parser.add_argument("--bohb.budget_mode", type=str, default="epochs", choices=["epochs", "data"], help="Choose your desired fidelity")
+    # parser.add_argument("--bohb.eta", type=int, default=2)
+    # parser.add_argument("--bohb.configspace_mode", type=str, default='color_jitter_strengths', choices=["imagenet_probability_simsiam_augment", "cifar10_probability_simsiam_augment", "color_jitter_strengths", "rand_augment", "probability_augment", "double_probability_augment"],
+    # help='Define which configspace to use.')
+    # parser.add_argument("--bohb.nic_name", default="lo", help="The network interface to use")  # local: "lo", cluster: "eth0"
+    # parser.add_argument("--bohb.port", type=int, default=0)
+    # parser.add_argument("--bohb.worker", action="store_true", help="Make this execution a worker server")
+    # parser.add_argument("--bohb.warmstarting", type=bool, default=False)
+    # parser.add_argument("--bohb.warmstarting_dir", type=str, default=None)
+    # parser.add_argument("--bohb.test_env", action='store_true', help='If using this flag, the master runs a worker in the background and workers are not being shutdown after registering results.')
 
     parser.add_argument('--neps', default="neps", type=str, metavar='NEPS')
     parser.add_argument("--neps.is_neps_run", action='store_true', help='Set this flag to run a NEPS experiment.')

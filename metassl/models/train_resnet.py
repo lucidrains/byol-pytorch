@@ -41,7 +41,6 @@ def train_model(config, logger, checkpoint):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
     train_loader, valid_loader = get_train_valid_loader(
-        data_dir=config.data.data_dir,
         batch_size=config.train.batch_size,
         random_seed=123,
         dataset_name=config.data.dataset,
@@ -51,7 +50,6 @@ def train_model(config, logger, checkpoint):
         )
     
     test_loader = get_test_loader(
-        data_dir=config.data.data_dir,
         batch_size=config.train.batch_size,
         shuffle=False,
         dataset_name=config.data.dataset,

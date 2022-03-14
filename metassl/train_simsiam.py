@@ -10,7 +10,6 @@ import argparse
 import builtins
 import logging
 import os
-import pathlib
 import random
 import time
 import warnings
@@ -30,7 +29,6 @@ import torch.optim
 import torch.utils.data
 import torch.utils.data.distributed
 import torchvision.models as models
-import yaml
 from jsonargparse import ArgumentParser
 from torch.utils.tensorboard import SummaryWriter
 
@@ -48,7 +46,8 @@ try:
     from metassl.utils.summary import write_to_summary_writer
     import metassl.models.resnet_cifar as our_cifar_resnets
     from metassl.utils.torch_utils import get_newest_model, check_and_save_checkpoint, deactivate_bn, validate, accuracy, adjust_learning_rate
-    from knn_validation import knn_classifier
+    from metassl.utils.knn_validation import knn_classifier
+    from metassl.utils.io import get_expt_dir_with_bohb_config_id, organize_experiment_saving, find_free_port
 
 except ImportError:
     # For execution in command line
@@ -59,7 +58,8 @@ except ImportError:
     from .utils.summary import write_to_summary_writer
     from .models import resnet_cifar as our_cifar_resnets
     from .utils.torch_utils import get_newest_model, check_and_save_checkpoint, deactivate_bn, validate, accuracy, adjust_learning_rate
-    from .knn_validation import knn_classifier
+    from .utils.knn_validation import knn_classifier
+    from .utils.io import get_expt_dir_with_bohb_config_id, organize_experiment_saving, find_free_port
 
 model_names = sorted(
     name for name in models.__dict__
@@ -205,7 +205,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos, neps_hyperpar
     if config.data.dataset == 'CIFAR10':
         if config.model.arch == "tv_resnet":
             print(f"=> creating model {config.model.model_type}")
-            model = SimSiam(models.__dict__[config.model.model_type], config.simsiam.dim, config.simsiam.pred_dim)
+            model = SimSiam(models.__dict__[config.model.model_type], config.simsiam.dim, config.simsiam.pred_dim, num_classes=10)
         elif config.model.arch == "our_resnet":
             # Use model from our model folder instead from torchvision!
             print(f"=> creating model resnet18")
@@ -219,7 +219,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos, neps_hyperpar
 
     else:
         print(f"=> creating model {config.model.model_type}")
-        model = SimSiam(models.__dict__[config.model.model_type], config.simsiam.dim, config.simsiam.pred_dim)
+        model = SimSiam(models.__dict__[config.model.model_type], config.simsiam.dim, config.simsiam.pred_dim, num_classes=1000)
 
     # print(model)
 
@@ -246,7 +246,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos, neps_hyperpar
             # DistributedDataParallel, we need to divide the batch size
             # ourselves based on the total number of GPUs we have
             config.train.batch_size = int(config.train.batch_size / ngpus_per_node)
-            config.workers = int((config.expt.workers + ngpus_per_node - 1) / ngpus_per_node)
+        
             model = torch.nn.parallel.DistributedDataParallel(
                 model,
                 device_ids=[config.expt.gpu],
@@ -335,14 +335,12 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos, neps_hyperpar
             print(f"=> loaded checkpoint '{config.expt.ssl_model_checkpoint_path}' (epoch {checkpoint['epoch']})")
         else:
             print(f"=> no checkpoint found at '{config.expt.ssl_model_checkpoint_path}'")
-    
-    # Data loading code
-    traindir = os.path.join(config.data.dataset, 'train')  # TODO: @Fabio - What about validir / testdir?
-    
+
+
     if config.finetuning.valid_size > 0:
-        train_loader_pt, train_sampler_pt, train_loader_ft, train_sampler_ft, valid_loader_ft, test_loader_ft = get_loaders(traindir, config, parameterize_augmentation=False, bohb_infos=bohb_infos, neps_hyperparameters=neps_hyperparameters)
-    else:
-        train_loader_pt, train_sampler_pt, train_loader_ft, train_sampler_ft, test_loader_ft = get_loaders(traindir, config, parameterize_augmentation=False, bohb_infos=bohb_infos, neps_hyperparameters=neps_hyperparameters)
+        train_loader_pt, train_sampler_pt, train_loader_ft, train_sampler_ft, valid_loader_ft, test_loader_ft = get_loaders(config, parameterize_augmentation=False, bohb_infos=bohb_infos, neps_hyperparameters=neps_hyperparameters)
+    else:  # TODO: @Diane - Checkout and test on *parameterized_aug*
+        train_loader_pt, train_sampler_pt, train_loader_ft, train_sampler_ft, test_loader_ft = get_loaders(config, parameterize_augmentation=False, bohb_infos=bohb_infos, neps_hyperparameters=neps_hyperparameters)
     
     cudnn.benchmark = True
     writer = None
@@ -351,8 +349,8 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos, neps_hyperpar
         writer = SummaryWriter(log_dir=os.path.join(expt_dir, "tensorboard_pt"))
     if not meters:
         meters = initialize_all_meters()
-    
-    epoch = None  # TODO: delete this as it is unused
+
+
     for epoch in range(config.train.start_epoch, config.train.epochs):
         
         if config.expt.distributed:
@@ -364,14 +362,12 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos, neps_hyperpar
         
         if warmup:
             cur_lr_pt = adjust_learning_rate(optimizer_pt, init_lr_pt, epoch, total_epochs=config.expt.warmup_epochs, warmup=True, multiplier=config.expt.warmup_multiplier)
+            print(f"warming up phase (PT)")
+            init_lr_pt = cur_lr_pt  # after warmup, we should start lr decay from last warmed up lr
         else:
             cur_lr_pt = adjust_learning_rate(optimizer_pt, init_lr_pt, epoch, total_epochs=config.train.epochs)
         
         print(f"Current LR: {cur_lr_pt}")
-        
-        # reset ft meter when transitioning from warmup to normal training
-        if not warmup and config.expt.warmup_epochs > epoch - 1:
-            meters["losses_ft_meter"].reset()
 
         if config.expt.wd_decay_pt:
             # Do annealing
@@ -446,10 +442,13 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos, neps_hyperpar
                     expt_dir=expt_dir,
                     meters=meters,
                     )
-    
+
     # shut down writer at end of training
     if config.expt.rank == 0:
         writer.close()
+
+        batch_time_meter = meters["batch_time_meter"]
+        print(f"total batch time elapsed: {batch_time_meter.sum:.2f}s")
 
 
 def train_one_epoch(
@@ -492,7 +491,6 @@ def train_one_epoch(
         )
     
     end = time.time()
-    # TODO @Fabio
     
     for i, (images_pt, _) in enumerate(train_loader_pt):
         
@@ -521,28 +519,13 @@ def train_one_epoch(
         update_grad_stats_meters(grads=grads, meters=meters, warmup=warmup)
         
         main_stats_meters = [
-            # cos_sim_ema_meter_global,
-            # cos_sim_ema_meter_standardized_global,
-            # cos_sim_ema_meter_lw,
-            # cos_sim_ema_meter_standardized_lw,
-            # cos_sim_std_meter_standardized_lw,
-            # dot_prod_meter_global,
-            # dot_prod_avg_meter_lw,
-            # eucl_dis_meter_global,
-            # eucl_dis_avg_meter_lw,
             norm_pt_meter_global,
             norm_pt_avg_meter_lw,
-            # norm_ft_meter_global,
-            # norm_ft_avg_meter_lw,
             target_std_meter,
             ]
         
         additional_stats_meters = [
-            # cos_sim_std_meter_lw,
-            # dot_prod_std_meter_lw,
-            # eucl_dis_std_meter_lw,
             norm_pt_std_meter_lw,
-            # norm_ft_std_meter_lw
             ]
         
         meters_to_plot = {
@@ -614,64 +597,6 @@ def pretrain(model, images_pt, criterion_pt, optimizer_pt, losses_pt, data_time,
     return loss_pt, backbone_grads_lw, backbone_grads_global, z1, z2
 
 
-def organize_experiment_saving(user, config, is_bohb_run):
-    # TODO: @Diane - Move to a separate file in 'utils' together with 'get_expt_dir_with_bohb_config_id'
-    # Set expt_root_dir based on user and experiment mode
-    if user == "wagn3rd":  # Diane's local machine
-        expt_root_dir = "experiments"
-    elif user == "wagnerd":  # Diane cluster
-        expt_root_dir = "/work/dlclarge2/wagnerd-metassl-experiments/metassl"
-    else:
-        expt_root_dir = f"/home/{user}/workspace/experiments/metassl"
-    
-    # Set expt_dir based on whether it is a BOHB run or not + differenciate between users
-    if is_bohb_run:
-        # for start_bohb_master (directory where config.json and results.json are being saved)
-        expt_dir = os.path.join(expt_root_dir, "BOHB", config.data.dataset, config.expt.expt_name)
-    else:
-        if user == "wagn3rd" or user == "wagnerd":
-            expt_dir = os.path.join(expt_root_dir, config.data.dataset, config.expt.expt_name)
-        else:
-            expt_dir = os.path.join(expt_root_dir, config.expt.expt_name)
-    
-    # Create directory (if not yet existing) and save config.yaml
-    if not os.path.exists(expt_dir):
-        os.makedirs(expt_dir)
-    
-    with open(os.path.join(expt_dir, "config.yaml"), "w") as f:
-        yaml.dump(config, f)
-        print(f"copied config to {f.name}")
-    
-    return expt_dir
-
-
-def get_expt_dir_with_bohb_config_id(expt_dir, bohb_config_id):
-    # TODO: @Diane - Move to a separate file in 'utils' together with 'organize_experiment_saving'
-    config_id_path = "-".join(str(sub_id) for sub_id in bohb_config_id)
-    expt_dir_id = os.path.join(expt_dir, config_id_path)
-    return expt_dir_id
-
-
-def find_free_port():
-    import socket
-    from contextlib import closing
-    with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
-        s.bind(('', 0))
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        return s.getsockname()[1]
-
-def save_checkpoint_baseline_code(epoch, model, optimizer, acc, filename, msg):
-    state = {
-        'epoch': epoch,
-        'arch': 'resnet18',
-        'state_dict': model.state_dict(),
-        'optimizer': optimizer.state_dict(),
-        'meters': acc
-        # 'top1_acc': acc
-    }
-    torch.save(state, filename)
-    print(msg)
-
 
 if __name__ == '__main__':
     user = os.environ.get('USER')
@@ -684,7 +609,7 @@ if __name__ == '__main__':
     parser.add_argument('--expt.expt_name', default='pre-training-fix-lr-100-256', type=str, help='experiment name')
     parser.add_argument('--expt.expt_mode', default='ImageNet', choices=["ImageNet", "CIFAR10"], help='Define which dataset to use to select the correct yaml file.')
     parser.add_argument('--expt.save_model', action='store_false', help='save the model to disc or not (default: True)')
-    parser.add_argument('--expt.save_model_frequency', default=5, type=int, metavar='N', help='save model frequency in # of epochs')
+    parser.add_argument('--expt.save_model_frequency', default=10, type=int, metavar='N', help='save model frequency in # of epochs')
     parser.add_argument('--expt.ssl_model_checkpoint_path', type=str, help='path to the pre-trained model, resumes training if model with same config exists')
     parser.add_argument('--expt.target_model_checkpoint_path', type=str, help='path to the downstream task model, resumes training if model with same config exists')
     parser.add_argument('--expt.print_freq', default=10, type=int, metavar='N')
@@ -700,10 +625,10 @@ if __name__ == '__main__':
     parser.add_argument('--expt.evaluate', action='store_true', help='evaluate model on validation set once and terminate (default: False)')
     parser.add_argument('--expt.is_non_grad_based', action='store_true', help='Set this flag to run default SimSiam or BOHB runs')
     parser.add_argument('--expt.warmup_epochs', default=10, type=int, metavar='N', help='denotes the number of epochs that we only pre-train without finetuning afterwards; warmup is turned off when set to 0; we use a linear incremental schedule during warmup')
-    parser.add_argument('--expt.warmup_multiplier', default=2., type=float, metavar='N', help='A factor that is multiplied with the pretraining lr used in the linear incremental learning rate scheduler during warmup. The final lr is multiplier * pre-training lr')
+    parser.add_argument('--expt.warmup_multiplier', default=1., type=float, metavar='N', help='A factor that is multiplied with the pretraining lr used in the linear incremental learning rate scheduler during warmup. The final lr is multiplier * pre-training lr')
     parser.add_argument('--expt.use_fix_aug_params', action='store_true', help='Use this flag if you want to try out specific aug params (e.g., from a best BOHB config). Default values will be overwritten then without crashing other experiments.')
     parser.add_argument('--expt.data_augmentation_mode', default='default', choices=['default', 'probability_augment', 'rand_augment'], help="Select which data augmentation to use. Default is for the standard SimSiam setting and for parameterize aug setting.")
-    parser.add_argument('--expt.write_summary_frequency', default=3, type=int, metavar='N', help='Specifies, after how many batches the TensorBoard summary writer should flush new data to the summary object.')
+    parser.add_argument('--expt.write_summary_frequency', default=10, type=int, metavar='N', help='Specifies, after how many batches the TensorBoard summary writer should flush new data to the summary object.')
     parser.add_argument('--expt.wd_decay_pt', action="store_true", help='use weight decay decay (annealing) during pre-training? (default: False)')
     parser.add_argument('--expt.wd_decay_ft', action="store_true", help='use weight decay decay (annealing) during fine-tuning? (default: False)')
     parser.add_argument('--expt.run_knn_val', action='store_true', help='activate knn evaluation during training (default: False)')
@@ -743,7 +668,6 @@ if __name__ == '__main__':
     parser.add_argument('--data', default="data", type=str, metavar='N')
     parser.add_argument('--data.seed', type=int, default=123, help='the seed')
     parser.add_argument('--data.dataset', type=str, default="ImageNet", help='supported datasets: CIFAR10, CIFAR100, ImageNet')
-    parser.add_argument('--data.data_dir', type=str, default=f"/home/{user}/workspace/data/metassl", help='supported datasets: CIFAR10, CIFAR100, ImageNet')
     parser.add_argument('--data.dataset_percentage_usage', type=float, default=100.0, help='Indicates what percentage of the data is used for the experiments.')
     
     parser.add_argument('--simsiam', default="simsiam", type=str, metavar='N')
@@ -751,7 +675,7 @@ if __name__ == '__main__':
     parser.add_argument('--simsiam.pred_dim', type=int, default=512, help='the hidden dimension of the predictor')
     parser.add_argument('--simsiam.fix_pred_lr', action="store_false", help='fix learning rate for the predictor (default: True')
     parser.add_argument('--simsiam.use_baselines_loss', action="store_true", help='Set this flag to use the loss from the baseline code (PT)')
-    
+
     parser.add_argument('--bohb', default="bohb", type=str, metavar='N')
     parser.add_argument("--bohb.run_id", default="default_BOHB")
     parser.add_argument("--bohb.seed", type=int, default=123, help="random seed")
@@ -772,6 +696,9 @@ if __name__ == '__main__':
     parser.add_argument('--neps', default="neps", type=str, metavar='NEPS')
     parser.add_argument('--neps.is_neps_run', action='store_true', help='Set this flag to run a NEPS experiment.')
     parser.add_argument('--neps.config_space', type=str, default='parameterized_cifar10_augmentation', choices=['parameterized_cifar10_augmentation', 'probability_augment'], help='Define which configspace to use.')
+
+    parser.add_argument('--learnaug', default="learnaug", type=str, metavar='N')
+    parser.add_argument('--learnaug.type', default="default", choices=["colorjitter", "default", "full_net"], help='Define which type of learned augmentation to use.')
 
     parser.add_argument("--use_fixed_args", action="store_true", help="Flag to control whether to take arguments from yaml file as default or from arg parse")
     

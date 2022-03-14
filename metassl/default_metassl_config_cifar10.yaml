@@ -5,7 +5,7 @@ expt:
   expt_name:                    'testing-cifar10'
   expt_mode:                    'CIFAR10'
   save_model:                   True                          # save the model to disc
-  save_model_frequency:         50                            # save model frequency in # of epochs
+  save_model_frequency:         100                           # save model frequency in # of epochs
   ssl_model_checkpoint_path:    null                          # resumes training if model with same config exists. e.g.: "experiments/<EXPERIMENT-NAME>/checkpoint_0099.pth.tar"
   target_model_checkpoint_path: "experiments"                 #
   print_freq:                   10                            # print frequency
@@ -22,11 +22,11 @@ expt:
   evaluate:                     False                         # evaluate model on validation set once and terminate
   is_non_grad_based:            False                         # Set this flag to run default SimSiam or BOHB runs
   warmup_epochs:                10                            # Denotes the number of epochs that we only pre-train without finetuning afterwards; warmup is turned off when set to 0; we use a linear incremental schedule during warmup
-  warmup_multiplier:            2.                            # A factor that is multiplied with the pretraining lr used in the linear incremental learning rate scheduler during warmup. The final lr is multiplier * pre-training lr
+  warmup_multiplier:            1.                            # A factor that is multiplied with the pretraining lr used in the linear incremental learning rate scheduler during warmup. The final lr is multiplier * pre-training lr
   warmup_both:                  False                         # Whether backbone and head should be both warmed up.
   use_fix_aug_params:           False                         # Use this flag if you want to try out specific aug params (e.g., from a best BOHB config). Default values will be overwritten then without crashing other experiments.
   data_augmentation_mode:       'default'                     # Select which data augmentation to use. Default is for the standard SimSiam setting and for parameterize aug setting. choices=['default', 'probability_augment', 'rand_augment']
-  write_summary_frequency:      3                             # Specifies, after how many batches the TensorBoard summary writer should flush new data to the summary object.
+  write_summary_frequency:      10                             # Specifies, after how many batches the TensorBoard summary writer should flush new data to the summary object.
   wd_decay_pt:                  False                         # use weight decay decay (annealing) during pre-training? (default: True)
   wd_decay_ft:                  False                         # use weight decay decay (annealing) during fine-tuning? (default: True)
   run_knn_val:                  False                         # activate knn evaluation during training (default: False)
@@ -82,7 +82,6 @@ model:
 data:
   seed:                     123
   dataset:                  'CIFAR10'                    # supported datasets: CIFAR10, CIFAR100, ImageNet
-  data_dir:                 'datasets/CIFAR10'
   dataset_percentage_usage: 100         # Indicates what percentage of the data is used for the experiments.
 
 
@@ -95,6 +94,11 @@ simsiam:
   fix_pred_lr: True                        # Fix learning rate for the predictor
   use_baselines_loss: False                # Set this flag to use the loss from the baseline code (PT)
 
+########################################
+####       Learn Augmentations       ###
+########################################
+learnaug:
+    type:     "colorjitter"             # Define which type of learned augmentation to use.
 
 #######################################
 ###       BOHB Specific             ###

@@ -1,5 +1,4 @@
 import math
-import kornia as K
 import torch
 import torchvision.transforms
 import torchvision.transforms as transforms
@@ -138,14 +137,11 @@ class DataAugmentation(nn.Module):
     
         if self.expt_mode == "ImageNet":
             modules.append(RandomApply([ColorJitter(brightness=strength_b, contrast=strength_c, saturation=strength_s, hue=strength_h)], p=0.8))
-            # modules.append(K.augmentation.ColorJitter(brightness=strength_b, contrast=strength_c, saturation=strength_s, hue=strength_h))
             modules.append(RandomGrayscale(p=0.2))
-            # modules.append(K.augmentation.RandomGrayscale(p=0.2))
-            modules.append(RandomApply([torchvision.transforms.GaussianBlur([kernel_h, kernel_w], [.1, 2.])], p=0.5))
-            # modules.append(K.augmentation.RandomGaussianBlur((kernel_h, kernel_w), (0.1, 2.0), p=0.5))
+            modules.append(RandomApply([GaussianBlur([kernel_h, kernel_w], [.1, 2.])], p=0.5))
             modules.append(RandomHorizontalFlip())
-            # modules.append(K.augmentation.RandomHorizontalFlip())
         elif self.expt_mode == "CIFAR10":
+            modules.append(RandomResizedCrop(size=32, scale=(0.2, 1.)))
             modules.append(RandomApply([ColorJitter(brightness=strength_b, contrast=strength_c, saturation=strength_s, hue=strength_h)], p=0.8))
             modules.append(RandomGrayscale(p=0.2))
             modules.append(RandomHorizontalFlip())
