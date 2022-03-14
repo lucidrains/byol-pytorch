@@ -230,6 +230,17 @@ def check_and_save_checkpoint(config, ngpus_per_node, total_iter, epoch, model, 
             
             save_checkpoint(save_dct, is_best=False, filename=os.path.join(expt_dir, f'{checkpoint_name}_{epoch:04d}.pth.tar'))
 
+def save_checkpoint_baseline_code(epoch, model, optimizer, acc, filename, msg):
+    state = {
+        'epoch': epoch,
+        'arch': 'resnet18',
+        'state_dict': model.state_dict(),
+        'optimizer': optimizer.state_dict(),
+        'meters': acc
+        # 'top1_acc': acc
+    }
+    torch.save(state, filename)
+    print(msg)
 
 def hist_to_image(hist_dict, title=None):
     plt.figure()

@@ -12,7 +12,7 @@ def get_expt_dir_with_bohb_config_id(expt_dir, bohb_config_id):
 def organize_experiment_saving(user, config, is_bohb_run):
     # Set expt_root_dir based on user and experiment mode
     if user == "wagnerd":  # Diane cluster
-        expt_root_dir = "/work/dlclarge2/wagnerd-metassl_experiments"
+        expt_root_dir = "/work/dlclarge2/wagnerd-metassl-experiments/metassl"
     else:
         expt_root_dir = "experiments"
     

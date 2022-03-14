@@ -45,7 +45,7 @@ try:
     from metassl.utils.simsiam_alternating import SimSiam
     from metassl.utils.summary import write_to_summary_writer
     import metassl.models.resnet_cifar as our_cifar_resnets
-    from metassl.utils.torch_utils import get_newest_model, check_and_save_checkpoint, deactivate_bn, validate, accuracy, adjust_learning_rate
+    from metassl.utils.torch_utils import get_newest_model, check_and_save_checkpoint, save_checkpoint_baseline_code, deactivate_bn, validate, accuracy, adjust_learning_rate
     from metassl.utils.knn_validation import knn_classifier
     from metassl.utils.io import get_expt_dir_with_bohb_config_id, organize_experiment_saving, find_free_port
 
@@ -57,7 +57,7 @@ except ImportError:
     from .utils.simsiam_alternating import SimSiam
     from .utils.summary import write_to_summary_writer
     from .models import resnet_cifar as our_cifar_resnets
-    from .utils.torch_utils import get_newest_model, check_and_save_checkpoint, deactivate_bn, validate, accuracy, adjust_learning_rate
+    from .utils.torch_utils import get_newest_model, check_and_save_checkpoint, save_checkpoint_baseline_code, deactivate_bn, validate, accuracy, adjust_learning_rate
     from .utils.knn_validation import knn_classifier
     from .utils.io import get_expt_dir_with_bohb_config_id, organize_experiment_saving, find_free_port
 
