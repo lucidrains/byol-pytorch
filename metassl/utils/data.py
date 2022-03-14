@@ -541,7 +541,7 @@ def get_loaders(traindir, config, parameterize_augmentation=False, bohb_infos=No
         data_dir=traindir,
         batch_size=config.train.batch_size,
         random_seed=config.expt.seed,
-        valid_size=0.0,
+        valid_size=config.finetuning.valid_size,
         dataset_name=config.data.dataset,
         shuffle=True,
         num_workers=config.expt.workers,
