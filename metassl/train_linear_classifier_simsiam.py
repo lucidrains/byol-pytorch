@@ -222,8 +222,16 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos, hyperparamete
     # Baseline Code ----------------------------------------------------------------------------------------------------
     if config.data.dataset == "CIFAR10" and config.model.arch == "baseline_resnet":
         # TODO: @Diane - fix hardcoding
-        pretrained = "experiments/CIFAR10/reproduced_results/checkpoint_0799.pth.tar"
-        pretrained = config.expt.target_model_checkpoint_path
+        if config.neps.is_neps_run:
+            print("expt_dir: ", expt_dir)
+            pt_epoch_ckpt = str(config.train.epochs - 1).zfill(4)
+            print("pt_epoch_ckpt: ", pt_epoch_ckpt)
+            ckpt = "checkpoint_" + pt_epoch_ckpt + ".pth.tar"
+            print("ckpt: ", ckpt)
+            pretrained = expt_dir / ckpt
+            print("pretrained: ", pretrained)
+        else:
+            pretrained = config.expt.target_model_checkpoint_path
         if True:
             if os.path.isfile(pretrained):
                 print("=> loading checkpoint '{}'".format(pretrained))
@@ -421,6 +429,7 @@ def main_worker(gpu, ngpus_per_node, config, expt_dir, bohb_infos, hyperparamete
 
         # Determine wheter to evaluate on the validation or test set
         if config.finetuning.valid_size > 0:
+            print("\n\n VALID \n\n")
             loader_ft = valid_loader_ft
             writer_scalar_mode = "Valid"
         else:
