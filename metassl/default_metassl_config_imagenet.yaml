@@ -100,23 +100,23 @@ learnaug:
 ########################################
 ####       BOHB Specific             ###
 ########################################
-bohb:
-  run_id:           "default_BOHB"
-  seed:             123
-  n_iterations:     10                          # How many BOHB iterations
-  min_budget:       5
-  max_budget:       20
-  budget_mode:      "epochs"                    # Choose your desired fidelity between 'epochs' and 'data'
-  eta:              2
-  configspace_mode: "color_jitter_strengths"    # Define which configspace to use
-  # choices=["imagenet_probability_augment",
-  # "cifar10_probability_augment", "color_jitter_strengths"]
-  nic_name:         "lo"                        # Define the network interface to use > local: "lo", cluster: "eth0"
-  port:             0
-  worker:           False                       # Make this execution a worker server, action="store_true"
-  warmstarting:     False
-  warmstarting_dir: None
-  test_env:         False                       # If using this flag, the master runs a worker in the background and workers are not being shutdown after registering results.
+# bohb:
+#   run_id:           "default_BOHB"
+#   seed:             123
+#   n_iterations:     10                          # How many BOHB iterations
+#   min_budget:       5
+#   max_budget:       20
+#   budget_mode:      "epochs"                    # Choose your desired fidelity between 'epochs' and 'data'
+#   eta:              2
+#   configspace_mode: "color_jitter_strengths"    # Define which configspace to use
+#   # choices=["imagenet_probability_augment",
+#   # "cifar10_probability_augment", "color_jitter_strengths"]
+#   nic_name:         "lo"                        # Define the network interface to use > local: "lo", cluster: "eth0"
+#   port:             0
+#   worker:           False                       # Make this execution a worker server, action="store_true"
+#   warmstarting:     False
+#   warmstarting_dir: None
+#   test_env:         False                       # If using this flag, the master runs a worker in the background and workers are not being shutdown after registering results.
 
 
 #######################################

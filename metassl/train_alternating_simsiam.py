@@ -110,7 +110,7 @@ def main(config, expt_dir, bohb_infos=None):
         # config.expt.dist_url = "tcp://localhost:" + master_port
         # print(f"{config.expt.dist_url=}")
         
-        print(f"\n\n\n\n\n\n{bohb_infos=}\n\n\n\n\n\n")
+        print(f"\n\n\n\n\n\nbohb_infos: {bohb_infos}\n\n\n\n\n\n")
     # ------------------------------------------------------------------------------------------------------------------
 
     if config.data.dataset == "CIFAR10":
@@ -164,7 +164,7 @@ def main(config, expt_dir, bohb_infos=None):
     if bohb_infos is not None:
         with open(expt_dir + "/current_val_metric.txt", 'r') as f:
             val_metric = f.read()
-        print(f"{val_metric=}")
+        print(f"val_metric: {val_metric}")
         return float(val_metric)
     # ------------------------------------------------------------------------------------------------------------------
 
@@ -878,15 +878,17 @@ if __name__ == '__main__':
     # parser.add_argument("--bohb.max_budget", type=int, default=4)
     # parser.add_argument("--bohb.budget_mode", type=str, default="epochs", choices=["epochs", "data"], help="Choose your desired fidelity")
     # parser.add_argument("--bohb.eta", type=int, default=2)
-    # parser.add_argument("--bohb.configspace_mode", type=str, default='color_jitter_strengths', choices=["imagenet_probability_simsiam_augment", "cifar10_probability_simsiam_augment", "color_jitter_strengths", "rand_augment", "probability_augment", "double_probability_augment"],
-    # help='Define which configspace to use.')
+    # parser.add_argument("--bohb.configspace_mode", type=str, default='color_jitter_strengths', choices=["imagenet_probability_simsiam_augment", "cifar10_probability_simsiam_augment", "color_jitter_strengths", "rand_augment", "probability_augment", "double_probability_augment"], help='Define which configspace to use.')
     # parser.add_argument("--bohb.nic_name", default="lo", help="The network interface to use")  # local: "lo", cluster: "eth0"
-    # parser.add_argument("--bohb.port", type=int, default=0)
+    # parser.add_argument("--bohb.port", type=int, default=0, help="Add port for BOHB")
     # parser.add_argument("--bohb.worker", action="store_true", help="Make this execution a worker server")
     # parser.add_argument("--bohb.warmstarting", type=bool, default=False)
     # parser.add_argument("--bohb.warmstarting_dir", type=str, default=None)
     # parser.add_argument("--bohb.test_env", action='store_true', help='If using this flag, the master runs a worker in the background and workers are not being shutdown after registering results.')
-
+    
+    parser.add_argument('--neps', default="neps", type=str, metavar='NEPS')
+    parser.add_argument('--neps.is_neps_run', action='store_true', help='Set this flag to run a NEPS experiment.')
+    parser.add_argument('--neps.config_space', type=str, default='parameterized_cifar10_augmentation', choices=['parameterized_cifar10_augmentation', 'probability_augment'], help='Define which configspace to use.')
     parser.add_argument("--use_fixed_args", action="store_true", help="Flag to control whether to take arguments from yaml file as default or from arg parse")
     
     config = _parse_args(config_parser, parser)
