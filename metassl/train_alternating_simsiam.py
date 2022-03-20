@@ -579,8 +579,9 @@ def train_one_epoch(
             target_ft = target_ft.cuda(config.expt.gpu, non_blocking=True)
         
         if parameterize_augmentations and config.expt.rank == 0 and i % (config.expt.print_freq * 1000) == 0:
-            image_data_to_plot_dict = get_image_data_to_plot(rand_int=rand_int, untransformed_image=untransformed_image, images_pt=images_pt, images_ft=images_ft, target_ft=target_ft, strengths=strengths)
-            
+            # image_data_to_plot_dict = get_image_data_to_plot(rand_int=rand_int, untransformed_image=untransformed_image, images_pt=images_pt, images_ft=images_ft, target_ft=target_ft, strengths=strengths)
+            pass
+
         alternating_mode = False if config.expt.is_non_grad_based else True  # default is True
         loss_pt, backbone_grads_pt_lw, backbone_grads_pt_global, z1, z2 = pretrain(model, images_pt, criterion_pt, optimizer_pt, losses_pt_meter, data_time_meter, end, alternating_mode=alternating_mode)
 
@@ -682,19 +683,19 @@ def train_one_epoch(
             img = hist_to_image(aug_model.color_jitter_histogram_hue, "Color Jitter Strength Hue Counts")
             writer.add_image(tag="Advanced Stats/color jitter strength hue", img_tensor=img, global_step=total_iter)
 
-            img = tensor_to_image(image_data_to_plot_dict["untransformed_image"], f"Randomly sampled untransformed image")
-            writer.add_image(tag="Advanced Stats/sampled untransformed image", img_tensor=img, global_step=total_iter)
+            # img = tensor_to_image(image_data_to_plot_dict["untransformed_image"], f"Randomly sampled untransformed image")
+            # writer.add_image(tag="Advanced Stats/sampled untransformed image", img_tensor=img, global_step=total_iter)
 
-            title = image_data_to_plot_dict["title"]
+            # title = image_data_to_plot_dict["title"]
 
-            img = tensor_to_image(image_data_to_plot_dict["img0"], f"Randomly sampled transformed image 1\n {title}")
-            writer.add_image(tag="Advanced Stats/sampled transformed image 1", img_tensor=img, global_step=total_iter)
+            # img = tensor_to_image(image_data_to_plot_dict["img0"], f"Randomly sampled transformed image 1\n {title}")
+            # writer.add_image(tag="Advanced Stats/sampled transformed image 1", img_tensor=img, global_step=total_iter)
 
-            img = tensor_to_image(image_data_to_plot_dict["img1"], f"Randomly sampled transformed image 2\n {title}")
-            writer.add_image(tag="Advanced Stats/sampled transformed image 2", img_tensor=img, global_step=total_iter)
+            # img = tensor_to_image(image_data_to_plot_dict["img1"], f"Randomly sampled transformed image 2\n {title}")
+            # writer.add_image(tag="Advanced Stats/sampled transformed image 2", img_tensor=img, global_step=total_iter)
 
-            ft_img = tensor_to_image(image_data_to_plot_dict["ft_img"], f"Randomly sampled finetuning image\n with label {image_data_to_plot_dict['ft_label']}")
-            writer.add_image(tag="Advanced Stats/sampled finetuning image", img_tensor=ft_img, global_step=total_iter)
+            # ft_img = tensor_to_image(image_data_to_plot_dict["ft_img"], f"Randomly sampled finetuning image\n with label {image_data_to_plot_dict['ft_label']}")
+            # writer.add_image(tag="Advanced Stats/sampled finetuning image", img_tensor=ft_img, global_step=total_iter)
             
     return total_iter
 
