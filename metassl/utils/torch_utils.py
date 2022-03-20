@@ -310,8 +310,8 @@ def validate(val_loader, model, criterion, config, finetuning=False):
             target = target.cuda(config.expt.gpu, non_blocking=True)
             
             # compute output
-            if config.data.dataset == "CIFAR10" and config.model.arch == "baseline_resnet":
-                output = model(images)
+            if config.expt.is_non_grad_based and config.data.dataset == "CIFAR10" and config.model.arch == "baseline_resnet":
+                    output = model(images)
             else:
                 output = model(images, finetuning=finetuning)
             loss = criterion(output, target)
