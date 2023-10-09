@@ -5,6 +5,7 @@ from functools import wraps
 import torch
 from torch import nn
 import torch.nn.functional as F
+import torch.distributed as dist
 
 from torchvision import transforms as T
 
@@ -36,6 +37,10 @@ def get_module_device(module):
 def set_requires_grad(model, val):
     for p in model.parameters():
         p.requires_grad = val
+
+def MaybeSyncBatchnorm(is_distributed = None):
+    is_distributed = default(is_distributed, dist.is_initialized() and dist.get_world_size() > 1)
+    return nn.SyncBatchNorm if is_distributed else nn.BatchNorm1d
 
 # loss fn
 
@@ -75,24 +80,24 @@ def update_moving_average(ema_updater, ma_model, current_model):
 
 # MLP class for projector and predictor
 
-def MLP(dim, projection_size, hidden_size=4096):
+def MLP(dim, projection_size, hidden_size=4096, sync_batchnorm=None):
     return nn.Sequential(
         nn.Linear(dim, hidden_size),
-        nn.BatchNorm1d(hidden_size),
+        MaybeSyncBatchnorm(sync_batchnorm)(hidden_size),
         nn.ReLU(inplace=True),
         nn.Linear(hidden_size, projection_size)
     )
 
-def SimSiamMLP(dim, projection_size, hidden_size=4096):
+def SimSiamMLP(dim, projection_size, hidden_size=4096, sync_batchnorm=None):
     return nn.Sequential(
         nn.Linear(dim, hidden_size, bias=False),
-        nn.BatchNorm1d(hidden_size),
+        MaybeSyncBatchnorm(sync_batchnorm)(hidden_size),
         nn.ReLU(inplace=True),
         nn.Linear(hidden_size, hidden_size, bias=False),
-        nn.BatchNorm1d(hidden_size),
+        MaybeSyncBatchnorm(sync_batchnorm)(hidden_size),
         nn.ReLU(inplace=True),
         nn.Linear(hidden_size, projection_size, bias=False),
-        nn.BatchNorm1d(projection_size, affine=False)
+        MaybeSyncBatchnorm(sync_batchnorm)(projection_size, affine=False)
     )
 
 # a wrapper class for the base neural network
@@ -100,7 +105,7 @@ def SimSiamMLP(dim, projection_size, hidden_size=4096):
 # and pipe it into the projecter and predictor nets
 
 class NetWrapper(nn.Module):
-    def __init__(self, net, projection_size, projection_hidden_size, layer = -2, use_simsiam_mlp = False):
+    def __init__(self, net, projection_size, projection_hidden_size, layer = -2, use_simsiam_mlp = False, sync_batchnorm = None):
         super().__init__()
         self.net = net
         self.layer = layer
@@ -110,6 +115,7 @@ class NetWrapper(nn.Module):
         self.projection_hidden_size = projection_hidden_size
 
         self.use_simsiam_mlp = use_simsiam_mlp
+        self.sync_batchnorm = sync_batchnorm
 
         self.hidden = {}
         self.hook_registered = False
@@ -137,7 +143,7 @@ class NetWrapper(nn.Module):
     def _get_projector(self, hidden):
         _, dim = hidden.shape
         create_mlp_fn = MLP if not self.use_simsiam_mlp else SimSiamMLP
-        projector = create_mlp_fn(dim, self.projection_size, self.projection_hidden_size)
+        projector = create_mlp_fn(dim, self.projection_size, self.projection_hidden_size, sync_batchnorm = self.sync_batchnorm)
         return projector.to(hidden)
 
     def get_representation(self, x):
@@ -178,7 +184,8 @@ class BYOL(nn.Module):
         augment_fn = None,
         augment_fn2 = None,
         moving_average_decay = 0.99,
-        use_momentum = True
+        use_momentum = True,
+        sync_batchnorm = None
     ):
         super().__init__()
         self.net = net
@@ -205,7 +212,14 @@ class BYOL(nn.Module):
         self.augment1 = default(augment_fn, DEFAULT_AUG)
         self.augment2 = default(augment_fn2, self.augment1)
 
-        self.online_encoder = NetWrapper(net, projection_size, projection_hidden_size, layer=hidden_layer, use_simsiam_mlp=not use_momentum)
+        self.online_encoder = NetWrapper(
+            net,
+            projection_size,
+            projection_hidden_size,
+            layer = hidden_layer,
+            use_simsiam_mlp = not use_momentum,
+            sync_batchnorm = sync_batchnorm
+        )
 
         self.use_momentum = use_momentum
         self.target_encoder = None

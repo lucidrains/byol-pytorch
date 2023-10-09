@@ -3,12 +3,13 @@ from setuptools import setup, find_packages
 setup(
   name = 'byol-pytorch',
   packages = find_packages(exclude=['examples']),
-  version = '0.6.0',
+  version = '0.7.0',
   license='MIT',
   description = 'Self-supervised contrastive learning made simple',
   author = 'Phil Wang',
   author_email = 'lucidrains@gmail.com',
   url = 'https://github.com/lucidrains/byol-pytorch',
+  long_description_content_type = 'text/markdown',
   keywords = [
       'self-supervised learning',
       'artificial intelligence'
