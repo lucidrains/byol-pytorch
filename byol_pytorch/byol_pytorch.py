@@ -272,8 +272,8 @@ class BYOL(nn.Module):
             target_encoder = self._get_target_encoder() if self.use_momentum else self.online_encoder
             target_proj_one, _ = target_encoder(image_one)
             target_proj_two, _ = target_encoder(image_two)
-            target_proj_one.detach_()
-            target_proj_two.detach_()
+            target_proj_one = target_proj_one.detach()
+            target_proj_two = target_proj_two.detach()
 
         loss_one = loss_fn(online_pred_one, target_proj_two.detach())
         loss_two = loss_fn(online_pred_two, target_proj_one.detach())
