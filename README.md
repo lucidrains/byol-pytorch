@@ -164,6 +164,51 @@ imgs = torch.randn(2, 3, 256, 256)
 projection, embedding = learner(imgs, return_embedding = True)
 ```
 
+## Distributed Training
+
+The repository now offers distributed training with <a href="https://huggingface.co/docs/accelerate/index">🤗 Huggingface Accelerate</a>. You just have to pass in your own `Dataset` into the imported `BYOLTrainer`
+
+First setup the configuration for distributed training by invoking the accelerate CLI
+
+```bash
+$ accelerate config
+```
+
+Then craft your training script as shown below, say in `./train.py`
+
+```python
+from torchvision import models
+
+from byol_pytorch import (
+    BYOL,
+    BYOLTrainer,
+    MockDataset
+)
+
+resnet = models.resnet50(pretrained = True)
+
+dataset = MockDataset(256, 10000)
+
+trainer = BYOLTrainer(
+    resnet,
+    dataset = dataset,
+    image_size = 256,
+    hidden_layer = 'avgpool',
+    learning_rate = 3e-4,
+    num_train_steps = 100_000,
+    batch_size = 16,
+    checkpoint_every = 1000     # improved model will be saved periodically to ./checkpoints folder 
+)
+
+trainer()
+```
+
+Then use the accelerate CLI again to launch the script
+
+```bash
+$ accelerate launch ./train.py
+```
+
 ## Alternatives
 
 If your downstream task involves segmentation, please look at the following repository, which extends BYOL to 'pixel'-level learning.

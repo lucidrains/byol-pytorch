@@ -268,7 +268,6 @@ class BYOL(nn.Module):
         online_predictions = self.online_predictor(online_projections)
 
         online_pred_one, online_pred_two = online_predictions.chunk(2, dim = 0)
-        online_proj_one, online_proj_two = online_projections.chunk(2, dim = 0)
 
         with torch.no_grad():
             target_encoder = self._get_target_encoder() if self.use_momentum else self.online_encoder
