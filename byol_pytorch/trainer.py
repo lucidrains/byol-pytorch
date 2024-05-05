@@ -14,6 +14,13 @@ from beartype import beartype
 from beartype.typing import Optional
 
 from accelerate import Accelerator
+from accelerate.utils import DistributedDataParallelKwargs
+
+# constants
+
+DEFAULT_DDP_KWARGS = DistributedDataParallelKwargs(
+    find_unused_parameters = True
+)
 
 # functions
 
@@ -60,6 +67,10 @@ class BYOLTrainer(Module):
         accelerator_kwargs: dict = dict(),
     ):
         super().__init__()
+
+        if 'kwargs_handlers' not in accelerator_kwargs:
+            accelerator_kwargs['kwargs_handlers'] = [DEFAULT_DDP_KWARGS]
+
         self.accelerator = Accelerator(**accelerator_kwargs)
 
         if dist.is_initialized() and dist.get_world_size() > 1:

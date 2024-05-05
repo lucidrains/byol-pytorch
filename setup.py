@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 setup(
   name = 'byol-pytorch',
   packages = find_packages(exclude=['examples']),
-  version = '0.8.0',
+  version = '0.8.1',
   license='MIT',
   description = 'Self-supervised contrastive learning made simple',
   author = 'Phil Wang',
