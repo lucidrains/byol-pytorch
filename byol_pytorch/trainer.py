@@ -124,8 +124,8 @@ class BYOLTrainer(Module):
 
             self.print(f'loss {loss.item():.3f}')
 
-            self.optimizer.zero_grad()
             self.optimizer.step()
+            self.optimizer.zero_grad()
 
             self.wait()
 
