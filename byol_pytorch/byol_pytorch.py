@@ -1,18 +1,32 @@
+from __future__ import annotations
+
 import copy
 import random
 from functools import wraps
 
 import torch
 from torch import nn
+from torch.nn import Module
 import torch.nn.functional as F
 import torch.distributed as dist
 
 from torchvision import transforms as T
 
+from einops import rearrange
+
 # helper functions
+
+def exists(v):
+    return v is not None
 
 def default(val, def_val):
     return def_val if val is None else val
+
+def divisible_by(num, den):
+    return (num % den) == 0
+
+def l2norm(t):
+    return F.normalize(t, dim = -1, p = 2)
 
 def flatten(t):
     return t.reshape(t.shape[0], -1)
@@ -44,14 +58,43 @@ def MaybeSyncBatchnorm(is_distributed = None):
 
 # loss fn
 
-def loss_fn(x, y):
-    x = F.normalize(x, dim=-1, p=2)
-    y = F.normalize(y, dim=-1, p=2)
-    return 2 - 2 * (x * y).sum(dim=-1)
+def cosine_loss_fn(x, y):
+    x = l2norm(x)
+    y = l2norm(y)
+    return 2 - 2 * (x * y).sum(dim = -1)
+
+def kl_loss_fn(x, y, eps = 1e-5):
+    x, y = tuple(t.clamp_min(eps) for t in (x, y))
+    return F.kl_div(x.log(), y, reduction = 'batchmean')
+
+# simplicial embeddings
+# Lavoie et al - https://arxiv.org/abs/2204.00616
+
+class SEM(Module):
+    def __init__(
+        self,
+        dim,
+        temperature = 0.1,
+        dim_simplex = 8
+    ):
+        super().__init__()
+        assert divisible_by(dim, dim_simplex), f'{dim} must be divisible by {dim_simplex}'
+
+        self.dim = dim
+        self.dim_simplex = dim_simplex
+        self.temperature = temperature
+
+    def forward(
+        self,
+        t
+    ):
+        t = rearrange(t, '... (l v) -> ... l v', v = self.dim_simplex)
+        t = (t / self.temperature).softmax(dim = -1)
+        return rearrange(t, '... l v -> ... (l v)')
 
 # augmentation utils
 
-class RandomApply(nn.Module):
+class RandomApply(Module):
     def __init__(self, fn, p):
         super().__init__()
         self.fn = fn
@@ -80,32 +123,44 @@ def update_moving_average(ema_updater, ma_model, current_model):
 
 # MLP class for projector and predictor
 
-def MLP(dim, projection_size, hidden_size=4096, sync_batchnorm=None):
+def MLP(dim, projection_size, hidden_size = 4096, sync_batchnorm = None):
     return nn.Sequential(
         nn.Linear(dim, hidden_size),
         MaybeSyncBatchnorm(sync_batchnorm)(hidden_size),
-        nn.ReLU(inplace=True),
+        nn.ReLU(inplace = True),
         nn.Linear(hidden_size, projection_size)
     )
 
-def SimSiamMLP(dim, projection_size, hidden_size=4096, sync_batchnorm=None):
+def SimSiamMLP(dim, projection_size, hidden_size = 4096, sync_batchnorm = None):
     return nn.Sequential(
-        nn.Linear(dim, hidden_size, bias=False),
+        nn.Linear(dim, hidden_size, bias = False),
         MaybeSyncBatchnorm(sync_batchnorm)(hidden_size),
-        nn.ReLU(inplace=True),
-        nn.Linear(hidden_size, hidden_size, bias=False),
+        nn.ReLU(inplace = True),
+        nn.Linear(hidden_size, hidden_size, bias = False),
         MaybeSyncBatchnorm(sync_batchnorm)(hidden_size),
-        nn.ReLU(inplace=True),
-        nn.Linear(hidden_size, projection_size, bias=False),
-        MaybeSyncBatchnorm(sync_batchnorm)(projection_size, affine=False)
+        nn.ReLU(inplace = True),
+        nn.Linear(hidden_size, projection_size, bias = False),
+        MaybeSyncBatchnorm(sync_batchnorm)(projection_size, affine = False)
     )
 
 # a wrapper class for the base neural network
 # will manage the interception of the hidden layer output
 # and pipe it into the projecter and predictor nets
 
-class NetWrapper(nn.Module):
-    def __init__(self, net, projection_size, projection_hidden_size, layer = -2, use_simsiam_mlp = False, sync_batchnorm = None):
+class NetWrapper(Module):
+    def __init__(
+        self,
+        net,
+        projection_size,
+        projection_hidden_size,
+        layer = -2,
+        use_simsiam_mlp = False,
+        sync_batchnorm = None,
+        use_simplicial_embeddings = False,
+        sem_num_simplices = 32,
+        sem_simplex_dim = 8,
+        sem_temperature = 0.1
+    ):
         super().__init__()
         self.net = net
         self.layer = layer
@@ -114,8 +169,20 @@ class NetWrapper(nn.Module):
         self.projection_size = projection_size
         self.projection_hidden_size = projection_hidden_size
 
-        self.use_simsiam_mlp = use_simsiam_mlp
         self.sync_batchnorm = sync_batchnorm
+
+        # sim siam
+
+        self.use_simsiam_mlp = use_simsiam_mlp
+
+        # simplicial embeddings
+
+        self.use_simplicial_embeddings = use_simplicial_embeddings
+        self.sem_num_simplices = sem_num_simplices
+        self.sem_simplex_dim = sem_simplex_dim
+        self.sem_temperature = sem_temperature
+
+        # hooks
 
         self.hidden = {}
         self.hook_registered = False
@@ -143,7 +210,27 @@ class NetWrapper(nn.Module):
     def _get_projector(self, hidden):
         _, dim = hidden.shape
         create_mlp_fn = MLP if not self.use_simsiam_mlp else SimSiamMLP
-        projector = create_mlp_fn(dim, self.projection_size, self.projection_hidden_size, sync_batchnorm = self.sync_batchnorm)
+
+        projector_input_dim = dim
+
+        if self.use_simplicial_embeddings:
+            sem_dim = self.sem_num_simplices * self.sem_simplex_dim
+            projector_input_dim = sem_dim
+
+        projector = create_mlp_fn(projector_input_dim, self.projection_size, self.projection_hidden_size, sync_batchnorm = self.sync_batchnorm)
+
+        if self.use_simplicial_embeddings:
+            Norm = MaybeSyncBatchnorm(self.sync_batchnorm)
+
+            embedder = nn.Sequential(
+                nn.Linear(dim, sem_dim),
+                Norm(sem_dim)
+            )
+
+            sem = SEM(sem_dim, temperature = self.sem_temperature, dim_simplex = self.sem_simplex_dim)
+
+            projector = nn.Sequential(embedder, sem, projector)
+
         return projector.to(hidden)
 
     def get_representation(self, x):
@@ -173,7 +260,7 @@ class NetWrapper(nn.Module):
 
 # main class
 
-class BYOL(nn.Module):
+class BYOL(Module):
     def __init__(
         self,
         net,
@@ -185,7 +272,11 @@ class BYOL(nn.Module):
         augment_fn2 = None,
         moving_average_decay = 0.99,
         use_momentum = True,
-        sync_batchnorm = None
+        sync_batchnorm = None,
+        use_simplicial_embeddings = True,
+        sem_num_simplices = 32,
+        sem_simplex_dim = 8,
+        sem_temperature = 0.1
     ):
         super().__init__()
         self.net = net
@@ -197,7 +288,7 @@ class BYOL(nn.Module):
                 T.ColorJitter(0.8, 0.8, 0.8, 0.2),
                 p = 0.3
             ),
-            T.RandomGrayscale(p=0.2),
+            T.RandomGrayscale(p = 0.2),
             T.RandomHorizontalFlip(),
             RandomApply(
                 T.GaussianBlur((3, 3), (1.0, 2.0)),
@@ -205,8 +296,8 @@ class BYOL(nn.Module):
             ),
             T.RandomResizedCrop((image_size, image_size)),
             T.Normalize(
-                mean=torch.tensor([0.485, 0.456, 0.406]),
-                std=torch.tensor([0.229, 0.224, 0.225])),
+                mean = torch.tensor([0.485, 0.456, 0.406]),
+                std = torch.tensor([0.229, 0.224, 0.225])),
         )
 
         self.augment1 = default(augment_fn, DEFAULT_AUG)
@@ -218,7 +309,11 @@ class BYOL(nn.Module):
             projection_hidden_size,
             layer = hidden_layer,
             use_simsiam_mlp = not use_momentum,
-            sync_batchnorm = sync_batchnorm
+            sync_batchnorm = sync_batchnorm,
+            use_simplicial_embeddings = use_simplicial_embeddings,
+            sem_num_simplices = sem_num_simplices,
+            sem_simplex_dim = sem_simplex_dim,
+            sem_temperature = sem_temperature
         )
 
         self.use_momentum = use_momentum
@@ -232,7 +327,7 @@ class BYOL(nn.Module):
         self.to(device)
 
         # send a mock image tensor to instantiate singleton parameters
-        self.forward(torch.randn(2, 3, image_size, image_size, device=device))
+        self.forward(torch.randn(2, 3, image_size, image_size, device = device))
 
     @singleton('target_encoder')
     def _get_target_encoder(self):
@@ -276,6 +371,8 @@ class BYOL(nn.Module):
             target_projections = target_projections.detach()
 
             target_proj_one, target_proj_two = target_projections.chunk(2, dim = 0)
+
+        loss_fn = cosine_loss_fn
 
         loss_one = loss_fn(online_pred_one, target_proj_two.detach())
         loss_two = loss_fn(online_pred_two, target_proj_one.detach())

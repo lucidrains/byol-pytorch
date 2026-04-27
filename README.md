@@ -197,7 +197,7 @@ trainer = BYOLTrainer(
     learning_rate = 3e-4,
     num_train_steps = 100_000,
     batch_size = 16,
-    checkpoint_every = 1000     # improved model will be saved periodically to ./checkpoints folder 
+    checkpoint_every = 1000     # improved model will be saved periodically to ./checkpoints folder
 )
 
 trainer()
@@ -219,10 +219,10 @@ https://github.com/lucidrains/pixel-level-contrastive-learning
 
 ```bibtex
 @misc{grill2020bootstrap,
-    title = {Bootstrap Your Own Latent: A New Approach to Self-Supervised Learning},
-    author = {Jean-Bastien Grill and Florian Strub and Florent Altché and Corentin Tallec and Pierre H. Richemond and Elena Buchatskaya and Carl Doersch and Bernardo Avila Pires and Zhaohan Daniel Guo and Mohammad Gheshlaghi Azar and Bilal Piot and Koray Kavukcuoglu and Rémi Munos and Michal Valko},
-    year = {2020},
-    eprint = {2006.07733},
+    title   = {Bootstrap Your Own Latent: A New Approach to Self-Supervised Learning},
+    author  = {Jean-Bastien Grill and Florian Strub and Florent Altché and Corentin Tallec and Pierre H. Richemond and Elena Buchatskaya and Carl Doersch and Bernardo Avila Pires and Zhaohan Daniel Guo and Mohammad Gheshlaghi Azar and Bilal Piot and Koray Kavukcuoglu and Rémi Munos and Michal Valko},
+    year    = {2020},
+    eprint  = {2006.07733},
     archivePrefix = {arXiv},
     primaryClass = {cs.LG}
 }
@@ -230,11 +230,23 @@ https://github.com/lucidrains/pixel-level-contrastive-learning
 
 ```bibtex
 @misc{chen2020exploring,
-    title={Exploring Simple Siamese Representation Learning}, 
-    author={Xinlei Chen and Kaiming He},
-    year={2020},
-    eprint={2011.10566},
-    archivePrefix={arXiv},
-    primaryClass={cs.CV}
+    title   = {Exploring Simple Siamese Representation Learning},
+    author  = {Xinlei Chen and Kaiming He},
+    year    = {2020},
+    eprint  = {2011.10566},
+    archivePrefix = {arXiv},
+    primaryClass = {cs.CV}
+}
+```
+
+```bibtex
+@misc{lavoie2022simplicialembeddingsselfsupervisedlearning,
+    title   = {Simplicial Embeddings in Self-Supervised Learning and Downstream Classification},
+    author  = {Samuel Lavoie and Christos Tsirigotis and Max Schwarzer and Ankit Vani and Michael Noukhovitch and Kenji Kawaguchi and Aaron Courville},
+    year    = {2022},
+    eprint  = {2204.00616},
+    archivePrefix = {arXiv},
+    primaryClass = {cs.LG},
+    url     = {https://arxiv.org/abs/2204.00616},
 }
 ```
